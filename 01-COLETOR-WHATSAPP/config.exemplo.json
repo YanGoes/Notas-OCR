@@ -1,0 +1,25 @@
+{
+  "pasta_saida": "dados/entrada",
+  "grupos_permitidos": [
+    "120363000000000000@g.us"
+  ],
+  "nomes_dos_grupos": {
+    "120363000000000000@g.us": "Nome amigavel do grupo"
+  },
+  "exigir_legenda": true,
+  "aceitar_webp": false,
+  "aguardar_comentario_segundos": 45,
+  "janela_associacao_comentario_segundos": 45,
+  "conta_azul": {
+    "habilitada": false,
+    "aceitar_despesa_automaticamente": false,
+    "intervalo_segundos": 10,
+    "timeout_processamento_segundos": 300
+  },
+  "pipeline": {
+    "habilitado": true,
+    "modo": "simulacao",
+    "intervalo_segundos": 10,
+    "timeout_azure_segundos": 180
+  }
+}

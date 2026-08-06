@@ -1,0 +1,61 @@
+# Bibliotecas e artefatos
+node_modules/
+__pycache__/
+*.pyc
+*.log
+
+# Sessoes do WhatsApp — dao acesso a conta vinculada, nunca versionar
+.baileys_sessao/
+.whatsapp_sessao/
+.wwebjs_cache/
+
+# Credenciais
+.env
+.env.*
+!.env.exemplo
+tokens_conta_azul.json
+
+# Saidas do coletor
+fotos_recebidas/
+respostas_conta_azul/
+processados_conta_azul/
+erros_conta_azul/
+coletor-whatsapp-*.zip
+
+# Configuracoes locais do computador e dos editores
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Configuracao real, certificados e chaves privadas
+config.json
+*.pem
+*.pfx
+*.p12
+*.key
+
+# Comprovantes, OCR, auditoria e resultados operacionais
+dados/
+/03-DADOS/
+
+# Backups e pacotes gerados
+/04-ARQUIVO/
+*.zip
+
+# Dados financeiros e artefatos privados de treinamento
+*.csv
+*.xls
+*.xlsx
+configuracao/modelo-historico.json
+fornecedores.json
+
+# Outros caches e temporarios
+.cache/
+.pytest_cache/
+.venv/
+venv/
+*.tmp
+*.bak

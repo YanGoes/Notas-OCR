@@ -1,0 +1,125 @@
+{
+  "_leia_me": "Traduz o que o operador escreve no WhatsApp para as categorias do Conta Azul. As categorias sao referenciadas por NOME; o programa resolve o id na inicializacao. Editavel sem mexer em codigo.",
+
+  "refeicoes": {
+    "_regra": "Definido em 03/08/2026: almoco e jantar tem categoria propria; cafe da manha e lanche vao para a categoria geral.",
+    "almoco": "Refeição - Almoço",
+    "jantar": "Refeição - jantar",
+    "cafe_da_manha": "Lanches e Refeições",
+    "lanche": "Lanches e Refeições"
+  },
+
+  "diretas": {
+    "_regra": "Palavras com classificacao consistente no historico.",
+    "hospedagem": "HOSPEDAGEM",
+    "pedagio": "Pedágios",
+    "material_de_campo": "MATERIAL DE CAMPO",
+    "lavagem": "Lavagem de Veículo",
+    "lavanderia": "Lavanderia",
+    "estacionamento": "Estacionamento",
+    "agua": "Água",
+    "farmacia": "Farmácia",
+    "diversos": "Diversos"
+  },
+
+  "veiculos": {
+    "_regra": "Abastecimento e manutencao sao categorizados POR VEICULO. 'aliases' sao as formas como o operador pode escrever. Onde ha dois veiculos do mesmo modelo, o alias generico e omitido de proposito: sem a placa nao da para decidir, e o programa deve recusar em vez de chutar.",
+
+    "SGR4B54": {
+      "modelo": "Fiat Scudo",
+      "aliases": ["fiat scudo", "scudo", "van", "sgr4b54", "sgr-4b54"],
+      "combustivel": "FIAT SCUDO - SGR4B54",
+      "manutencao": "MANUTENÇÃO FIAT SCUDO SGR4B54"
+    },
+    "RLQ4C16": {
+      "modelo": "Gol",
+      "aliases": ["gol", "rlq4c16", "rlq-4c16"],
+      "combustivel": "GOL - RLQ4C16",
+      "manutencao": "MANUTENÇÃO GOL RLQ4C16"
+    },
+    "RBT2E25": {
+      "modelo": "Saveiro",
+      "aliases": ["saveiro", "rbt2e25", "rbt-2e25"],
+      "combustivel": "SAVEIRO - RBT2E25",
+      "manutencao": "MANUTENÇÃO SAVEIRO - RBT2E25"
+    },
+    "SFI4A94": {
+      "modelo": "Onix",
+      "aliases": ["onix", "sfi4a94", "sfi-4a94"],
+      "combustivel": "ONIX - SFI4A94",
+      "manutencao": "MANUTENÇÃO ONIX SFI4A94"
+    },
+    "JJK0492": {
+      "modelo": "Duster",
+      "aliases": ["duster", "jjk0492", "jjk-0492"],
+      "combustivel": "DUSTER - JJK0492",
+      "manutencao": "MANUTENÇÃO DUSTER JJK0492"
+    },
+
+    "OVN5J98": {
+      "modelo": "Hilux",
+      "_atencao": "Ha duas Hilux. So a placa desempata.",
+      "aliases": ["ovn5j98", "ovn-5j98", "hilux ovn5j98"],
+      "combustivel": "HILUX - OVN5J98",
+      "manutencao": "MANUTENÇÃO HILUX OVN5J98"
+    },
+    "OMU7H82": {
+      "modelo": "Hilux",
+      "_atencao": "Ha duas Hilux. So a placa desempata.",
+      "aliases": ["omu7h82", "omu-7h82", "hilux omu7h82"],
+      "combustivel": "HILUX - OMU7H82",
+      "manutencao": "MANUTENÇÃO HILUX OMU7H82"
+    },
+    "JKM0I96": {
+      "modelo": "Etios",
+      "_atencao": "Ha dois Etios. So a placa desempata.",
+      "aliases": ["jkm0i96", "jkm-0i96", "etios jkm0i96"],
+      "combustivel": "ETIOS - JKM0I96",
+      "manutencao": "MANUTENÇÃO ETIOS JKM0196"
+    },
+    "OVN1505": {
+      "modelo": "Etios",
+      "_atencao": "Ha dois Etios. So a placa desempata.",
+      "aliases": ["ovn1505", "ovn-1505", "etios ovn1505"],
+      "combustivel": "ETIOS - OVN1505",
+      "manutencao": "MANUTENÇÃO ETIOS OVN1505"
+    },
+    "REP7B39": {
+      "modelo": "S10",
+      "_atencao": "Ha dois S10. So a placa desempata.",
+      "aliases": ["rep7b39", "rep-7b39", "s10 rep7b39"],
+      "combustivel": "S10 - REP7B39",
+      "manutencao": "MANUTENÇÃO S10 REP7B39"
+    },
+    "PRE5B39": {
+      "modelo": "S10",
+      "_atencao": "Ha dois S10. So a placa desempata.",
+      "aliases": ["pre5b39", "pre-5b39", "s10 pre5b39"],
+      "combustivel": "S10 - PRE5B39",
+      "manutencao": "Manutenção S10 PRE - 3B59"
+    },
+
+    "GERADOR": {
+      "modelo": "Gerador",
+      "aliases": ["gerador"],
+      "combustivel": "GERADOR",
+      "manutencao": "MANUTENÇÃO GERADOR"
+    },
+    "ALUGADO": {
+      "modelo": "Veículo alugado",
+      "aliases": ["alugado", "veiculo alugado", "carro alugado", "locado"],
+      "combustivel": "VEICULO - ALUGADO",
+      "manutencao": null
+    }
+  },
+
+  "centros_de_custo": {
+    "_regra": "Traduz o que o operador escreve no cabecalho do dia para o centro de custo do Conta Azul.",
+    "_atencao_producao": "O alias curto 'consol' aponta para o centro de custo generico criado na conta de TESTE. Em producao ele e ambiguo: existem CONSOL MG-050 (454 lancamentos) e CONSOL MG-259 (11). Antes de ligar em producao, REMOVA a linha 'consol' abaixo, para que o programa recuse a despesa em vez de chutar a obra errada.",
+    "consol mg-050": "CONSOL MG-050",
+    "consol mg050": "CONSOL MG-050",
+    "consol mg-259": "CONSOL MG-259",
+    "consol mg259": "CONSOL MG-259",
+    "consol": "Consol"
+  }
+}

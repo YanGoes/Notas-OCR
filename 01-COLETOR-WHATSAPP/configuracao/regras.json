@@ -1,0 +1,19 @@
+{
+  "confianca_minima": 0.95,
+  "tolerancia_valor": 0.05,
+  "tipos_proibidos": [
+    "salario", "pro-labore", "adiantamento salarial", "fgts", "imposto",
+    "emprestimo", "financiamento", "consorcio", "honorarios contabeis",
+    "honorarios juridicos", "plano de saude", "despesa administrativa"
+  ],
+  "tipos_permitidos": [
+    { "nome": "alimentacao", "apelidos": ["alimentacao", "almoco", "jantar", "lanche", "cafe da manha", "refeicao", "restaurante"], "categoria": "ALIMENTACAO EM CAMPO", "exige_veiculo": false },
+    { "nome": "combustivel", "apelidos": ["combustivel", "abastecimento", "gasolina", "etanol", "diesel"], "categoria": "COMBUSTIVEL", "exige_veiculo": true },
+    { "nome": "hospedagem", "apelidos": ["hospedagem", "hotel", "pousada", "diaria"], "categoria": "HOSPEDAGEM", "exige_veiculo": false },
+    { "nome": "farmacia", "apelidos": ["farmacia", "medicamento", "remedio", "drogaria"], "categoria": "FARMACIA", "exige_veiculo": false },
+    { "nome": "deslocamento", "apelidos": ["deslocamento", "pedagio", "estacionamento", "taxi", "aplicativo"], "categoria": "DESLOCAMENTO", "exige_veiculo": false },
+    { "nome": "manutencao", "apelidos": ["manutencao", "manutencao de veiculo", "manutencao de equipamento", "oficina", "mecanica", "auto pecas"], "categoria": "MANUTENCAO", "exige_veiculo": true },
+    { "nome": "material", "apelidos": ["material", "material de campo", "ferramenta", "epi", "consumivel"], "categoria": "MATERIAL DE CAMPO", "exige_veiculo": false },
+    { "nome": "outros", "apelidos": ["outros", "outra despesa", "outras despesas"], "categoria": "OUTROS - REVISAO OBRIGATORIA", "exige_veiculo": false, "sempre_revisar": true }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "coletor-fotos-whatsapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Salva automaticamente fotos recebidas em grupos autorizados do WhatsApp.",
+  "main": "src/coletor.js",
+  "scripts": {
+    "start": "node src/interface.js",
+    "start:terminal": "node src/coletor.js",
+    "listar-grupos": "node ferramentas/listar_grupos.js",
+    "conta-azul:conectar": "node ferramentas/conectar_conta_azul.js",
+    "conta-azul:testar": "node ferramentas/testar_conta_azul.js",
+    "pipeline:testar": "node ferramentas/testar_pipeline.js",
+    "treinar-historico": "node ferramentas/treinar_historico.js",
+    "ocr:reprocessar": "node ferramentas/reprocessar_ocr_salvo.js",
+    "test": "node --test testes/*.test.js",
+    "check": "node --check src/interface.js && node --check src/coletor.js && node --check src/pipeline.js && node --check src/aprendizado.js && node --check src/detalhes-despesa.js && node --check src/azure-ocr.js && node --check src/legenda.js && node --check src/classificador.js && node --check src/validador.js && node --check src/conta-azul.js && node --check ferramentas/listar_grupos.js && node --check ferramentas/conectar_conta_azul.js && node --check ferramentas/testar_conta_azul.js && node --check ferramentas/testar_pipeline.js && node --check ferramentas/treinar_historico.js && node --check ferramentas/reprocessar_ocr_salvo.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "express": "5.1.0",
+    "pino": "^10.3.1",
+    "qrcode": "1.5.4",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "exceljs": "4.4.0"
+  }
+}

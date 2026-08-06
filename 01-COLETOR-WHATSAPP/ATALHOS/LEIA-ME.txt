@@ -1,0 +1,19 @@
+USO NORMAL
+1. Na primeira vez, execute 01_INSTALAR_E_INICIAR.bat.
+2. Nas proximas vezes, execute 02_ABRIR_APLICATIVO.bat.
+
+CONFIGURACAO
+- 03_CONFIGURAR_AZURE.bat: informa endpoint e chave do Azure.
+- 04_CONECTAR_CONTA_AZUL.bat: configura e autoriza o Conta Azul.
+- 05_TESTAR_PIPELINE.bat: testa a leitura sem fazer lancamento financeiro.
+
+SERVIDOR
+- 06_ATIVAR_INICIO_AUTOMATICO.bat: inicia junto com o Windows.
+- 07_REMOVER_INICIO_AUTOMATICO.bat: desfaz a configuracao anterior.
+
+IA
+- 08_TREINAR_IA.bat: treina com a planilha historica no caminho ja configurado.
+- Para usar outra planilha, arraste o arquivo .xls ou .xlsx sobre o BAT.
+
+ENVIO
+- 09_GERAR_PACOTE_PARA_ENVIO.bat: cria o ZIP para outro computador.

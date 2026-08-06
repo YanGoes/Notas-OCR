@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Central de Despesas</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/search.css">
+</head>
+<body>
+  <header><div class="brand"><span class="logo">CD</span><div><strong>Central de Despesas</strong><small>WhatsApp · Azure · Conta Azul</small></div></div><span id="statusTopo" class="pill neutro">Inicializando</span></header>
+  <main>
+    <section class="hero"><div><p class="eyebrow">PAINEL LOCAL SEGURO</p><h1>Comprovantes sob controle.</h1><p>Conecte o WhatsApp, escolha os grupos e acompanhe cada documento sem lançar despesas durante a simulação.</p></div><div class="mode"><span>Modo atual</span><strong>SIMULAÇÃO</strong><small>Nenhum lançamento financeiro</small></div></section>
+    <div id="aviso" class="aviso oculto"></div>
+    <section class="grid principal">
+      <article class="card">
+        <div class="card-title"><div><span class="step">1</span><h2>WhatsApp</h2></div><span id="whatsStatus" class="dot-label">Verificando…</span></div>
+        <div id="qrArea" class="qr-area oculto"><img id="qrImagem" alt="QR Code"><p>Abra no celular: <b>WhatsApp → Aparelhos conectados → Conectar aparelho</b></p></div>
+        <p id="whatsTexto" class="muted">Carregando estado da sessão...</p>
+        <div class="actions"><button id="conectar" class="primary">Conectar</button><button id="desconectar" class="danger ghost">Sair do WhatsApp</button></div>
+      </article>
+      <article class="card">
+        <div class="card-title"><div><span class="step">2</span><h2>Grupos monitorados</h2></div><span id="grupoTotal" class="counter">0</span></div>
+        <p class="muted">Escolha exatamente de quais grupos as fotos serão processadas.</p><button id="carregarGrupos" class="secondary">Atualizar lista de grupos</button>
+        <div id="buscaArea" class="search-box oculto"><span aria-hidden="true">⌕</span><input id="buscarGrupo" type="search" placeholder="Pesquisar grupo por nome ou ID" autocomplete="off"><button id="limparBusca" type="button" title="Limpar pesquisa">×</button></div>
+        <div id="listaGrupos" class="group-list"><div class="empty">Conecte o WhatsApp para carregar os grupos.</div></div><button id="salvarGrupos" class="primary full oculto">Salvar grupos selecionados</button>
+      </article>
+    </section>
+    <section class="grid stats">
+      <article><span>Entrada</span><strong id="fEntrada">0</strong></article><article><span>Simulação aprovada</span><strong id="fSimulacao">0</strong></article><article><span>Precisa de revisão</span><strong id="fRevisao">0</strong></article><article><span>Bloqueados</span><strong id="fBloqueados">0</strong></article><article><span>Erros</span><strong id="fErros">0</strong></article>
+    </section>
+    <section class="card documentos-card">
+      <div class="card-title"><div><span class="step">3</span><h2>Comprovantes em tempo real</h2></div><span class="live-indicator">● AO VIVO</span></div>
+      <p class="muted">Imagens, legendas, leitura automática e dúvidas aparecem aqui sem precisar atualizar a página.</p>
+      <div class="date-filter"><label for="filtroData">Filtrar pelo dia recebido</label><input id="filtroData" type="date"><button id="filtrarHoje" class="secondary" type="button">Hoje</button><button id="mostrarTodos" class="ghost" type="button">Mostrar todos</button></div>
+      <div id="documentosLista" class="documentos-lista"><div class="empty">Aguardando o primeiro comprovante do WhatsApp.</div></div>
+    </section>
+    <section class="card checklist">
+      <div class="card-title"><div><span class="step">4</span><h2>Pronto para o teste real?</h2></div><span id="azureStatus" class="pill neutro">Azure</span></div>
+      <ol><li>WhatsApp conectado</li><li>Grupo real selecionado e salvo</li><li>Azure configurado</li><li>Envie uma foto com legenda no grupo</li></ol>
+      <pre>Tipo: Alimentacao&#10;Centro de custo: NOME DO CENTRO&#10;Pessoas: 2&#10;Observacao: Teste real</pre>
+      <p class="muted">O resultado ficará em <b>dados/auditoria</b> e <b>dados/revisao</b>. Nada será lançado no Conta Azul.</p>
+    </section>
+  </main><script src="/app.js"></script>
+</body></html>

@@ -1,0 +1,10 @@
+[
+  { "nome": "ALIMENTACAO EM CAMPO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
+  { "nome": "COMBUSTIVEL", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
+  { "nome": "HOSPEDAGEM", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
+  { "nome": "FARMACIA", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
+  { "nome": "DESLOCAMENTO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
+  { "nome": "MANUTENCAO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
+  { "nome": "MATERIAL DE CAMPO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
+  { "nome": "OUTROS - REVISAO OBRIGATORIA", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] }
+]
