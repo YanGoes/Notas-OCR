@@ -6,6 +6,9 @@
   "nomes_dos_grupos": {
     "120363000000000000@g.us": "Nome amigavel do grupo"
   },
+  "centros_custo_por_grupo": {
+    "120363000000000000@g.us": "UUID_DO_CENTRO_NO_CONTA_AZUL"
+  },
   "exigir_legenda": true,
   "aceitar_webp": false,
   "aguardar_comentario_segundos": 45,
@@ -13,6 +16,8 @@
   "conta_azul": {
     "habilitada": false,
     "aceitar_despesa_automaticamente": false,
+    "empresa_confirmada_id": null,
+    "empresa_confirmada_nome": null,
     "intervalo_segundos": 10,
     "timeout_processamento_segundos": 300
   },

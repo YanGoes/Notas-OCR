@@ -9,6 +9,7 @@ const API_URL = "https://api-v2.contaazul.com";
 const TOKENS_PATH = path.join(RAIZ, "tokens_conta_azul.json");
 const extensoes = new Set([".jpg", ".jpeg", ".png", ".bmp", ".pdf"]);
 let emExecucao = false;
+let renovacaoEmCurso = null;
 
 function carregarEnv() {
     const arquivo = path.join(RAIZ, ".env");
@@ -71,7 +72,12 @@ async function tokenValido(forcar = false) {
     const tokens = lerTokens();
     if (!forcar && tokens.access_token && Date.now() < Number(tokens.expires_at || 0)) return tokens.access_token;
     if (!tokens.refresh_token) throw new Error("Refresh token ausente. Conecte novamente.");
-    return (await trocarToken({ grant_type: "refresh_token", refresh_token: tokens.refresh_token })).access_token;
+    if (!renovacaoEmCurso) {
+        const promessa = trocarToken({ grant_type: "refresh_token", refresh_token: tokens.refresh_token });
+        renovacaoEmCurso = promessa;
+        promessa.finally(() => { if (renovacaoEmCurso === promessa) renovacaoEmCurso = null; }).catch(() => {});
+    }
+    return (await renovacaoEmCurso).access_token;
 }
 
 async function requisicao(endpoint, opcoes = {}, repetir = true) {
@@ -89,6 +95,73 @@ async function requisicao(endpoint, opcoes = {}, repetir = true) {
     try { dados = texto ? JSON.parse(texto) : null; } catch (_) { /* resposta textual */ }
     if (!resposta.ok) throw new Error(`Conta Azul ${resposta.status}: ${typeof dados === "string" ? dados : JSON.stringify(dados)}`);
     return dados;
+}
+
+function opcoesJson(method, corpo) {
+    return {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+    };
+}
+
+async function empresaConectada() {
+    return requisicao("/v1/pessoas/conta-conectada");
+}
+
+async function listarContasFinanceiras() {
+    const resposta = await requisicao("/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true");
+    return resposta?.itens || resposta?.items || [];
+}
+
+async function listarCentrosCusto() {
+    const resposta = await requisicao("/v1/centro-de-custo?pagina=1&tamanho_pagina=1000&filtro_rapido=ATIVO&campo_ordenado_ascendente=nome");
+    return resposta?.items || resposta?.itens || [];
+}
+
+async function listarCategoriasDespesa() {
+    const resposta = await requisicao("/v1/categorias?pagina=1&tamanho_pagina=1000&tipo=DESPESA&permite_apenas_filhos=false");
+    return resposta?.itens || resposta?.items || [];
+}
+
+function adicionarListaParametros(parametros, chave, valores) {
+    const unicos = [...new Set((Array.isArray(valores) ? valores : [valores])
+        .map((valor) => String(valor || "").trim()).filter(Boolean))];
+    for (const valor of unicos) parametros.append(chave, valor);
+}
+
+async function buscarContasPagar(filtros = {}) {
+    const parametros = new URLSearchParams({
+        pagina: String(filtros.pagina || 1),
+        tamanho_pagina: String(filtros.tamanho_pagina || 100),
+    });
+    const camposSimples = [
+        "campo_ordenado_ascendente", "campo_ordenado_descendente", "descricao",
+        "data_vencimento_de", "data_vencimento_ate",
+        "data_competencia_de", "data_competencia_ate",
+        "data_pagamento_de", "data_pagamento_ate",
+        "data_alteracao_de", "data_alteracao_ate", "valor_de", "valor_ate",
+    ];
+    for (const campo of camposSimples) {
+        const valor = String(filtros[campo] ?? "").trim();
+        if (valor) parametros.set(campo, valor);
+    }
+    for (const campo of ["status", "ids_contas_financeiras", "ids_categorias", "ids_centros_de_custo"]) {
+        adicionarListaParametros(parametros, campo, filtros[campo] || []);
+    }
+    return requisicao(`/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?${parametros.toString()}`);
+}
+
+async function obterParcelaFinanceira(idParcela) {
+    return requisicao(`/v1/financeiro/eventos-financeiros/parcelas/${encodeURIComponent(idParcela)}`);
+}
+
+async function obterPessoaPorId(idPessoa) {
+    return requisicao(`/v1/pessoas/${encodeURIComponent(idPessoa)}`);
+}
+
+async function criarCentroCusto({ nome, codigo = null }) {
+    return requisicao("/v1/centro-de-custo", opcoesJson("POST", { nome, codigo: codigo || null }));
 }
 
 function comentarioDaImagem(imagem) {
@@ -135,6 +208,14 @@ async function aguardarCaptura(idDocumento, timeoutSegundos) {
         await esperar(5000);
     }
     throw new Error("Tempo limite da extracao excedido; o arquivo permanecera na entrada para nova tentativa.");
+}
+
+async function obterPreviaCaptura(idCaptura) {
+    return requisicao(`/v1/captura/${encodeURIComponent(idCaptura)}`);
+}
+
+async function aceitarCaptura(idCaptura) {
+    return requisicao(`/v1/captura/${encodeURIComponent(idCaptura)}`, { method: "POST" });
 }
 
 function moverConjunto(imagem, destino) {
@@ -187,10 +268,13 @@ async function processarPendentes(pastaEntrada, opcoes) {
 
 function iniciarMonitor(pastaEntrada, opcoes) {
     if (!opcoes?.habilitada) return;
-    console.log(`Integracao Conta Azul ativa (aceite automatico: ${opcoes.aceitar_despesa_automaticamente ? "SIM" : "NAO"}).`);
-    const executar = () => processarPendentes(pastaEntrada, opcoes).catch((erro) => console.error("Conta Azul:", erro.message));
-    setTimeout(executar, 2000);
-    setInterval(executar, Math.max(5, Number(opcoes.intervalo_segundos || 10)) * 1000);
+    console.error("Monitor automatico legado desativado por seguranca. Use a fila aprovada no painel para enviar ao Conta Azul.");
 }
 
-module.exports = { API_URL, TOKEN_URL, credenciais, trocarCodigo, tokenValido, requisicao, iniciarMonitor, descricaoDaImagem };
+module.exports = {
+    API_URL, TOKEN_URL, credenciais, trocarCodigo, tokenValido, requisicao,
+    empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
+    buscarContasPagar, obterParcelaFinanceira, obterPessoaPorId,
+    enviarDocumento, aguardarCaptura, obterPreviaCaptura, aceitarCaptura,
+    iniciarMonitor, descricaoDaImagem,
+};

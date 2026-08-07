@@ -26,7 +26,9 @@ function dadosAbastecimento(ocr = {}, classificacao = {}) {
 
 function descricaoContaAzul({ legenda, ocr = {}, classificacao = {} }) {
     const dados = dadosAbastecimento(ocr, classificacao);
-    const partes = [String(legenda || classificacao.tipo_reconhecido?.nome || classificacao.tipo || "Despesa").trim()];
+    // Refeição e hospedagem usam o padrão fechado acordado com o financeiro.
+    const padronizada = classificacao.refeicao?.descricao || classificacao.hospedagem?.descricao;
+    const partes = [padronizada || String(legenda || classificacao.tipo_reconhecido?.nome || classificacao.tipo || "Despesa").trim()];
     if (dados) {
         if (dados.placa) partes.push(`Placa: ${dados.placa}`);
         if (dados.litragem) partes.push(`Litragem: ${numeroBr(dados.litragem)} ${dados.unidade}`);

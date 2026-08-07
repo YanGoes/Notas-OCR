@@ -5,7 +5,6 @@ const path = require("path");
 const pino = require("pino");
 const qrcode = require("qrcode-terminal");
 const EventEmitter = require("events");
-const { iniciarMonitor } = require("./conta-azul");
 const { iniciarPipeline } = require("./pipeline");
 const {
     default: makeWASocket,
@@ -16,6 +15,7 @@ const {
 
 const RAIZ = path.resolve(__dirname, "..");
 const ARQUIVO_CONFIG = path.join(RAIZ, "config.json");
+const ARQUIVO_CENTROS_CUSTO = path.join(RAIZ, "configuracao", "centros_custo.json");
 const PASTA_SESSAO = path.join(RAIZ, ".baileys_sessao");
 const logger = pino({ level: "silent" });
 const extensoes = {
@@ -38,7 +38,23 @@ function carregarConfig() {
         ? pastaInformada
         : path.join(RAIZ, pastaInformada);
     config.nomes_dos_grupos = config.nomes_dos_grupos || {};
+    config.centros_custo_por_grupo = config.centros_custo_por_grupo || {};
     return config;
+}
+
+function carregarCentrosCusto() {
+    if (!fs.existsSync(ARQUIVO_CENTROS_CUSTO)) return [];
+    try {
+        const centros = JSON.parse(fs.readFileSync(ARQUIVO_CENTROS_CUSTO, "utf8"));
+        return Array.isArray(centros) ? centros.filter((centro) => centro && centro.id && centro.nome) : [];
+    } catch (_) { return []; }
+}
+
+function centroCustoDoGrupo(idGrupo) {
+    const idCentro = String(config.centros_custo_por_grupo[idGrupo] || "");
+    if (!idCentro) return null;
+    const centro = carregarCentrosCusto().find((item) => String(item.id) === idCentro);
+    return centro ? { id: String(centro.id), nome: String(centro.nome) } : null;
 }
 
 const config = carregarConfig();
@@ -50,7 +66,6 @@ let deslogando = false;
 const fotosRecentes = [];
 const comentariosRecentes = [];
 fs.mkdirSync(config.pasta_saida, { recursive: true });
-iniciarMonitor(config.pasta_saida, config.conta_azul);
 iniciarPipeline(config.pasta_saida, { ...config.pipeline, aguardar_comentario_segundos: config.aguardar_comentario_segundos });
 
 function limparNome(valor) {
@@ -153,10 +168,15 @@ function atualizarEstado(alteracoes) {
 function salvarGrupos(grupos) {
     config.grupos_permitidos = grupos.map((grupo) => grupo.id);
     config.nomes_dos_grupos = Object.fromEntries(grupos.map((grupo) => [grupo.id, grupo.nome]));
+    const centrosValidos = new Set(carregarCentrosCusto().map((centro) => String(centro.id)));
+    config.centros_custo_por_grupo = Object.fromEntries(grupos
+        .filter((grupo) => grupo.centro_custo_id && centrosValidos.has(String(grupo.centro_custo_id)))
+        .map((grupo) => [grupo.id, String(grupo.centro_custo_id)]));
     gruposPermitidos = new Set(config.grupos_permitidos);
     const persistido = JSON.parse(fs.readFileSync(ARQUIVO_CONFIG, "utf8"));
     persistido.grupos_permitidos = config.grupos_permitidos;
     persistido.nomes_dos_grupos = config.nomes_dos_grupos;
+    persistido.centros_custo_por_grupo = config.centros_custo_por_grupo;
     fs.writeFileSync(ARQUIVO_CONFIG, JSON.stringify(persistido, null, 2) + "\n", "utf8");
 }
 
@@ -165,6 +185,7 @@ async function listarGrupos() {
     const encontrados = await socketAtual.groupFetchAllParticipating();
     return Object.values(encontrados).map((grupo) => ({
         id: grupo.id, nome: grupo.subject || grupo.id, selecionado: gruposPermitidos.has(grupo.id),
+        centro_custo_id: config.centros_custo_por_grupo[grupo.id] || "",
     })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
@@ -224,10 +245,12 @@ async function processar(socket, pacote) {
         if (!buffer) throw new Error("O WhatsApp nao forneceu os dados da imagem.");
 
         const dataTexto = new Date(timestamp * 1000).toLocaleString("pt-BR");
+        const centroCustoPadrao = centroCustoDoGrupo(idGrupo);
         fs.writeFileSync(caminhoImagem, buffer);
         fs.writeFileSync(path.join(config.pasta_saida, `${base}.txt`), [
             "=== DADOS DO WHATSAPP ===", "", `Data: ${dataTexto}`,
             `Grupo: ${nomeGrupo(idGrupo)}`, `ID do grupo: ${idGrupo}`,
+            `Centro de custo padrao do grupo: ${centroCustoPadrao?.nome || "Nao configurado"}`,
             `Remetente: ${remetente}`, `Enviada por mim: ${pacote.key.fromMe ? "Sim" : "Nao"}`,
             `ID da mensagem: ${idMensagem}`, "", "=== LEGENDA / COMENTARIO ===", "",
             legenda || "Sem legenda informada.", "",
@@ -236,6 +259,7 @@ async function processar(socket, pacote) {
             data: dataTexto, timestamp, grupo: nomeGrupo(idGrupo), id_grupo: idGrupo,
             remetente, enviada_por_mim: Boolean(pacote.key.fromMe), id_mensagem: idMensagem,
             legenda: legenda || null, legenda_origem: legendaOrigem, recebido_em_ms: timestampMs,
+            centro_custo_padrao: centroCustoPadrao,
             arquivo_imagem: path.basename(caminhoImagem), mimetype,
         }, null, 2), "utf8");
         fotosRecentes.push({ idGrupo, remetente, idMensagem, timestampMs, caminhoJson: path.join(config.pasta_saida, `${base}.json`), caminhoTxt: path.join(config.pasta_saida, `${base}.txt`), temLegenda: Boolean(legenda) });
@@ -297,5 +321,9 @@ if (require.main === module) {
 module.exports = {
     iniciar, desconectar, listarGrupos, salvarGrupos,
     obterEstado: () => ({ ...estado }), eventos,
-    obterConfiguracao: () => ({ grupos_permitidos: [...gruposPermitidos], nomes_dos_grupos: { ...config.nomes_dos_grupos } }),
+    obterConfiguracao: () => ({
+        grupos_permitidos: [...gruposPermitidos],
+        nomes_dos_grupos: { ...config.nomes_dos_grupos },
+        centros_custo_por_grupo: { ...config.centros_custo_por_grupo },
+    }),
 };

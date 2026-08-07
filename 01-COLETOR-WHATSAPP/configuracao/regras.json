@@ -1,13 +1,28 @@
 {
   "confianca_minima": 0.95,
   "tolerancia_valor": 0.05,
+  "refeicao": {
+    "_comentario": "Periodo definido pela hora impressa no comprovante. Sem horario, ou quando legenda e OCR divergem, a despesa segue para revisao.",
+    "faixas": [
+      { "periodo": "CAFÉ DA MANHÃ", "de": "04:00", "ate": "10:29", "categoria": "Café da Manhã" },
+      { "periodo": "ALMOÇO", "de": "10:30", "ate": "15:29", "categoria": "Refeição - Almoço" },
+      { "periodo": "LANCHE", "de": "15:30", "ate": "17:59", "categoria": "Lanches e Refeições" },
+      { "periodo": "JANTAR", "de": "18:00", "ate": "03:59", "categoria": "Refeição - jantar" }
+    ]
+  },
+  "hospedagem": {
+    "_comentario": "Valor de referencia usado apenas como teste de coerencia; nunca preenche o valor fiscal. A tolerancia e configuravel.",
+    "categoria": "HOSPEDAGEM",
+    "valor_referencia_diaria": 110,
+    "tolerancia_valor_referencia": 0.6
+  },
   "tipos_proibidos": [
     "salario", "pro-labore", "adiantamento salarial", "fgts", "imposto",
     "emprestimo", "financiamento", "consorcio", "honorarios contabeis",
     "honorarios juridicos", "plano de saude", "despesa administrativa"
   ],
   "tipos_permitidos": [
-    { "nome": "alimentacao", "apelidos": ["alimentacao", "almoco", "jantar", "lanche", "cafe da manha", "refeicao", "restaurante"], "categoria": "ALIMENTACAO EM CAMPO", "exige_veiculo": false },
+    { "nome": "alimentacao", "apelidos": ["alimentacao", "almoco", "jantar", "lanche", "cafe", "cafe da manha", "refeicao", "restaurante", "lanchonete", "padaria", "hamburguer", "coxinha", "salgado", "lasanha", "nhoque", "escondidinho", "empada", "empadao", "pao recheado", "torta"], "categoria": "ALIMENTACAO EM CAMPO", "exige_veiculo": false },
     { "nome": "combustivel", "apelidos": ["combustivel", "abastecimento", "gasolina", "etanol", "diesel"], "categoria": "COMBUSTIVEL", "exige_veiculo": true },
     { "nome": "hospedagem", "apelidos": ["hospedagem", "hotel", "pousada", "diaria"], "categoria": "HOSPEDAGEM", "exige_veiculo": false },
     { "nome": "farmacia", "apelidos": ["farmacia", "medicamento", "remedio", "drogaria"], "categoria": "FARMACIA", "exige_veiculo": false },

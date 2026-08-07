@@ -1,3 +1,22 @@
 [
-  { "nome": "EXEMPLO - SUBSTITUIR", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": ["exemplo"] }
+  {
+    "nome": "Consol",
+    "id": "af692fa0-8f85-11f1-a1fb-07d665f7a520",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSOL MG-050",
+    "id": "43a40a34-8f89-11f1-8cae-0b3dbe3e2005",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSOL MG-259",
+    "id": "441058a6-8f89-11f1-a757-1b04f821eecd",
+    "apelidos": []
+  },
+  {
+    "nome": "TESTE CC",
+    "id": "371152ea-8f89-11f1-8882-77f2b0ce28e8",
+    "apelidos": []
+  }
 ]

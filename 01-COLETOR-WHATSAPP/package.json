@@ -10,11 +10,13 @@
     "listar-grupos": "node ferramentas/listar_grupos.js",
     "conta-azul:conectar": "node ferramentas/conectar_conta_azul.js",
     "conta-azul:testar": "node ferramentas/testar_conta_azul.js",
+    "conta-azul:ids": "node ferramentas/configurar_ids_conta_azul.js",
+    "conta-azul:lancar-direto": "node ferramentas/lancar_despesa.js",
     "pipeline:testar": "node ferramentas/testar_pipeline.js",
     "treinar-historico": "node ferramentas/treinar_historico.js",
     "ocr:reprocessar": "node ferramentas/reprocessar_ocr_salvo.js",
     "test": "node --test testes/*.test.js",
-    "check": "node --check src/interface.js && node --check src/coletor.js && node --check src/pipeline.js && node --check src/aprendizado.js && node --check src/detalhes-despesa.js && node --check src/azure-ocr.js && node --check src/legenda.js && node --check src/classificador.js && node --check src/validador.js && node --check src/conta-azul.js && node --check ferramentas/listar_grupos.js && node --check ferramentas/conectar_conta_azul.js && node --check ferramentas/testar_conta_azul.js && node --check ferramentas/testar_pipeline.js && node --check ferramentas/treinar_historico.js && node --check ferramentas/reprocessar_ocr_salvo.js"
+    "check": "node --check src/interface.js && node --check src/coletor.js && node --check src/pipeline.js && node --check src/aprendizado.js && node --check src/detalhes-despesa.js && node --check src/azure-ocr.js && node --check src/legenda.js && node --check src/refeicao.js && node --check src/hospedagem.js && node --check src/classificador.js && node --check src/validador.js && node --check src/conta-azul.js && node --check src/envio-conta-azul.js && node --check src/despesa-conta-azul.js && node --check ferramentas/listar_grupos.js && node --check ferramentas/conectar_conta_azul.js && node --check ferramentas/configurar_ids_conta_azul.js && node --check ferramentas/lancar_despesa.js && node --check ferramentas/testar_conta_azul.js && node --check ferramentas/testar_pipeline.js && node --check ferramentas/treinar_historico.js && node --check ferramentas/reprocessar_ocr_salvo.js"
   },
   "engines": {
     "node": ">=20"

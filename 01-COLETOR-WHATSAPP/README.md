@@ -51,7 +51,7 @@ AZURE_DOCUMENT_MODEL_ID=prebuilt-receipt
 
 O programa tenta novamente automaticamente em erros 429 e falhas temporárias do Azure.
 
-O valor na legenda é opcional. Quando ele não for informado, o Azure lê o valor no próprio comprovante. Se o campo estruturado não vier, o programa procura de forma conservadora por `valor total` ou `valor a pagar` no texto reconhecido; resultados ambíguos nunca são escolhidos automaticamente.
+O valor na legenda é opcional. Quando ele não for informado, o Azure lê o valor no próprio comprovante. Se o campo estruturado vier incompleto, o programa procura de forma conservadora por `valor total`, `valor a pagar` ou um único valor acompanhado de `R$` no texto reconhecido; resultados ambíguos nunca são escolhidos automaticamente. O tipo semântico retornado pelo Azure (por exemplo, `Meal`) também pode classificar alimentação mesmo sem legenda.
 
 Se o Azure não conseguir interpretar o documento, a imagem não é descartada: ela segue para `dados/revisao` e aparece no painel como **Revisão humana**, junto da legenda e dos motivos para a equipe responsável fazer a leitura manual.
 
@@ -85,26 +85,82 @@ Para evitar associação errada, cada foto deve representar uma despesa e o oper
 
 ## Mapeamentos obrigatórios antes da aprovação
 
-Substitua os valores `PREENCHER_UUID_...` pelos IDs reais do Conta Azul:
+Os valores `PREENCHER_UUID_...` precisam ser substituídos pelos IDs reais do Conta Azul nos arquivos:
 
 - `configuracao/categorias.json`;
 - `configuracao/centros_custo.json`;
 - `configuracao/veiculos.json`.
 
-As tolerâncias, tipos permitidos e bloqueados ficam em `configuracao/regras.json`. Enquanto os IDs reais não forem preenchidos, os documentos irão corretamente para revisão.
+Use o sincronizador descrito abaixo para fazer isso sem copiar UUIDs manualmente. As tolerâncias, tipos permitidos e bloqueados ficam em `configuracao/regras.json`. Enquanto os IDs reais não forem preenchidos, os documentos irão corretamente para revisão.
+
+### Configurar os IDs sem copiar UUIDs manualmente
+
+Depois de conectar a conta, dê dois cliques em **`CONFIGURAR_IDS_CONTA_AZUL.bat`** (ou em
+`ATALHOS\10_CONFIGURAR_IDS_CONTA_AZUL.bat`). A ferramenta:
+
+1. consulta, somente por `GET`, as categorias de **DESPESA** e os centros de custo ativos da conta conectada;
+2. permite pesquisar uma categoria pelo nome e selecionar o resultado correto;
+3. importa os centros de custo ativos para `configuracao/centros_custo.json`;
+4. associa a categoria do veículo quando existe uma correspondência exata, como `FIAT SCUDO - SGR4B54`;
+5. cria um backup `.bak` antes de alterar qualquer configuração local.
+
+Ela não cria nem altera lançamentos, categorias ou centros de custo dentro do Conta Azul. Os catálogos
+consultados também ficam disponíveis em `dados/conta-azul`. Não copie IDs de outra empresa ou de uma
+conta de teste: cada UUID pertence à conta que respondeu à consulta.
+
+No terminal, a mesma ferramenta pode ser executada assim:
+
+```powershell
+npm.cmd run conta-azul:ids
+```
+
+Para apenas listar e salvar os IDs, sem alterar os arquivos de mapeamento:
+
+```powershell
+npm.cmd run conta-azul:ids -- --somente-listar
+```
+
+Para aplicar sem perguntas somente as equivalências já aprovadas e as correspondências exatas:
+
+```powershell
+npm.cmd run conta-azul:ids -- --automatico
+```
+
+O modo automático mapeia alimentação, combustível genérico, farmácia, deslocamento, manutenção,
+material de campo, centros de custo ativos e veículos com categoria inequívoca. Hospedagem e “outros”
+continuam pendentes quando a conta não possui uma categoria de despesa com nome correspondente; o
+sistema não escolhe uma categoria parecida por conta própria.
+
+O `CONTA_AZUL_CLIENT_ID` do `.env` identifica a aplicação OAuth. Ele é diferente de `id_categoria`,
+`id_centro_custo` e `categoria_id` dos veículos, que são os UUIDs consultados por esta ferramenta.
+
+Depois da sincronização, pesquise o grupo no painel e escolha seu **Centro de custo padrão**. Essa
+escolha é feita uma vez por grupo e elimina a necessidade de escrever o centro na legenda de cada foto.
+A legenda continua tendo prioridade quando informar outro centro. Ao salvar os grupos, as auditorias
+locais já existentes também são recalculadas; nenhuma despesa é enviada ao Conta Azul nessa etapa.
 
 ### Foco das classificações
 
-As regras priorizam alimentação e hospedagem, que são o fluxo principal. Farmácia é aceita como exceção; oficina entra como manutenção e exige veículo. O tipo `outros` sempre exige revisão humana, mesmo quando o OCR tem alta confiança.
+As regras priorizam alimentação e hospedagem, que são o fluxo principal. Para refeições, a hora
+impressa no comprovante separa `Café da Manhã`, `Refeição - Almoço`, `Lanches e Refeições` e
+`Refeição - jantar`; sem hora segura ou com horários de períodos diferentes, a nota vai para revisão.
+Hospedagem usa pessoas, diárias e, quando disponíveis, check-in/check-out; menções a freelancer ou
+mão de obra são bloqueadas para não virarem hotel por engano.
+
+Farmácia é aceita como exceção; oficina e combustível exigem veículo. Produto de combustível com
+litragem/contexto de posto prevalece sobre um rótulo genérico de refeição do Azure. Se a legenda e o
+documento apontarem tipos incompatíveis, o programa não escolhe por palpite: envia para revisão. O
+tipo `outros` sempre exige revisão humana, mesmo quando o OCR tem alta confiança. Veja os critérios e
+as estatísticas em `REGRAS-CLASSIFICACAO.md`.
 
 ### Aprendizado com o histórico
 
-O projeto já contém um modelo local treinado com a planilha histórica `visao_contas_a_pagar (1).xls`. Ele usa fornecedor, descrição e observações para sugerir família, categoria e centro de custo. Ao receber uma nota nova, a sugestão aparece no painel em **Aprendizado histórico**, mas não substitui as validações nem lança automaticamente no Conta Azul.
+O projeto já contém um modelo local treinado com a planilha histórica `visao_contas_a_pagar (1).xls`. Ele usa fornecedor, descrição e observações para apoiar a identificação da família da despesa. Ao receber uma nota nova, essa previsão aparece no painel em **Aprendizado histórico**, mas não substitui as validações nem lança automaticamente no Conta Azul. Categoria e centro históricos ficam fora da decisão automática: a categoria vem das regras e do catálogo do Conta Azul; o centro vem do grupo ou da legenda.
 
 Resultado da validação isolada, sem reutilizar descrições iguais entre treino e teste:
 
-- família geral (alimentação, hospedagem, oficina etc.): **94,1%** de acerto;
-- família em previsões de alta confiança: **98,4%** de precisão;
+- família geral (alimentação, hospedagem, oficina etc.): **94,2%** de acerto;
+- família em previsões de alta confiança: **97,0%** de precisão;
 - categoria contábil exata: **51,7%** de acerto;
 - centro de custo: **53,9%** de acerto.
 
@@ -147,6 +203,12 @@ No painel `http://127.0.0.1:3210` você pode:
 - acompanhar as quantidades nas filas de entrada, simulação, revisão, bloqueados e erros.
 - pesquisar grupos por nome ou ID sem perder seleções anteriores;
 - acompanhar comprovantes em tempo real com imagem, legenda, dados lidos e motivos de revisão.
+- alternar entre os modos claro e escuro com a paleta VMac; a escolha fica salva no navegador.
+- criar e sincronizar centros de custo diretamente com a empresa confirmada no Conta Azul;
+- preparar uma nota, comparar a prévia e criar a despesa com duas confirmações independentes;
+- enviar em lote somente depois da aprovação do primeiro lançamento individual.
+
+A classificação principal do Azure e das regras sempre tem prioridade sobre o aprendizado histórico. Quando as duas fontes entram em conflito, a previsão histórica é descartada e isso aparece claramente no painel. Categoria e centro só são exibidos como sugestões seguras quando superam os limites de confiança definidos pelo sistema.
 
 O painel é local e só fica acessível no próprio computador.
 
@@ -193,42 +255,90 @@ Por segurança, a integração e a criação automática de despesas começam de
 
 O código de autorização expira rapidamente. Se a troca falhar, execute a conexão novamente. As credenciais ficam em `.env` e os tokens em `tokens_conta_azul.json`; nunca envie esses arquivos.
 
+O e-mail e a senha da conta de teste fornecida pelo Portal do Desenvolvedor são usados **somente na
+tela oficial de login/autorização do Conta Azul**. Não salve a senha no `.env` nem informe a senha ao
+programa: depois da autorização, a integração trabalha com `access_token` e `refresh_token`.
+
 Para validar a conexão, execute:
 
 ```powershell
 npm run conta-azul:testar
 ```
 
-### 2. Ativar o envio das imagens
+Depois, execute `CONFIGURAR_IDS_CONTA_AZUL.bat` para selecionar as categorias e importar os centros
+de custo da própria empresa. Essa etapa resolve os avisos “ID do Conta Azul ainda não foi configurado”.
 
-Em `config.json`, altere somente `habilitada`:
+### 2. Confirmar a empresa conectada
 
-```json
-"conta_azul": {
-  "habilitada": true,
-  "aceitar_despesa_automaticamente": false,
-  "intervalo_segundos": 10,
-  "timeout_processamento_segundos": 300
-}
+Não altere `conta_azul.habilitada` no `config.json`. O monitor automático antigo foi desativado porque
+ele poderia enviar a imagem antes da conclusão do OCR e das validações.
+
+No painel, abra **Envio ao Conta Azul** e confira o nome e o ID da empresa exibida. Clique em
+**Confirmar empresa correta** somente depois de verificar que é a empresa onde as despesas devem ser
+criadas. A confirmação fica vinculada ao ID: se outra empresa for autorizada depois, os botões são
+bloqueados novamente.
+
+### 3. Cadastrar centros de custo pelo painel
+
+Em **Grupos monitorados → Gerenciar centros de custo**:
+
+1. informe um código opcional e o nome do projeto;
+2. clique em **Criar no Conta Azul**;
+3. confirme a empresa e o nome mostrados;
+4. escolha o novo centro como padrão do grupo e salve os grupos.
+
+O cadastro usa `POST /v1/centro-de-custo`. A API não publica exclusão ou alteração desse recurso, por
+isso o sistema impede duplicidade por nome/código e sempre pede confirmação. **Sincronizar lista**
+importa para o programa os centros ativos cadastrados diretamente no ERP.
+
+### 4. Fazer o primeiro envio real
+
+Use primeiro uma única nota que esteja com o selo **Simulação aprovada**:
+
+1. em **Teste real guiado · uma nota**, escolha no seletor a nota que você já conferiu;
+2. clique em **1. Preparar prévia (não cria despesa)**;
+3. confirme o envio da imagem — essa etapa ainda não cria despesa;
+4. o arquivo aparece em **Conta AI Captura** e o programa compara tipo, valor, data, fornecedor,
+   categoria e centro de custo da prévia com a auditoria local;
+5. somente quando não houver divergências o mesmo botão muda para **2. Criar esta despesa real**;
+6. confira novamente empresa, valor, categoria e centro e confirme o lançamento real;
+7. no Conta Azul, abra **Financeiro → Contas a pagar**, filtre pela data/fornecedor e abra o lançamento.
+   A imagem original fica anexada nos detalhes;
+8. somente depois de conferir os dados e o anexo no ERP, clique em
+   **3. Conferi no Conta Azul — liberar lote**.
+
+Se a prévia divergir, ela não é aceita automaticamente. Abra **Conta AI Captura**, revise os dados e
+use **Verificar status** no painel depois da correção. A API oficial de aceite da Captura não recebe um
+corpo para substituir categoria ou centro de custo.
+
+### 5. Enviar em lote
+
+Depois que o primeiro envio individual for criado **e a conferência no ERP for registrada no passo 3**,
+o quadro de lote aparece com os botões:
+
+- **Preparar todos os prontos**: envia apenas imagens de `dados/simulacao` e gera as prévias;
+- **Criar todas as prévias conferidas**: cria somente despesas sem nenhuma divergência.
+
+O lote é sequencial para respeitar os limites da API. Documentos em entrada, revisão, bloqueados ou
+com confirmação incerta nunca entram automaticamente. Em falha de rede durante a criação, não repita
+o clique: use **Verificar status** para evitar duplicidade.
+
+### Motor financeiro direto (experimental)
+
+A branch `refeicoes-hospedagem-conta-azul` comprovou o formato para criar diretamente valor, data,
+descricao, categoria e centro de custo. Esse adaptador foi incorporado, reforcado com validacao de
+data e UUID, confirmacao da empresa e reconciliacao por protocolo, mas **nao substitui o fluxo do
+painel**: o endpoint publico testado nao vinculou fornecedor/CNPJ, imagem, conta financeira nem baixa.
+
+Por isso ele permanece fora do lote e somente em modo de diagnostico. Para montar e visualizar o
+JSON sem enviar nada:
+
+```powershell
+npm.cmd run conta-azul:lancar-direto -- --descricao "ALMOCO - 2 PESSOAS" --valor 84,00 --data 2026-08-07 --categoria UUID --centro-custo UUID
 ```
 
-Reinicie pelo `INICIAR.bat`. O mesmo programa passará a:
-
-1. salvar a foto recebida do WhatsApp;
-2. enviá-la à Captura do Conta Azul, com a legenda no campo `descricao`;
-3. consultar o processamento periodicamente;
-4. salvar upload e prévia em `respostas_conta_azul`;
-5. mover os arquivos para `processados_conta_azul`.
-
-Falhas definitivas vão para `erros_conta_azul`. Falhas temporárias, expiração do token e demora da IA são tentadas novamente. O programa renova e salva automaticamente tanto o `access_token` quanto o novo `refresh_token`.
-
-### 3. Revisar antes de criar despesas
-
-Mantenha `aceitar_despesa_automaticamente` como `false` durante a validação. Confira no Conta Azul fornecedor, CNPJ/CPF, valor, vencimento, competência, categoria, centro de custo, pagamento e descrição.
-
-Somente depois de validar o processo com a área financeira, mude essa opção para `true`. O código possui uma trava: só aceita automaticamente prévias cujo tipo retornado seja `DESPESA`.
-
-Importante: o endpoint de aceite atual não permite enviar alterações na prévia. Ajustes de categoria, centro de custo ou descrição devem ser feitos no Conta Azul antes do aceite manual, ou exigirão um fluxo adicional usando os endpoints financeiros.
+Nao use `--enviar` em producao. Para despesas completas, com fornecedor e documento vinculado,
+continue usando a fila da Conta AI Captura e as duas confirmacoes do painel.
 
 ### Como descobrir o ID de um grupo
 

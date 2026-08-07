@@ -1,8 +1,53 @@
 # Contrato da API Conta Azul (v2)
 
-Anotações levantadas **testando a API da conta de teste** em 03/08/2026, porque o portal de
-documentação (`developers.contaazul.com`) responde 403 sem login. Onde estiver marcado
-"não verificado", o campo ainda não foi confirmado.
+Referência oficial atual: [API Financeira do Conta Azul](https://developers.contaazul.com/docs/financial-apis-openapi).
+Os endpoints exigem OAuth 2.0. Consultas são feitas automaticamente; qualquer `POST` que altere o ERP
+exige uma confirmação explícita no painel.
+
+## Fluxo implementado no painel
+
+O envio financeiro seguro usa a API oficial **Conta AI Captura**:
+
+1. `POST /v1/captura/documentos` envia somente uma imagem já aprovada localmente;
+2. `GET /v1/captura/documentos/status` e `GET /v1/captura/{id}` obtêm a prévia;
+3. o programa compara tipo, valor, data, fornecedor, categoria e centro de custo;
+4. `POST /v1/captura/{id}` só é liberado quando não existe divergência e o usuário confirma novamente.
+
+O documento aparece em **Conta AI Captura** antes do aceite. Depois, o lançamento aparece em
+**Financeiro → Contas a pagar** e continua relacionado ao documento processado na interface. A API
+pública não oferece um endpoint de upload de anexo para a despesa e o detalhe financeiro devolve
+`anexos: []`; por isso o programa não promete um anexo financeiro gravado pela API. O endpoint de
+aceite da Captura não aceita corpo, portanto uma categoria ou centro divergente precisa ser revisado
+antes; o programa nunca força o aceite.
+
+## IDs de categoria e centro de custo
+
+Os IDs usados no rateio não são o `CONTA_AZUL_CLIENT_ID` da aplicação. Eles são UUIDs dos cadastros
+financeiros da empresa conectada:
+
+- categorias de despesa: `GET /v1/categorias?pagina=1&tamanho_pagina=1000&tipo=DESPESA&permite_apenas_filhos=false`;
+- centros de custo ativos: `GET /v1/centro-de-custo?pagina=1&tamanho_pagina=1000&filtro_rapido=ATIVO`.
+
+A resposta de categorias usa a lista `itens`; a resposta de centros de custo usa `items` na versão
+atual da documentação. O sincronizador aceita os dois formatos para tolerar versões anteriores.
+
+Execute `CONFIGURAR_IDS_CONTA_AZUL.bat` depois da autorização OAuth. A ferramenta apenas consulta a
+API, salva os catálogos em `dados/conta-azul` e atualiza os JSONs locais após confirmação do usuário.
+Ela nunca envia `POST`, `PUT`, `PATCH` ou `DELETE` ao Conta Azul.
+
+O modo `--automatico` só aplica equivalências explícitas em `configuracao/categorias.json` e
+correspondências exatas. Na configuração atual: `ALIMENTACAO EM CAMPO` → `Lanches e Refeições`,
+`COMBUSTIVEL` → `Combustíveis`, `FARMACIA` → `Farmácia`, `DESLOCAMENTO` →
+`Transporte Urbano (táxi, Uber)`, `MANUTENCAO` → `Manutenção de Veículos` e `MATERIAL DE CAMPO` →
+`Materiais Aplicados na Prestação de Serviços`. Hospedagem e outros ficam pendentes se não houver
+correspondência inequívoca.
+
+Os UUIDs mostrados abaixo foram observados em uma conta de teste e não devem ser copiados para outra
+empresa. Sempre obtenha os IDs da conta que será usada em produção.
+
+Anotações levantadas **testando a API da conta de teste** em 03/08/2026 e confrontadas com a
+documentação oficial disponível atualmente. Onde estiver marcado "não verificado", o campo ainda
+não foi confirmado no fluxo deste projeto.
 
 Base: `https://api-v2.contaazul.com`
 
@@ -11,8 +56,8 @@ Base: `https://api-v2.contaazul.com`
 | Endpoint | Retorno na conta de teste |
 | --- | --- |
 | `GET /v1/pessoas/conta-conectada` | Empresa vinculada — serve de teste de conexão |
-| `GET /v1/categorias?tamanho_pagina=200` | 123 categorias (110 do tipo `DESPESA`) |
-| `GET /v1/centro-de-custo` | Vazio — precisa cadastrar |
+| `GET /v1/categorias?tamanho_pagina=200` | Catálogo da empresa; a quantidade varia com os cadastros |
+| `GET /v1/centro-de-custo` | Centros ativos da empresa; a quantidade varia com os projetos |
 | `GET /v1/conta-financeira` | Vazio — precisa cadastrar |
 | `GET /v1/pessoa` | Cadastro de pessoas (fornecedores/clientes) |
 | `GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar` | Exige `data_vencimento_de` e `data_vencimento_ate` |
@@ -26,7 +71,12 @@ Categorias já úteis para o fluxo de despesas de campo:
 | Manutenção de Veículos | `aff51b5a-3b53-4101-9fd5-92d67329df33` |
 | Transporte Urbano (táxi, Uber) | `966c057b-f439-4db4-ad46-639527d2a846` |
 
-## Criar despesa
+## Criação financeira direta — caminho assistido e limitado
+
+O payload abaixo foi comprovado na conta de teste para gravar valor, competência, vencimento,
+descrição, categoria e centro de custo. Ele não grava fornecedor, CNPJ, conta financeira, baixa ou
+anexo. Por isso o caminho direto é oferecido apenas como alternativa assistida quando a prévia da
+Captura divergir, nunca como substituição silenciosa do fluxo principal.
 
 `POST /v1/financeiro/eventos-financeiros/contas-a-pagar`
 
@@ -64,8 +114,8 @@ Categorias já úteis para o fluxo de despesas de campo:
 }
 ```
 
-Tudo acima está **confirmado por lançamento real** na conta de teste: categoria, centro de custo,
-valor, competência, vencimento e método de pagamento gravam corretamente.
+O formato de `rateio` abaixo foi confirmado na conta de teste para categoria, centro, valor e
+competência. Os UUIDs devem sempre ser validados contra a empresa conectada antes do envio.
 
 ### Centro de custo vai dentro do rateio, como lista
 
@@ -88,6 +138,12 @@ está errado, então ela não ajuda a encontrar o nome certo. Foram recusados: `
 Ou seja: a Captura **responde** com `composicao_valor`, mas o financeiro **exige** `detalhe_valor`.
 Não copie o nome de um para o outro.
 
+### A descrição precisa estar também na parcela
+
+A busca de contas a pagar trabalha com parcelas. Se a descrição padronizada estiver somente na raiz
+do evento, ela pode não aparecer na listagem nem na exportação. O adaptador repete a descrição na raiz
+e em `condicao_pagamento.parcelas[].descricao`.
+
 ### A criação é assíncrona
 
 A resposta não traz o id da despesa:
@@ -100,8 +156,8 @@ A resposta não traz o id da despesa:
 requisição com categoria inexistente foi aceita com `PENDING` e depois descartada silenciosamente,
 sem aparecer na busca.
 
-Não achei endpoint que consulte o protocolo (`/protocolo/{id}` dá 404). Para confirmar que a
-despesa realmente existe, é preciso consultar depois:
+A documentação atual publica `GET /v1/protocolo/{id}`. Mesmo assim, a confirmação funcional também
+pode ser feita consultando as contas a pagar pelo período:
 
 ```
 GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar
@@ -110,6 +166,12 @@ GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar
 
 **Qualquer automação precisa fazer essa conferência**, senão vai achar que lançou despesas que
 foram descartadas.
+
+O protocolo do `POST` reaparece no detalhe da parcela como `evento.referencia.id`. A reconciliação
+segura busca os candidatos do período, abre cada detalhe e aceita somente uma correspondência que
+tenha o mesmo protocolo, valor, data, categoria e centro. A fila pode demorar mais de um minuto; após
+um resultado incerto o programa registra o estado e **não reenvia automaticamente**, evitando
+duplicidade.
 
 ## Consultar o que foi lançado
 
@@ -127,12 +189,27 @@ Traz o evento com `rateio`, `rateio_centro_custo`, `valor_composicao`, `metodo_p
 
 | Campo | Situação |
 | --- | --- |
-| Fornecedor | Não conseguimos amarrar. Testados sem sucesso: `id_fornecedor`, `fornecedor:{id}`, `fornecedor:{uuid}`, `id_pessoa`, `pessoa:{id}`, `pessoa:{uuid}`, `uuid_fornecedor`, `uuid_pessoa`, `id_pessoa_fornecedor`. O lançamento nasce com `fornecedor: null`, mesmo com um id de fornecedor válido (`perfis: ["Fornecedor"]`). Provavelmente só é vinculado em outro momento, ou a despesa precisa nascer da Captura para ter fornecedor. |
+| Fornecedor | O lançamento direto nasce sem fornecedor. Variações de `id_fornecedor`, `fornecedor`, `pessoa`, UUID novo/legado e código foram aceitas, mas ignoradas. A Captura consegue relacionar o fornecedor a partir do documento. |
 | Conta financeira | `id_conta_financeira` é aceito sem erro mas fica `null`, tanto na raiz quanto na parcela. O campo existe na leitura; a hipótese é que só se define na **baixa** (pagamento), não na criação. |
-| Anexos | Existe o campo `anexos` na leitura, sempre `[]`. Não foi testado como enviar a imagem. |
+| Anexos | A API pública não expõe rota de upload aceita pelo OAuth da integração; o detalhe financeiro devolve `anexos: []`. |
 
-Nenhum desses impede o fluxo principal: categoria e centro de custo — que é o que a legenda do
-operador fornece — funcionam.
+Essas limitações impedem chamar o lançamento direto de “despesa completa”. Categoria e centro de
+custo funcionam, mas fornecedor/documento e pagamento precisam ser conferidos separadamente.
+
+### Comparação dos dois caminhos
+
+| Campo | Captura + aceite | Lançamento direto |
+| --- | --- | --- |
+| Valor e data | Inferidos pela IA e revisáveis | Gravados com os dados aprovados pelo programa |
+| Descrição | Gerada pela Captura | Padronizada pelo programa |
+| Categoria | Inferida pela IA | UUID exato aprovado pelo programa |
+| Centro de custo | Pode vir ausente | UUID exato aprovado pelo programa |
+| Fornecedor | A Captura consegue relacionar | Não é gravado |
+| Documento/anexo via API | Documento permanece na Captura; anexo financeiro não é exposto | Não há upload público |
+| Conta/baixa/Pago | Concluídos na interface financeira | Não são configurados na criação |
+
+Nunca aceite a Captura e crie diretamente a mesma nota: isso produz duas despesas. O programa mantém
+os caminhos mutuamente exclusivos e exige confirmação explícita para qualquer `POST` financeiro.
 
 ## O que dá para cadastrar pela API
 
@@ -159,6 +236,8 @@ Vale memorizar, porque custou caro:
 | --- | --- | --- |
 | Composição do valor | `detalhe_valor` | `valor_composicao` |
 | Centro de custo | `rateio_centro_custo[].id_centro_custo` | `centros_de_custo[]` (na busca) |
+| Valor da parcela | `detalhe_valor.valor_bruto` | `total` (na busca) |
+| Protocolo do POST | resposta `protocolo` | `evento.referencia.id` (no detalhe) |
 
 ## Captura (extração por IA), para comparação
 
@@ -168,5 +247,6 @@ Fluxo que funciona, medido em ~24 s numa foto de cupom:
 2. `GET /v1/captura/documentos/status?ids={id}` — até `status_captura: PENDENTE`
 3. `GET /v1/captura/{idCaptura}` — devolve `previa_evento_financeiro`
 
-A prévia traz tipo, valor, data, descrição, fornecedor com CNPJ e parcelas — mas **nunca categoria
-nem centro de custo**, que é a razão de o projeto usar o lançamento direto.
+A prévia pode trazer tipo, valor, data, descrição, fornecedor, categoria e centro de custo. Como esses
+dois últimos campos podem vir ausentes ou diferentes, o painel compara os IDs com os mapeamentos locais
+e bloqueia o aceite quando não houver igualdade exata.

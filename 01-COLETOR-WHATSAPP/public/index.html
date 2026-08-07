@@ -2,12 +2,15 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Central de Despesas</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/search.css">
+  <title>VMac · Central de Despesas</title>
+  <meta name="theme-color" content="#8f171a"><meta name="color-scheme" content="light dark">
+  <script>document.documentElement.dataset.theme=localStorage.getItem("vmac-tema")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");</script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/search.css"><link rel="stylesheet" href="/theme.css">
 </head>
 <body>
-  <header><div class="brand"><span class="logo">CD</span><div><strong>Central de Despesas</strong><small>WhatsApp · Azure · Conta Azul</small></div></div><span id="statusTopo" class="pill neutro">Inicializando</span></header>
+  <header><div class="brand"><img class="brand-logo" src="/assets/vmac-logo-oficial.jpg" width="1335" height="542" alt="VMac Engenharia" decoding="async"><div class="brand-context"><strong>Central de Despesas</strong><small>WhatsApp · Azure · Conta Azul</small></div></div><div class="header-actions"><button id="temaToggle" class="theme-toggle" type="button" aria-label="Alternar tema"><span id="temaIcon" aria-hidden="true">◐</span><span id="temaTexto">Modo escuro</span></button><span id="statusTopo" class="pill neutro">Inicializando</span></div></header>
   <main>
-    <section class="hero"><div><p class="eyebrow">PAINEL LOCAL SEGURO</p><h1>Comprovantes sob controle.</h1><p>Conecte o WhatsApp, escolha os grupos e acompanhe cada documento sem lançar despesas durante a simulação.</p></div><div class="mode"><span>Modo atual</span><strong>SIMULAÇÃO</strong><small>Nenhum lançamento financeiro</small></div></section>
+    <section class="hero"><div><p class="eyebrow">VMAC ENGENHARIA · PAINEL LOCAL SEGURO</p><h1>Comprovantes sob controle.</h1><p id="modoDescricao">Conecte o WhatsApp, escolha os grupos e acompanhe cada documento sem lançar despesas durante a simulação.</p></div><div class="mode"><span>Modo atual</span><strong id="modoTitulo">SIMULAÇÃO</strong><small id="modoDetalhe">Nenhum lançamento financeiro</small></div></section>
     <div id="aviso" class="aviso oculto"></div>
     <section class="grid principal">
       <article class="card">
@@ -21,22 +24,44 @@
         <p class="muted">Escolha exatamente de quais grupos as fotos serão processadas.</p><button id="carregarGrupos" class="secondary">Atualizar lista de grupos</button>
         <div id="buscaArea" class="search-box oculto"><span aria-hidden="true">⌕</span><input id="buscarGrupo" type="search" placeholder="Pesquisar grupo por nome ou ID" autocomplete="off"><button id="limparBusca" type="button" title="Limpar pesquisa">×</button></div>
         <div id="listaGrupos" class="group-list"><div class="empty">Conecte o WhatsApp para carregar os grupos.</div></div><button id="salvarGrupos" class="primary full oculto">Salvar grupos selecionados</button>
+        <details class="cost-admin">
+          <summary>Gerenciar centros de custo</summary>
+          <p class="muted">Cadastre um novo projeto diretamente no Conta Azul e use-o nos grupos sem copiar IDs.</p>
+          <div class="cost-form"><label><span>Código opcional</span><input id="novoCentroCodigo" maxlength="40" placeholder="Ex.: OBRA-2026"></label><label><span>Nome do projeto</span><input id="novoCentroNome" maxlength="120" placeholder="Ex.: CONSOL BR-153"></label></div>
+          <div class="actions compact"><button id="criarCentro" class="primary" type="button">Criar no Conta Azul</button><button id="sincronizarCentros" class="secondary" type="button">Sincronizar lista</button></div>
+          <div id="centrosLista" class="centros-lista"><span class="muted">Conecte e confirme a empresa do Conta Azul para gerenciar.</span></div>
+          <p class="safety-note">A API não oferece exclusão de centro de custo. O programa sempre pede confirmação e bloqueia nomes ou códigos repetidos.</p>
+        </details>
       </article>
     </section>
     <section class="grid stats">
-      <article><span>Entrada</span><strong id="fEntrada">0</strong></article><article><span>Simulação aprovada</span><strong id="fSimulacao">0</strong></article><article><span>Precisa de revisão</span><strong id="fRevisao">0</strong></article><article><span>Bloqueados</span><strong id="fBloqueados">0</strong></article><article><span>Erros</span><strong id="fErros">0</strong></article>
+      <article><span>Entrada</span><strong id="fEntrada">0</strong></article><article><span>Simulação aprovada</span><strong id="fSimulacao">0</strong></article><article><span>Precisa de revisão</span><strong id="fRevisao">0</strong></article><article><span>Bloqueados</span><strong id="fBloqueados">0</strong></article><article><span>Erros</span><strong id="fErros">0</strong></article><article><span>Enviados</span><strong id="fEnviados">0</strong></article>
+    </section>
+    <section class="card conta-azul-card">
+      <div class="card-title"><div><span class="step">3</span><h2>Envio ao Conta Azul</h2></div><span id="contaAzulStatus" class="pill neutro">Verificando</span></div>
+      <p class="muted">Somente comprovantes aprovados entram nesta fila. Preparar envia a imagem para a Conta AI Captura; criar confirma o lançamento financeiro.</p>
+      <div class="conta-company"><div><small>Empresa conectada</small><strong id="contaEmpresaNome">Carregando...</strong><span id="contaEmpresaId"></span></div><div class="actions compact"><button id="atualizarContaAzul" class="secondary" type="button">Atualizar conexão</button><button id="confirmarEmpresa" class="danger ghost" type="button">Confirmar empresa correta</button></div></div>
+      <div id="contaEmpresaAviso" class="critical-note">Antes do primeiro teste, confirme cuidadosamente a empresa. O lançamento real será criado exatamente na conta exibida acima.</div>
+      <div id="testePiloto" class="pilot-panel">
+        <div class="pilot-copy"><small>TESTE REAL GUIADO · UMA NOTA</small><strong id="testePilotoTitulo">Escolha uma nota para começar</strong><span id="testePilotoEstado" aria-live="polite">A primeira etapa gera apenas uma prévia; a segunda cria a despesa real.</span></div>
+        <div class="pilot-controls"><label for="notaPiloto">Nota do primeiro teste</label><select id="notaPiloto" aria-label="Escolher nota para o primeiro teste"><option>Carregando notas prontas...</option></select><button id="acaoNotaPiloto" class="primary" type="button" disabled>Carregando...</button><div id="opcoesDireto" class="direct-options oculto"><label for="contaFinanceiraDireta">Conta financeira para o caminho direto</label><select id="contaFinanceiraDireta" aria-label="Conta financeira do lancamento direto"><option value="">Escolha uma conta financeira</option></select><button id="acaoDiretaNotaPiloto" class="danger ghost" type="button" disabled>Usar caminho direto assistido</button><small>Excecao apenas para previa divergente. A previa original continuara pendente na Conta AI Captura e a imagem nao sera anexada automaticamente.</small></div></div>
+        <div id="testePilotoDetalhes" class="pilot-details"></div>
+      </div>
+      <div id="painelLote" class="batch-panel oculto"><div id="contaFilaResumo" class="batch-summary">Nenhuma despesa pronta.</div><div class="actions compact"><button id="prepararTodos" class="secondary" type="button" disabled>Preparar todos os prontos</button><button id="confirmarTodos" class="primary" type="button" disabled>Criar todas as prévias conferidas</button></div></div>
+      <p id="loteAjuda" class="safety-note">O envio em lote é liberado somente depois que o primeiro lançamento individual for criado e conferido.</p>
+      <div class="conta-links"><a href="https://app.contaazul.com/" target="_blank" rel="noreferrer">Abrir Conta Azul</a><span>Isto é apenas o caminho de conferência: prévia em Conta AI Captura; lançamento criado em Financeiro → Contas a pagar.</span></div>
     </section>
     <section class="card documentos-card">
-      <div class="card-title"><div><span class="step">3</span><h2>Comprovantes em tempo real</h2></div><span class="live-indicator">● AO VIVO</span></div>
+      <div class="card-title"><div><span class="step">4</span><h2>Comprovantes em tempo real</h2></div><span class="live-indicator">● AO VIVO</span></div>
       <p class="muted">Imagens, legendas, leitura automática e dúvidas aparecem aqui sem precisar atualizar a página.</p>
       <div class="date-filter"><label for="filtroData">Filtrar pelo dia recebido</label><input id="filtroData" type="date"><button id="filtrarHoje" class="secondary" type="button">Hoje</button><button id="mostrarTodos" class="ghost" type="button">Mostrar todos</button></div>
       <div id="documentosLista" class="documentos-lista"><div class="empty">Aguardando o primeiro comprovante do WhatsApp.</div></div>
     </section>
     <section class="card checklist">
-      <div class="card-title"><div><span class="step">4</span><h2>Pronto para o teste real?</h2></div><span id="azureStatus" class="pill neutro">Azure</span></div>
-      <ol><li>WhatsApp conectado</li><li>Grupo real selecionado e salvo</li><li>Azure configurado</li><li>Envie uma foto com legenda no grupo</li></ol>
+      <div class="card-title"><div><span class="step">5</span><h2>Pronto para o teste real?</h2></div><span id="azureStatus" class="pill neutro">Azure</span></div>
+      <ol><li>WhatsApp conectado</li><li>Grupo e centro de custo salvos</li><li>Empresa do Conta Azul confirmada</li><li>Envie uma foto e use primeiro o botão individual</li></ol>
       <pre>Tipo: Alimentacao&#10;Centro de custo: NOME DO CENTRO&#10;Pessoas: 2&#10;Observacao: Teste real</pre>
-      <p class="muted">O resultado ficará em <b>dados/auditoria</b> e <b>dados/revisao</b>. Nada será lançado no Conta Azul.</p>
+      <p class="muted">A leitura continua local até você clicar em <b>Preparar no Conta Azul</b>. A despesa só nasce depois de uma segunda confirmação em <b>Criar despesa</b>.</p>
     </section>
   </main><script src="/app.js"></script>
 </body></html>

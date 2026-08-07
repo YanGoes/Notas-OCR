@@ -3,9 +3,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { interpretarLegenda } = require("../src/legenda");
-const { classificar } = require("../src/classificador");
-const { validar, idValido } = require("../src/validador");
+const { classificar, categoriaEspecificaDoVeiculo } = require("../src/classificador");
+const { validar, idValido, chaveFiscal } = require("../src/validador");
 const { dadosAbastecimento, descricaoContaAzul } = require("../src/detalhes-despesa");
+const { aplicarCentroCustoPadrao } = require("../src/pipeline");
 const regras = require("../configuracao/regras.json");
 
 test("interpreta legenda padronizada", () => {
@@ -48,8 +49,60 @@ test("reconhece combustivel e placa diretamente do OCR Azure", () => {
     const operador = interpretarLegenda("");
     const classificacao = classificar(operador, { produto_principal: "DIESEL S10 ADITIVADO", placa: "REP-7B39", texto_bruto: "POSTO ALVORADA" });
     assert.equal(classificacao.tipo_reconhecido.nome, "combustivel");
-    assert.equal(classificacao.tipo_origem, "ocr_azure");
+    assert.equal(classificacao.tipo_origem, "texto_ocr_azure");
     assert.equal(classificacao.veiculo.placa, "REP-7B39");
+    assert.equal(classificacao.categoria_nome, "COMBUSTIVEL");
+    assert.equal(idValido(classificacao.categoria_id), true);
+});
+
+test("usa o tipo semantico do recibo Azure mesmo sem legenda", () => {
+    const classificacao = classificar(interpretarLegenda(""), { tipo_despesa_sugerido: "alimentacao", texto_bruto: "Pedro Julio" });
+    assert.equal(classificacao.tipo_reconhecido.nome, "alimentacao");
+    assert.equal(classificacao.tipo_origem, "tipo_recibo_azure");
+});
+
+test("nao classifica por palavra escondida dentro de outra", () => {
+    assert.equal(classificar(interpretarLegenda(""), { texto_bruto: "CAFEINA 200 MG" }).tipo_reconhecido, null);
+    assert.equal(classificar(interpretarLegenda(""), { texto_bruto: "RECIPIENTE PLASTICO" }).tipo_reconhecido, null);
+    assert.equal(classificar(interpretarLegenda(""), { texto_bruto: "EPI" }).tipo_reconhecido.nome, "material");
+});
+
+test("evidencia forte de combustivel vence classificacao Meal do Azure", () => {
+    const ocr = {
+        tipo_despesa_sugerido: "alimentacao",
+        produto_principal: "DIESEL S10 ADITIVADO",
+        placa: "REP-7B39",
+        litragem: 38.401,
+        itens: [{ descricao: "DIESEL S10 ADITIVADO", quantidade: 38.401, unidade: "LT" }],
+    };
+    const classificacao = classificar(interpretarLegenda(""), ocr);
+    assert.equal(classificacao.tipo_reconhecido.nome, "combustivel");
+    assert.equal(classificacao.evidencia_combustivel_forte, true);
+    assert.equal(classificacao.tipo_detectado_documento, "combustivel");
+});
+
+test("conflito entre legenda e evidencia do documento exige revisao", () => {
+    const operador = interpretarLegenda("Tipo: Restaurante\nCentro de custo: CONSOL MG-050");
+    const ocr = {
+        tipo_despesa_sugerido: "alimentacao",
+        produto_principal: "GASOLINA COMUM",
+        placa: "JKM-0196",
+        litragem: 24.61,
+        itens: [{ descricao: "GASOLINA COMUM", quantidade: 24.61, unidade: "L" }],
+        valor: 154.8,
+        data: "2026-07-29",
+        confianca: 0.99,
+    };
+    const classificacao = classificar(operador, ocr);
+    const resultado = validar({ operador, classificacao, regras, duplicado: false, ocr });
+    assert.equal(classificacao.tipo_reconhecido.nome, "combustivel");
+    assert.deepEqual(classificacao.tipo_conflito, { legenda: "alimentacao", documento: "combustivel" });
+    assert.equal(resultado.revisao_necessaria, true);
+    assert.match(resultado.motivos.join(" "), /diverge do tipo identificado no comprovante/);
+});
+
+test("nunca grava NaN na chave fiscal", () => {
+    assert.equal(chaveFiscal({ cnpj: "123", data: "2026-07-23", valor: "R$" }), "123|2026-07-23|0.00");
 });
 
 test("preserva placa e litragem na descricao preparada para o Conta Azul", () => {
@@ -71,7 +124,19 @@ test("detecta divergencia de valor", () => {
 
 test("IDs de exemplo nunca sao considerados validos", () => {
     assert.equal(idValido("PREENCHER_UUID_CONTA_AZUL"), false);
+    assert.equal(idValido("qualquer-texto"), false);
     assert.equal(idValido("3fa85f64-5717-4562-b3fc-2c963f66afa6"), true);
+});
+
+test("usa categoria especifica valida do veiculo mesmo fora da lista generica", () => {
+    const id = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
+    const categoria = categoriaEspecificaDoVeiculo({
+        nome: "FIAT SCUDO - SGR4B54",
+        categoria_nome_conta_azul: "FIAT SCUDO - SGR4B54",
+        categoria_id: id,
+    }, []);
+    assert.deepEqual(categoria, { nome: "FIAT SCUDO - SGR4B54", id });
+    assert.equal(categoriaEspecificaDoVeiculo({ nome: "SCUDO", categoria_id: "PREENCHER_UUID_CATEGORIA_DO_VEICULO" }, []), null);
 });
 
 test("reconhece farmacia e oficina como excecoes de campo", () => {
@@ -85,4 +150,32 @@ test("tipo outros sempre exige revisao", () => {
     const resultado = validar({ operador, classificacao, regras, duplicado: false, ocr: { valor: 10, data: "2026-08-05", confianca: 0.99 } });
     assert.equal(resultado.revisao_necessaria, true);
     assert.match(resultado.motivos.join(" "), /revisao humana obrigatoria/);
+});
+
+test("usa centro de custo padrao do grupo quando a legenda nao informa centro", () => {
+    const centros = [{ id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", nome: "OBRA NORTE" }];
+    const contexto = aplicarCentroCustoPadrao(
+        interpretarLegenda("Restaurante"),
+        { centro_custo_padrao: { id: centros[0].id, nome: centros[0].nome } },
+        centros,
+    );
+    assert.equal(contexto.operador.centro_custo_informado, "OBRA NORTE");
+    assert.equal(contexto.origem, "grupo_whatsapp");
+});
+
+test("centro informado na legenda tem prioridade sobre o padrao do grupo", () => {
+    const centros = [{ id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", nome: "OBRA NORTE" }];
+    const contexto = aplicarCentroCustoPadrao(
+        interpretarLegenda("Tipo: Restaurante\nCentro de custo: OBRA SUL"),
+        { centro_custo_padrao: centros[0] },
+        centros,
+    );
+    assert.equal(contexto.operador.centro_custo_informado, "OBRA SUL");
+    assert.equal(contexto.origem, "legenda");
+});
+
+test("metadado antigo sem centro de custo continua compativel", () => {
+    const contexto = aplicarCentroCustoPadrao(interpretarLegenda("Restaurante"), {}, []);
+    assert.equal(contexto.operador.centro_custo_informado, null);
+    assert.equal(contexto.origem, null);
 });
