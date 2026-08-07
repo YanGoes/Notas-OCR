@@ -5,6 +5,7 @@ USO NORMAL
 CONFIGURACAO
 - 03_CONFIGURAR_AZURE.bat: informa endpoint e chave do Azure.
 - 04_CONECTAR_CONTA_AZUL.bat: configura e autoriza o Conta Azul.
+- 10_CONFIGURAR_IDS_CONTA_AZUL.bat: consulta e configura categorias e centros de custo.
 - 05_TESTAR_PIPELINE.bat: testa a leitura sem fazer lancamento financeiro.
 
 SERVIDOR

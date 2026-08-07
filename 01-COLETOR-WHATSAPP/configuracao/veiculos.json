@@ -1,3 +1,12 @@
 [
-  { "nome": "FIAT SCUDO - SGR4B54", "placa": "SGR4B54", "apelidos": ["fiat scudo", "scudo"], "categoria_id": "PREENCHER_UUID_CATEGORIA_DO_VEICULO" }
+  {
+    "nome": "FIAT SCUDO - SGR4B54",
+    "placa": "SGR4B54",
+    "apelidos": [
+      "fiat scudo",
+      "scudo"
+    ],
+    "categoria_id": "3e15fda5-d668-40aa-985e-0ee1971fac85",
+    "categoria_nome_conta_azul": "FIAT SCUDO - SGR4B54"
+  }
 ]

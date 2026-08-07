@@ -1,10 +1,48 @@
 [
-  { "nome": "ALIMENTACAO EM CAMPO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
-  { "nome": "COMBUSTIVEL", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
-  { "nome": "HOSPEDAGEM", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
-  { "nome": "FARMACIA", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
-  { "nome": "DESLOCAMENTO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
-  { "nome": "MANUTENCAO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
-  { "nome": "MATERIAL DE CAMPO", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] },
-  { "nome": "OUTROS - REVISAO OBRIGATORIA", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": [] }
+  {
+    "nome": "ALIMENTACAO EM CAMPO",
+    "nome_conta_azul": "Lanches e Refeições",
+    "id": "5bd50b47-4409-4157-b631-98a24f26148a",
+    "apelidos": []
+  },
+  {
+    "nome": "COMBUSTIVEL",
+    "nome_conta_azul": "Combustíveis",
+    "id": "b2e64f41-0b9c-4608-8e3e-0e0a0080e0a0",
+    "apelidos": []
+  },
+  {
+    "nome": "HOSPEDAGEM",
+    "id": "PREENCHER_UUID_CONTA_AZUL",
+    "apelidos": []
+  },
+  {
+    "nome": "FARMACIA",
+    "nome_conta_azul": "Farmácia",
+    "id": "7ea38a33-8357-41cc-bdf5-6bba6b1a4612",
+    "apelidos": []
+  },
+  {
+    "nome": "DESLOCAMENTO",
+    "nome_conta_azul": "Transporte Urbano (táxi, Uber)",
+    "id": "966c057b-f439-4db4-ad46-639527d2a846",
+    "apelidos": []
+  },
+  {
+    "nome": "MANUTENCAO",
+    "nome_conta_azul": "Manutenção de Veículos",
+    "id": "aff51b5a-3b53-4101-9fd5-92d67329df33",
+    "apelidos": []
+  },
+  {
+    "nome": "MATERIAL DE CAMPO",
+    "nome_conta_azul": "Materiais Aplicados na Prestação de Serviços",
+    "id": "50a875e6-22d2-455b-b3c4-21158a577234",
+    "apelidos": []
+  },
+  {
+    "nome": "OUTROS - REVISAO OBRIGATORIA",
+    "id": "PREENCHER_UUID_CONTA_AZUL",
+    "apelidos": []
+  }
 ]

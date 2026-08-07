@@ -7,7 +7,7 @@
     "honorarios juridicos", "plano de saude", "despesa administrativa"
   ],
   "tipos_permitidos": [
-    { "nome": "alimentacao", "apelidos": ["alimentacao", "almoco", "jantar", "lanche", "cafe da manha", "refeicao", "restaurante"], "categoria": "ALIMENTACAO EM CAMPO", "exige_veiculo": false },
+    { "nome": "alimentacao", "apelidos": ["alimentacao", "almoco", "jantar", "lanche", "cafe", "cafe da manha", "refeicao", "restaurante", "lanchonete", "padaria", "hamburguer", "coxinha", "salgado", "lasanha", "nhoque", "escondidinho", "empada", "empadao", "pao recheado", "torta"], "categoria": "ALIMENTACAO EM CAMPO", "exige_veiculo": false },
     { "nome": "combustivel", "apelidos": ["combustivel", "abastecimento", "gasolina", "etanol", "diesel"], "categoria": "COMBUSTIVEL", "exige_veiculo": true },
     { "nome": "hospedagem", "apelidos": ["hospedagem", "hotel", "pousada", "diaria"], "categoria": "HOSPEDAGEM", "exige_veiculo": false },
     { "nome": "farmacia", "apelidos": ["farmacia", "medicamento", "remedio", "drogaria"], "categoria": "FARMACIA", "exige_veiculo": false },

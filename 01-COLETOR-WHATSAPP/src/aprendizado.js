@@ -9,6 +9,7 @@ const MODELO_PATH = path.join(RAIZ, "configuracao", "modelo-historico.json");
 const stopwords = new Set("a ao aos as com da das de do dos e em no nos na nas o os para por um uma uns umas r reais ref referente pagamento pago parcela despesa despesas".split(" "));
 let cache = null;
 let cacheMtime = 0;
+const vocabulariosCache = new WeakMap();
 
 function normalizar(texto) {
     return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -48,7 +49,14 @@ function criarModelo(exemplos, campoRotulo, campoTexto, minimoClasse = 5) {
 
 function prever(modelo, texto) {
     if (!modelo?.documentos || !Object.keys(modelo.classes || {}).length) return null;
-    const termos = tokens(texto);
+    let vocabularioConhecido = vocabulariosCache.get(modelo);
+    if (!vocabularioConhecido) {
+        vocabularioConhecido = new Set();
+        for (const classe of Object.values(modelo.classes)) for (const termo of Object.keys(classe.tokens || {})) vocabularioConhecido.add(termo);
+        vocabulariosCache.set(modelo, vocabularioConhecido);
+    }
+    const termos = tokens(texto).filter((termo) => vocabularioConhecido.has(termo));
+    if (!termos.length) return null;
     const pontuacoes = Object.entries(modelo.classes).map(([rotulo, classe]) => {
         let score = Math.log(classe.documentos / modelo.documentos);
         const denominador = classe.total_tokens + modelo.vocabulario;
@@ -56,7 +64,7 @@ function prever(modelo, texto) {
         return { rotulo, score };
     }).sort((a, b) => b.score - a.score);
     const maximo = pontuacoes[0].score;
-    const exp = pontuacoes.slice(0, 20).map((item) => Math.exp(item.score - maximo));
+    const exp = pontuacoes.map((item) => Math.exp(item.score - maximo));
     const soma = exp.reduce((a, b) => a + b, 0);
     return {
         rotulo: pontuacoes[0].rotulo,

@@ -7,12 +7,29 @@ const { execFile } = require("child_process");
 const QRCode = require("qrcode");
 const whatsapp = require("./coletor");
 const { configuracaoAzure } = require("./azure-ocr");
+const {
+    obterEstadoContaAzul,
+    confirmarEmpresa,
+    sincronizarCentrosCusto,
+    criarCentroCusto,
+    verificarDocumento,
+    listarFila,
+    agendarPreparacao,
+    agendarConfirmacao,
+    marcarConfirmacaoManualPiloto,
+} = require("./envio-conta-azul");
 
 const RAIZ = path.resolve(__dirname, "..");
 const app = express();
 const porta = Number(process.env.PORT || 3210);
 app.use(express.json({ limit: "100kb" }));
-app.use(express.static(path.join(RAIZ, "public")));
+app.use((req, res, next) => {
+    if (req.path === "/" || /\.(?:html|js|css)$/i.test(req.path)) {
+        res.setHeader("Cache-Control", "no-store, max-age=0");
+    }
+    next();
+});
+app.use(express.static(path.join(RAIZ, "public"), { etag: false, lastModified: false }));
 
 function contagem(pasta) {
     const caminho = path.join(RAIZ, "dados", pasta);
@@ -24,7 +41,18 @@ function azureConfigurado() {
     try { configuracaoAzure(); return true; } catch (_) { return false; }
 }
 
-const pastasDocumentos = ["entrada", "simulacao", "revisao", "bloqueados", "erros"];
+function centrosCustoDisponiveis() {
+    const arquivo = path.join(RAIZ, "configuracao", "centros_custo.json");
+    if (!fs.existsSync(arquivo)) return [];
+    try {
+        const centros = JSON.parse(fs.readFileSync(arquivo, "utf8"));
+        return Array.isArray(centros) ? centros
+            .filter((centro) => centro && centro.id && centro.nome)
+            .map((centro) => ({ id: String(centro.id), nome: String(centro.nome) })) : [];
+    } catch (_) { return []; }
+}
+
+const pastasDocumentos = ["entrada", "simulacao", "revisao", "bloqueados", "erros", "enviados"];
 
 function localizarImagem(nomeBase) {
     for (const pasta of pastasDocumentos) {
@@ -46,6 +74,7 @@ function dataLocalIso(valor) {
 function documentosRecentes(dataFiltro = "") {
     const auditoria = path.join(RAIZ, "dados", "auditoria");
     const resultados = [];
+    const filaContaAzul = new Map(listarFila().itens.map((item) => [item.base, item]));
     if (fs.existsSync(auditoria)) {
         for (const nome of fs.readdirSync(auditoria).filter((n) => n.endsWith(".json") && n !== "indice-duplicidade.json" && !n.endsWith("_erro.json"))) {
             try {
@@ -57,6 +86,8 @@ function documentosRecentes(dataFiltro = "") {
                     imagem_url: imagem ? `/api/documentos/${encodeURIComponent(base)}/imagem` : null,
                     legenda: dados.legenda_original, recebido_em: dados.recebido_em || dados.processado_em,
                     ocr: dados.ocr || {}, classificacao: dados.classificacao || {}, aprendizado: dados.aprendizado_historico || null, validacoes: dados.validacoes || {},
+                    conta_azul: dados.conta_azul || { status: "NAO_ENVIADO" },
+                    envio_conta_azul: filaContaAzul.get(base) || null,
                 });
             } catch (_) { /* ignora JSON incompleto */ }
         }
@@ -84,7 +115,7 @@ app.get("/api/status", async (_req, res) => {
         whatsapp: { ...estado, qr: undefined, qr_imagem: qrImagem },
         azure: { configurado: azureConfigurado() },
         grupos: whatsapp.obterConfiguracao(),
-        filas: { entrada: contagem("entrada"), simulacao: contagem("simulacao"), revisao: contagem("revisao"), bloqueados: contagem("bloqueados"), erros: contagem("erros") },
+        filas: { entrada: contagem("entrada"), simulacao: contagem("simulacao"), revisao: contagem("revisao"), bloqueados: contagem("bloqueados"), erros: contagem("erros"), enviados: contagem("enviados") },
     });
 });
 
@@ -96,6 +127,38 @@ app.post("/api/whatsapp/desconectar", async (_req, res, next) => {
 });
 app.get("/api/grupos", async (_req, res, next) => {
     try { res.json(await whatsapp.listarGrupos()); } catch (erro) { next(erro); }
+});
+app.get("/api/centros-custo", (_req, res) => {
+    res.json(centrosCustoDisponiveis());
+});
+app.get("/api/conta-azul/status", async (_req, res, next) => {
+    try { res.json(await obterEstadoContaAzul()); } catch (erro) { next(erro); }
+});
+app.get("/api/conta-azul/fila", (_req, res) => {
+    res.json(listarFila());
+});
+app.post("/api/conta-azul/empresa/confirmar", async (req, res, next) => {
+    try {
+        if (req.body?.confirmacao !== true) throw new Error("Confirmacao explicita da empresa obrigatoria.");
+        res.json({ ok: true, empresa: await confirmarEmpresa(req.body.id_empresa) });
+    } catch (erro) { next(erro); }
+});
+app.post("/api/centros-custo/sincronizar", async (req, res, next) => {
+    try {
+        if (req.body?.confirmacao !== true) throw new Error("Confirme a sincronizacao dos centros de custo.");
+        const centros = await sincronizarCentrosCusto(req.body.id_empresa);
+        res.json({ ok: true, centros });
+    } catch (erro) { next(erro); }
+});
+app.post("/api/centros-custo", async (req, res, next) => {
+    try {
+        if (req.body?.confirmacao !== true) throw new Error("Confirme a criacao do centro de custo.");
+        res.json({ ok: true, ...(await criarCentroCusto({
+            nome: req.body.nome,
+            codigo: req.body.codigo,
+            idEmpresa: req.body.id_empresa,
+        })) });
+    } catch (erro) { next(erro); }
 });
 app.get("/api/documentos", (req, res) => {
     const data = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.data || "")) ? String(req.query.data) : "";
@@ -114,9 +177,67 @@ app.get("/api/documentos/:base/imagem", (req, res, next) => {
 app.put("/api/grupos", (req, res, next) => {
     try {
         if (!Array.isArray(req.body?.grupos)) throw new Error("Lista de grupos invalida.");
-        const grupos = req.body.grupos.map((g) => ({ id: String(g.id || ""), nome: String(g.nome || g.id || "") })).filter((g) => g.id.endsWith("@g.us"));
+        const grupos = req.body.grupos.map((g) => ({
+            id: String(g.id || ""),
+            nome: String(g.nome || g.id || ""),
+            centro_custo_id: String(g.centro_custo_id || ""),
+        })).filter((g) => g.id.endsWith("@g.us"));
         whatsapp.salvarGrupos(grupos);
+        execFile(process.execPath, [path.join(RAIZ, "ferramentas", "reprocessar_ocr_salvo.js")], {
+            cwd: RAIZ,
+            windowsHide: true,
+        }, (erro, stdout) => {
+            if (erro) console.error("Reprocessamento apos salvar grupos:", erro.message);
+            else if (stdout.trim()) console.log(stdout.trim());
+        });
         res.json({ ok: true, quantidade: grupos.length });
+    } catch (erro) { next(erro); }
+});
+
+app.post("/api/conta-azul/despesas/preparar-lote", (req, res, next) => {
+    try {
+        if (req.body?.confirmacao !== "ENVIAR_PREVIAS") throw new Error("Confirmacao do envio das imagens obrigatoria.");
+        res.json({ ok: true, ...agendarPreparacao(req.body.bases, req.body.id_empresa) });
+    } catch (erro) { next(erro); }
+});
+app.post("/api/conta-azul/despesas/confirmar-lote", (req, res, next) => {
+    try {
+        if (req.body?.confirmacao !== "CRIAR_DESPESAS") throw new Error("Confirmacao da criacao das despesas obrigatoria.");
+        const porBase = new Map(listarFila().itens.map((item) => [item.base, item]));
+        const itens = (req.body.bases || []).map((base) => ({
+            base,
+            token: porBase.get(String(base))?.conta_azul?.token_confirmacao,
+        }));
+        res.json({ ok: true, ...agendarConfirmacao(itens, req.body.id_empresa) });
+    } catch (erro) { next(erro); }
+});
+app.post("/api/conta-azul/despesas/:base/preparar", (req, res, next) => {
+    try {
+        if (req.body?.confirmacao !== "ENVIAR_PREVIA") throw new Error("Confirmacao do envio da imagem obrigatoria.");
+        res.json({ ok: true, ...agendarPreparacao([req.params.base], req.body.id_empresa) });
+    } catch (erro) { next(erro); }
+});
+app.post("/api/conta-azul/despesas/:base/confirmar", (req, res, next) => {
+    try {
+        if (req.body?.confirmacao !== "CRIAR_DESPESA") throw new Error("Confirmacao da criacao da despesa obrigatoria.");
+        res.json({ ok: true, ...agendarConfirmacao([{
+            base: req.params.base,
+            token: req.body.token,
+        }], req.body.id_empresa) });
+    } catch (erro) { next(erro); }
+});
+app.post("/api/conta-azul/despesas/:base/verificar", async (req, res, next) => {
+    try { res.json({ ok: true, conta_azul: await verificarDocumento(req.params.base, req.body?.id_empresa) }); }
+    catch (erro) { next(erro); }
+});
+app.post("/api/conta-azul/despesas/:base/validar-no-erp", async (req, res, next) => {
+    try {
+        res.json({ ok: true, conta_azul: await marcarConfirmacaoManualPiloto(req.params.base, {
+            idEmpresa: req.body?.id_empresa,
+            eventoId: req.body?.evento_id,
+            confirmadoPor: req.body?.confirmado_por,
+            confirmacao: req.body?.confirmacao,
+        }) });
     } catch (erro) { next(erro); }
 });
 

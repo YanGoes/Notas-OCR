@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { analisarDocumento } = require("./azure-ocr");
-const { interpretarLegenda } = require("./legenda");
+const { interpretarLegenda, normalizar } = require("./legenda");
 const { classificar } = require("./classificador");
 const { hashArquivo, chaveFiscal, validar } = require("./validador");
 const { sugerir } = require("./aprendizado");
@@ -30,6 +30,26 @@ function gravarAtomico(arquivo, dados) {
     fs.renameSync(temporario, arquivo);
 }
 
+function aplicarCentroCustoPadrao(operador, meta = {}, centros = []) {
+    const resultado = { ...operador };
+    if (String(resultado.centro_custo_informado || "").trim()) {
+        return { operador: resultado, origem: "legenda", centro: null };
+    }
+    const salvo = meta.centro_custo_padrao;
+    if (!salvo) return { operador: resultado, origem: null, centro: null };
+    const idSalvo = typeof salvo === "object" ? String(salvo.id || "") : String(salvo);
+    const nomeSalvo = typeof salvo === "object" ? String(salvo.nome || "") : String(salvo);
+    const centro = centros.find((item) => idSalvo && String(item.id) === idSalvo)
+        || centros.find((item) => nomeSalvo && normalizar(item.nome) === normalizar(nomeSalvo));
+    if (!centro) return { operador: resultado, origem: null, centro: null };
+    resultado.centro_custo_informado = centro.nome;
+    return {
+        operador: resultado,
+        origem: "grupo_whatsapp",
+        centro: { id: String(centro.id), nome: String(centro.nome) },
+    };
+}
+
 function moverConjunto(imagem, destino) {
     fs.mkdirSync(destino, { recursive: true });
     const base = imagem.replace(/\.[^.]+$/, "");
@@ -52,7 +72,10 @@ function registrarDuplicidade(indicePath, mensagemId, hash, fiscal) {
 async function processar(imagem, opcoes) {
     const base = imagem.replace(/\.[^.]+$/, "");
     const meta = lerJson(`${base}.json`, {});
-    const operador = interpretarLegenda(meta.legenda || "");
+    const operadorLegenda = interpretarLegenda(meta.legenda || "");
+    const centrosCusto = lerJson(path.join(RAIZ, "configuracao", "centros_custo.json"), []);
+    const centroContexto = aplicarCentroCustoPadrao(operadorLegenda, meta, Array.isArray(centrosCusto) ? centrosCusto : []);
+    const operador = centroContexto.operador;
     let ocrCompleto;
     try {
         ocrCompleto = await analisarDocumento(imagem, Number(opcoes.timeout_azure_segundos || 180));
@@ -67,6 +90,10 @@ async function processar(imagem, opcoes) {
     const { resposta_bruta, ...ocr } = ocrCompleto;
     gravarAtomico(path.join(RAIZ, "dados", "ocr-bruto", `${path.parse(imagem).name}.json`), resposta_bruta);
     const classificacao = classificar(operador, ocr);
+    if (centroContexto.origem === "grupo_whatsapp" && centroContexto.centro) {
+        classificacao.centro_custo_nome = centroContexto.centro.nome;
+        classificacao.centro_custo_id = centroContexto.centro.id;
+    }
     const contextoAprendizado = [ocr.nome_fantasia, ocr.produto_principal, ...(ocr.itens || []).map((item) => item.descricao), ocr.placa].filter(Boolean).join(" ");
     const aprendizado = sugerir({ legenda: meta.legenda, fornecedor: ocr.fornecedor, textoOcr: contextoAprendizado });
     const regras = lerJson(path.join(RAIZ, "configuracao", "regras.json"));
@@ -80,11 +107,12 @@ async function processar(imagem, opcoes) {
         origem: "whatsapp", mensagem_id: meta.id_mensagem || null,
         recebido_em: meta.recebido_em_ms ? new Date(Number(meta.recebido_em_ms)).toISOString() : (meta.timestamp ? new Date(Number(meta.timestamp) * 1000).toISOString() : null),
         arquivo_imagem: path.basename(imagem), legenda_original: meta.legenda || null,
-        operador: { remetente: meta.remetente || null, ...operador }, ocr,
+        operador: { remetente: meta.remetente || null, ...operador, centro_custo_origem: centroContexto.origem }, ocr,
         classificacao: {
             tipo: classificacao.tipo_reconhecido?.nome || null, tipo_origem: classificacao.tipo_origem,
             categoria_nome: classificacao.categoria_nome, categoria_id: classificacao.categoria_id,
             centro_custo_nome: classificacao.centro_custo_nome, centro_custo_id: classificacao.centro_custo_id,
+            centro_custo_origem: centroContexto.origem,
             veiculo: classificacao.veiculo?.nome || null, placa: classificacao.veiculo?.placa || ocr.placa || null,
         },
         aprendizado_historico: aprendizado,
@@ -141,4 +169,4 @@ function iniciarPipeline(pastaEntrada, opcoes) {
     setInterval(rodar, Math.max(5, Number(opcoes.intervalo_segundos || 10)) * 1000);
 }
 
-module.exports = { iniciarPipeline, processarPendentes, processar };
+module.exports = { iniciarPipeline, processarPendentes, processar, aplicarCentroCustoPadrao };

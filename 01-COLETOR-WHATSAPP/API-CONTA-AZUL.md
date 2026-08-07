@@ -1,8 +1,50 @@
 # Contrato da API Conta Azul (v2)
 
-Anotações levantadas **testando a API da conta de teste** em 03/08/2026, porque o portal de
-documentação (`developers.contaazul.com`) responde 403 sem login. Onde estiver marcado
-"não verificado", o campo ainda não foi confirmado.
+Referência oficial atual: [API Financeira do Conta Azul](https://developers.contaazul.com/docs/financial-apis-openapi).
+Os endpoints exigem OAuth 2.0. Consultas são feitas automaticamente; qualquer `POST` que altere o ERP
+exige uma confirmação explícita no painel.
+
+## Fluxo implementado no painel
+
+O envio financeiro seguro usa a API oficial **Conta AI Captura**:
+
+1. `POST /v1/captura/documentos` envia somente uma imagem já aprovada localmente;
+2. `GET /v1/captura/documentos/status` e `GET /v1/captura/{id}` obtêm a prévia;
+3. o programa compara tipo, valor, data, fornecedor, categoria e centro de custo;
+4. `POST /v1/captura/{id}` só é liberado quando não existe divergência e o usuário confirma novamente.
+
+O documento aparece em **Conta AI Captura** antes do aceite. Depois, aparece em
+**Financeiro → Contas a pagar**, com a imagem original anexada. O endpoint de aceite não aceita corpo,
+portanto uma categoria ou centro divergente precisa ser revisado antes; o programa nunca força o aceite.
+
+## IDs de categoria e centro de custo
+
+Os IDs usados no rateio não são o `CONTA_AZUL_CLIENT_ID` da aplicação. Eles são UUIDs dos cadastros
+financeiros da empresa conectada:
+
+- categorias de despesa: `GET /v1/categorias?pagina=1&tamanho_pagina=1000&tipo=DESPESA&permite_apenas_filhos=false`;
+- centros de custo ativos: `GET /v1/centro-de-custo?pagina=1&tamanho_pagina=1000&filtro_rapido=ATIVO`.
+
+A resposta de categorias usa a lista `itens`; a resposta de centros de custo usa `items` na versão
+atual da documentação. O sincronizador aceita os dois formatos para tolerar versões anteriores.
+
+Execute `CONFIGURAR_IDS_CONTA_AZUL.bat` depois da autorização OAuth. A ferramenta apenas consulta a
+API, salva os catálogos em `dados/conta-azul` e atualiza os JSONs locais após confirmação do usuário.
+Ela nunca envia `POST`, `PUT`, `PATCH` ou `DELETE` ao Conta Azul.
+
+O modo `--automatico` só aplica equivalências explícitas em `configuracao/categorias.json` e
+correspondências exatas. Na configuração atual: `ALIMENTACAO EM CAMPO` → `Lanches e Refeições`,
+`COMBUSTIVEL` → `Combustíveis`, `FARMACIA` → `Farmácia`, `DESLOCAMENTO` →
+`Transporte Urbano (táxi, Uber)`, `MANUTENCAO` → `Manutenção de Veículos` e `MATERIAL DE CAMPO` →
+`Materiais Aplicados na Prestação de Serviços`. Hospedagem e outros ficam pendentes se não houver
+correspondência inequívoca.
+
+Os UUIDs mostrados abaixo foram observados em uma conta de teste e não devem ser copiados para outra
+empresa. Sempre obtenha os IDs da conta que será usada em produção.
+
+Anotações levantadas **testando a API da conta de teste** em 03/08/2026 e confrontadas com a
+documentação oficial disponível atualmente. Onde estiver marcado "não verificado", o campo ainda
+não foi confirmado no fluxo deste projeto.
 
 Base: `https://api-v2.contaazul.com`
 
@@ -26,7 +68,12 @@ Categorias já úteis para o fluxo de despesas de campo:
 | Manutenção de Veículos | `aff51b5a-3b53-4101-9fd5-92d67329df33` |
 | Transporte Urbano (táxi, Uber) | `966c057b-f439-4db4-ad46-639527d2a846` |
 
-## Criar despesa
+## Criação financeira direta — referência histórica, não usada pelo painel
+
+O contrato oficial atual também exige `contato`, `conta_financeira`, observação e os dados da conta em
+cada parcela. O payload abaixo foi aceito por uma versão anterior da conta de teste, mas não contém
+todos os campos hoje documentados e **não deve ser usado como contrato de produção**. O painel usa a
+Captura porque ela resolve o fornecedor e mantém a imagem anexada.
 
 `POST /v1/financeiro/eventos-financeiros/contas-a-pagar`
 
@@ -64,8 +111,8 @@ Categorias já úteis para o fluxo de despesas de campo:
 }
 ```
 
-Tudo acima está **confirmado por lançamento real** na conta de teste: categoria, centro de custo,
-valor, competência, vencimento e método de pagamento gravam corretamente.
+O formato de `rateio` abaixo foi confirmado historicamente na conta de teste para categoria, centro,
+valor e competência. Isso não elimina os campos adicionais obrigatórios no contrato atual.
 
 ### Centro de custo vai dentro do rateio, como lista
 
@@ -100,8 +147,8 @@ A resposta não traz o id da despesa:
 requisição com categoria inexistente foi aceita com `PENDING` e depois descartada silenciosamente,
 sem aparecer na busca.
 
-Não achei endpoint que consulte o protocolo (`/protocolo/{id}` dá 404). Para confirmar que a
-despesa realmente existe, é preciso consultar depois:
+A documentação atual publica `GET /v1/protocolo/{id}`. Mesmo assim, a confirmação funcional também
+pode ser feita consultando as contas a pagar pelo período:
 
 ```
 GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar
@@ -168,5 +215,6 @@ Fluxo que funciona, medido em ~24 s numa foto de cupom:
 2. `GET /v1/captura/documentos/status?ids={id}` — até `status_captura: PENDENTE`
 3. `GET /v1/captura/{idCaptura}` — devolve `previa_evento_financeiro`
 
-A prévia traz tipo, valor, data, descrição, fornecedor com CNPJ e parcelas — mas **nunca categoria
-nem centro de custo**, que é a razão de o projeto usar o lançamento direto.
+A prévia pode trazer tipo, valor, data, descrição, fornecedor, categoria e centro de custo. Como esses
+dois últimos campos podem vir ausentes ou diferentes, o painel compara os IDs com os mapeamentos locais
+e bloqueia o aceite quando não houver igualdade exata.
