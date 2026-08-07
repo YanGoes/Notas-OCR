@@ -54,6 +54,7 @@ fornecedores.json
 
 # Outros caches e temporarios
 .cache/
+.tmp-ui/
 .pytest_cache/
 .venv/
 venv/
