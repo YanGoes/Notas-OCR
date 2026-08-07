@@ -1,3 +1,5 @@
 [
-  { "nome": "EXEMPLO - SUBSTITUIR", "id": "PREENCHER_UUID_CONTA_AZUL", "apelidos": ["exemplo"] }
+  { "nome": "CONSOL MG-050", "id": "43a40a34-8f89-11f1-8cae-0b3dbe3e2005", "apelidos": ["consol mg-050", "consol mg050"] },
+  { "nome": "CONSOL MG-259", "id": "441058a6-8f89-11f1-a757-1b04f821eecd", "apelidos": ["consol mg-259", "consol mg259"] },
+  { "nome": "TESTE CC", "id": "371152ea-8f89-11f1-8882-77f2b0ce28e8", "apelidos": ["teste"] }
 ]

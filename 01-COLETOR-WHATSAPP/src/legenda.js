@@ -6,6 +6,7 @@ const aliases = {
     veiculo_informado: ["veiculo", "veículo", "placa"],
     conta_informada: ["conta", "cartao", "cartão", "conta/cartao", "conta/cartão"],
     pessoas: ["pessoas", "quantidade de pessoas", "qtd pessoas"],
+    diarias: ["diarias", "diárias", "diaria", "diária", "noites", "pernoites", "qtd diarias"],
     observacao: ["observacao", "observação", "obs"],
     valor_informado: ["valor"],
 };
@@ -17,7 +18,7 @@ function normalizar(texto) {
 function interpretarLegenda(texto) {
     const resultado = {
         tipo_despesa: null, centro_custo_informado: null, veiculo_informado: null,
-        conta_informada: null, pessoas: null, observacao: null, valor_informado: null,
+        conta_informada: null, pessoas: null, diarias: null, observacao: null, valor_informado: null,
     };
     const mapa = new Map();
     for (const [campo, nomes] of Object.entries(aliases)) for (const nome of nomes) mapa.set(normalizar(nome), campo);
@@ -36,7 +37,9 @@ function interpretarLegenda(texto) {
         const numero = resultado.valor_informado.replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
         resultado.valor_informado = Number.isFinite(Number(numero)) ? Number(numero) : null;
     }
-    if (resultado.pessoas) resultado.pessoas = Number(resultado.pessoas.replace(/\D/g, "")) || null;
+    for (const campo of ["pessoas", "diarias"]) {
+        if (resultado[campo]) resultado[campo] = Number(String(resultado[campo]).replace(/\D/g, "")) || null;
+    }
     return resultado;
 }
 

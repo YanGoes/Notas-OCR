@@ -80,6 +80,22 @@ function dataDoTexto(texto) {
     return match ? `${match[3]}-${match[2]}-${match[1]}` : null;
 }
 
+// O prebuilt-receipt costuma nao preencher TransactionTime, mas o cupom fiscal quase sempre
+// imprime a hora no rodape. Da rotulada para a solta, porque a solta e a mais sujeita a engano.
+function horaDoTexto(texto) {
+    const conteudo = String(texto || "");
+    const padroes = [
+        /\bhora(?:\s*d[ae]\s*\w+)?\s*:?\s*([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)\b/i,
+        /\b\d{2}[\/-]\d{2}[\/-]\d{2,4}\s+([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)\b/,
+        /\b([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)(?:\s*[:m]\s*[0-5]\d)?\b/,
+    ];
+    for (const padrao of padroes) {
+        const achado = conteudo.match(padrao);
+        if (achado) return `${achado[1].padStart(2, "0")}:${achado[2]}`;
+    }
+    return null;
+}
+
 function nomeFantasiaDoTexto(texto, fornecedor = "") {
     const linhas = String(texto || "").split(/\r?\n/).map((linha) => linha.trim()).filter(Boolean);
     const padrao = /^(?:p?osto|hotel|pousada|restaurante|churrascaria|padaria|drogaria|farmacia)\b/i;
@@ -153,6 +169,8 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
     const texto = bruto.analyzeResult?.content || "";
     const valorEstruturado = valorCampo(campos.Total) ?? valorCampo(campos.InvoiceTotal);
     const dataEstruturada = valorCampo(campos.TransactionDate) || valorCampo(campos.InvoiceDate);
+    const horaEstruturada = valorCampo(campos.TransactionTime);
+    const horaTexto = horaEstruturada ? null : horaDoTexto(texto);
     const fornecedor = valorCampo(campos.MerchantName) || valorCampo(campos.VendorName);
     const itens = itensDosCampos(campos);
     const itemLitros = itens.find((item) => /^(l|lt|litro|litros)$/i.test(String(item.unidade || "").trim()) && Number(item.quantidade) > 0);
@@ -163,7 +181,7 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
         cnpj: valorCampo(campos.MerchantTaxId) || cnpjDoTexto(texto),
         endereco,
         data: dataEstruturada || dataDoTexto(texto),
-        hora: valorCampo(campos.TransactionTime),
+        hora: horaEstruturada || horaTexto,
         valor: valorEstruturado ?? valorDoTexto(texto),
         itens,
         litragem: itemLitros ? Number(itemLitros.quantidade) : null,
@@ -172,6 +190,7 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
         quilometragem: kmDoTexto(texto),
         valor_origem: valorEstruturado !== null && valorEstruturado !== undefined ? "campo_estruturado_azure" : valorDoTexto(texto) !== null ? "heuristica_texto_azure" : null,
         data_origem: dataEstruturada ? "campo_estruturado_azure" : dataDoTexto(texto) ? "heuristica_texto_azure" : null,
+        hora_origem: horaEstruturada ? "campo_estruturado_azure" : horaTexto ? "heuristica_texto_azure" : null,
         confianca: Number(documento.confidence ?? confiancaMinima(campos)),
         texto_bruto: texto,
         modelo: modelId,
@@ -179,4 +198,4 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
     };
 }
 
-module.exports = { analisarDocumento, configuracaoAzure, valorCampo, cnpjDoTexto, valorDoTexto, dataDoTexto, nomeFantasiaDoTexto, placaDoTexto, kmDoTexto, enderecoDoCampo, itensDosCampos };
+module.exports = { analisarDocumento, configuracaoAzure, valorCampo, cnpjDoTexto, valorDoTexto, dataDoTexto, horaDoTexto, nomeFantasiaDoTexto, placaDoTexto, kmDoTexto, enderecoDoCampo, itensDosCampos };

@@ -3,6 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 const { normalizar } = require("./legenda");
+const { resolverRefeicao } = require("./refeicao");
+const { resolverHospedagem } = require("./hospedagem");
 
 const RAIZ = path.resolve(__dirname, "..");
 function ler(nome) { return JSON.parse(fs.readFileSync(path.join(RAIZ, "configuracao", nome), "utf8")); }
@@ -36,7 +38,27 @@ function classificar(operador, ocr = {}) {
     if (!veiculo && ocr.placa) veiculo = { nome: ocr.placa, placa: ocr.placa, apelidos: [], categoria_id: null, origem: "ocr" };
     let categoria = permitido ? localizar(categorias, permitido.categoria) : null;
     if (permitido?.exige_veiculo && veiculo?.categoria_id) categoria = categorias.find((x) => x.id === veiculo.categoria_id) || null;
+    const refeicao = permitido?.nome === "alimentacao"
+        ? resolverRefeicao({
+            hora: ocr.hora,
+            legenda: [operador.tipo_despesa, operador.observacao].filter(Boolean).join(" "),
+            pessoas: operador.pessoas,
+            faixas: regras.refeicao?.faixas,
+        })
+        : null;
+    if (refeicao?.categoria) categoria = localizar(categorias, refeicao.categoria) || categoria;
+    const hospedagem = permitido?.nome === "hospedagem"
+        ? resolverHospedagem({
+            pessoas: operador.pessoas,
+            diarias: operador.diarias,
+            ocr,
+            legenda: [operador.tipo_despesa, operador.observacao].filter(Boolean).join(" "),
+            config: regras.hospedagem,
+        })
+        : null;
     return {
+        refeicao,
+        hospedagem,
         escopo_proibido: proibido,
         tipo_reconhecido: permitido || null,
         tipo_origem: permitidoLegenda ? "legenda" : permitidoOcr ? "ocr_azure" : null,

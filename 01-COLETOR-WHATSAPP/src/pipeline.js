@@ -86,6 +86,8 @@ async function processar(imagem, opcoes) {
             categoria_nome: classificacao.categoria_nome, categoria_id: classificacao.categoria_id,
             centro_custo_nome: classificacao.centro_custo_nome, centro_custo_id: classificacao.centro_custo_id,
             veiculo: classificacao.veiculo?.nome || null, placa: classificacao.veiculo?.placa || ocr.placa || null,
+            refeicao: classificacao.refeicao || null,
+            hospedagem: classificacao.hospedagem || null,
         },
         aprendizado_historico: aprendizado,
         dados_abastecimento: abastecimento,

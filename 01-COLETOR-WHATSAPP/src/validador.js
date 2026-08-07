@@ -25,6 +25,19 @@ function validar({ operador, ocr, classificacao, regras, duplicado }) {
         if (!(classificacao.veiculo?.placa || ocr.placa)) motivos.push("Placa do veiculo nao identificada no comprovante nem na legenda.");
         if (!litragemDoOcr(ocr)) motivos.push("Litragem do abastecimento nao identificada no comprovante.");
     } else if (classificacao.tipo_reconhecido?.exige_veiculo && !classificacao.veiculo) motivos.push("Veiculo obrigatorio, ausente ou nao reconhecido.");
+    if (classificacao.tipo_reconhecido?.nome === "alimentacao") {
+        const refeicao = classificacao.refeicao || {};
+        // Sem a hora impressa nao da para separar almoco de jantar: os valores sao identicos.
+        if (!refeicao.hora) motivos.push("Horario nao identificado no comprovante; periodo da refeicao nao confirmado.");
+        else if (refeicao.divergente) motivos.push(`Periodo pelo horario (${refeicao.hora} = ${refeicao.periodo}) diverge do informado na legenda (${refeicao.periodo_legenda}).`);
+    }
+    if (classificacao.tipo_reconhecido?.nome === "hospedagem") {
+        const h = classificacao.hospedagem || {};
+        // "Diaria" tambem e como se chama pagamento de mao de obra; nunca lancar como hospedagem.
+        if (h.freelancer) { motivos.push("Menciona freelancer/mao de obra: pode ser 'DIARIA - FREELANCER', nao hospedagem."); bloqueado = true; }
+        if (!h.diarias) motivos.push("Quantidade de diarias nao informada na legenda nem identificada no documento.");
+        if (h.valor && !h.valor.coerente) motivos.push(`Valor R$ ${Number(ocr.valor).toFixed(2)} nao fecha com ${h.pessoas} pessoa(s) x ${h.diarias} diaria(s); esperado por volta de R$ ${h.valor.esperado.toFixed(2)}.`);
+    }
     if (classificacao.tipo_reconhecido?.sempre_revisar) motivos.push("Tipo 'outros' exige revisao humana obrigatoria.");
     if (ocr.erro_leitura) motivos.push(`Leitura automatica inconclusiva: ${ocr.erro_leitura}`);
     if (!ocr.valor) motivos.push("Valor nao identificado pelo OCR.");

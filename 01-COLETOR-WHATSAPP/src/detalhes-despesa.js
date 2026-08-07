@@ -26,7 +26,10 @@ function dadosAbastecimento(ocr = {}, classificacao = {}) {
 
 function descricaoContaAzul({ legenda, ocr = {}, classificacao = {} }) {
     const dados = dadosAbastecimento(ocr, classificacao);
-    const partes = [String(legenda || classificacao.tipo_reconhecido?.nome || classificacao.tipo || "Despesa").trim()];
+    // Refeicao e hospedagem usam o padrao fechado com o financeiro ("ALMOCO - 2 PESSOAS",
+    // "HOSPEDAGEM - 2 PESSOAS/1 DIARIA"), nunca a legenda crua.
+    const padronizada = classificacao.refeicao?.descricao || classificacao.hospedagem?.descricao;
+    const partes = [padronizada || String(legenda || classificacao.tipo_reconhecido?.nome || classificacao.tipo || "Despesa").trim()];
     if (dados) {
         if (dados.placa) partes.push(`Placa: ${dados.placa}`);
         if (dados.litragem) partes.push(`Litragem: ${numeroBr(dados.litragem)} ${dados.unidade}`);

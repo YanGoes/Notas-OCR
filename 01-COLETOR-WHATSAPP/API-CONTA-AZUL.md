@@ -11,8 +11,8 @@ Base: `https://api-v2.contaazul.com`
 | Endpoint | Retorno na conta de teste |
 | --- | --- |
 | `GET /v1/pessoas/conta-conectada` | Empresa vinculada — serve de teste de conexão |
-| `GET /v1/categorias?tamanho_pagina=200` | 123 categorias (110 do tipo `DESPESA`) |
-| `GET /v1/centro-de-custo` | Vazio — precisa cadastrar |
+| `GET /v1/categorias?tamanho_pagina=200` | 125 categorias (112 do tipo `DESPESA`) em 07/08/2026 |
+| `GET /v1/centro-de-custo` | 4 em 07/08/2026: `TESTE CC`, `CONSOL MG-050`, `CONSOL MG-259`, `Consol` |
 | `GET /v1/conta-financeira` | Vazio — precisa cadastrar |
 | `GET /v1/pessoa` | Cadastro de pessoas (fornecedores/clientes) |
 | `GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar` | Exige `data_vencimento_de` e `data_vencimento_ate` |
@@ -88,6 +88,41 @@ está errado, então ela não ajuda a encontrar o nome certo. Foram recusados: `
 Ou seja: a Captura **responde** com `composicao_valor`, mas o financeiro **exige** `detalhe_valor`.
 Não copie o nome de um para o outro.
 
+### A descrição do evento some — quem aparece é a da parcela
+
+Confirmado em 07/08/2026, por lançamento real. Mandamos `descricao: "ALMOÇO - 2 PESSOAS"` na raiz do
+evento e `descricao: "Parcela 1/1"` na parcela. Resultado: **`ALMOÇO - 2 PESSOAS` não aparece em
+endpoint nenhum.** A busca e o detalhe da parcela mostram `"Parcela 1/1"`, e o objeto `evento` do
+detalhe **não tem campo `descricao`**.
+
+Isso também explica o export `visao_contas_a_pagar`: ele é um export **de parcelas** (tem "Valor
+original da parcela", "Data de vencimento"), então a coluna "Descrição" que traz `ALMOÇO - 2 PESSOAS`
+no histórico é a descrição da **parcela**.
+
+**Repita o mesmo texto nos dois campos.** Só a parcela é visível; a do evento parece ser descartada.
+
+### A busca devolve parcelas, não eventos
+
+`.../contas-a-pagar/buscar` retorna `{ itens_totais, itens[], totais }`, e cada item é uma **parcela**:
+
+| Dado | Campo na busca |
+| --- | --- |
+| Valor | `total` (também `nao_pago`, `pago`) — **não** `valor` |
+| Descrição | `descricao` da parcela |
+| Categoria | `categorias[]` com `{id, nome}` |
+| Centro de custo | `centros_de_custo[]` com `{id, nome}` |
+
+Conferir por descrição+valor é frágil. O jeito exato está abaixo.
+
+### O protocolo reaparece como `evento.referencia.id`
+
+Este é o único elo entre o `POST` e o registro criado. O protocolo devolvido na criação volta em
+`GET /v1/financeiro/eventos-financeiros/parcelas/{idParcela}` no campo `evento.referencia.id`
+(com `evento.referencia.origem: "LANCAMENTO_FINANCEIRO"`).
+
+Então a conferência confiável é: buscar o dia, filtrar candidatos por valor, e abrir o detalhe de
+cada um até achar `evento.referencia.id === protocolo`. É o que `src/despesa-conta-azul.js` faz.
+
 ### A criação é assíncrona
 
 A resposta não traz o id da despesa:
@@ -111,6 +146,16 @@ GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar
 **Qualquer automação precisa fazer essa conferência**, senão vai achar que lançou despesas que
 foram descartadas.
 
+### A fila é lenta e irregular — não desista cedo
+
+Medido em 07/08/2026, com 17 lançamentos no mesmo dia: a grande maioria aparece na busca em ~3 s,
+mas **um deles levou mais de um minuto**. Conferir com 3 s e desistir faz concluir "descartado" o
+que estava apenas atrasado.
+
+Isso é perigoso pelo motivo óbvio: sem `DELETE` na API, quem relança "porque falhou" cria uma
+duplicata que não sai mais. Espere ao menos ~90 s antes de tratar como falha, e nunca relance
+automaticamente. É o que `confirmarComEspera()` faz, com escada de 3/5/8/15/30/30 s.
+
 ## Consultar o que foi lançado
 
 O detalhe de uma parcela é o retorno mais rico da API e foi ele que revelou os nomes dos campos:
@@ -127,12 +172,123 @@ Traz o evento com `rateio`, `rateio_centro_custo`, `valor_composicao`, `metodo_p
 
 | Campo | Situação |
 | --- | --- |
-| Fornecedor | Não conseguimos amarrar. Testados sem sucesso: `id_fornecedor`, `fornecedor:{id}`, `fornecedor:{uuid}`, `id_pessoa`, `pessoa:{id}`, `pessoa:{uuid}`, `uuid_fornecedor`, `uuid_pessoa`, `id_pessoa_fornecedor`. O lançamento nasce com `fornecedor: null`, mesmo com um id de fornecedor válido (`perfis: ["Fornecedor"]`). Provavelmente só é vinculado em outro momento, ou a despesa precisa nascer da Captura para ter fornecedor. |
+| Fornecedor | **Impossível pelo lançamento direto**, confirmado em 07/08/2026. Ver a seção abaixo. |
 | Conta financeira | `id_conta_financeira` é aceito sem erro mas fica `null`, tanto na raiz quanto na parcela. O campo existe na leitura; a hipótese é que só se define na **baixa** (pagamento), não na criação. |
-| Anexos | Existe o campo `anexos` na leitura, sempre `[]`. Não foi testado como enviar a imagem. |
+| Anexos | **Não é possível pela API pública.** Ver a seção abaixo. |
 
 Nenhum desses impede o fluxo principal: categoria e centro de custo — que é o que a legenda do
 operador fornece — funcionam.
+
+## Fornecedor: só a Captura amarra. Encerrado.
+
+Investigado à exaustão em 07/08/2026. **15 combinações** de nome de campo e formato de valor, no
+`POST` e no `PATCH`. Todas responderam **200** e todos os lançamentos nasceram com
+`fornecedor: {id: null, nome: null}`.
+
+| Valor testado | Campos |
+| --- | --- |
+| uuid novo da pessoa | `id_fornecedor`, `uuid_fornecedor`, `fornecedor` (string), `fornecedor:{uuid}`, `fornecedor:{id}`, `id_pessoa`, `uuid_pessoa` |
+| uuid legado | `id_fornecedor`, `fornecedor`, `fornecedor:{id}`, `id_pessoa` |
+| id legado numérico | `id_fornecedor` |
+| `codigo` da pessoa (`"0001"`) | `id_fornecedor`, `codigo_fornecedor`, `id_legado_fornecedor` |
+
+O que fecha a questão: o fornecedor que a **Captura** amarrou (`9b050ceb-…`) é o **uuid novo** da
+pessoa — conferido com `GET /v1/pessoas/9b050ceb-…`, que devolveu
+`RESTAURANTE SABOR CASEIRO LTDA`. Ou seja, o formato que mandávamos sempre esteve certo; o campo
+simplesmente **não é honrado na criação**. Mesmo comportamento do rateio no `PATCH`: aceita e
+ignora, e o 200 não significa nada.
+
+Só a **Captura** preenche, do lado do servidor, a partir do CNPJ lido no documento — ela chega a
+criar a pessoa sozinha. Mas não grava centro de custo; ver a tabela de comparação adiante.
+
+**Não gaste mais tempo aqui.** Se quiser fornecedor, é interface do ERP ou Captura.
+
+### De passagem: existe `/v1/pessoas/{uuid}` (plural), bem mais rico
+
+`GET /v1/pessoa` (singular) lista `{ uuid, nome, documento, id_legado, uuid_legado, perfis, ... }`.
+Já `GET /v1/pessoas/{uuid}` (plural) devolve **o `codigo` cadastrado no ERP** e o vínculo legado:
+
+```json
+{ "id": "c4428686-…", "nome": "Hoteis", "codigo": "0001",
+  "pessoas_legado": [{ "id": 518700847, "uuid": "53dc2867-…", "perfil": "Fornecedor" }] }
+```
+
+Atenção: `/v1/pessoa/{uuid}` (singular com id) devolve **502**, não 404. E os filtros `?busca=` e
+`?codigo=` na listagem são **ignorados** — devolvem a lista inteira. Filtre no cliente.
+
+## Anexo: não dá pela API pública
+
+Investigado a fundo em 07/08/2026. Três confirmações independentes:
+
+**1. Não existe rota de anexo na `api-v2`.** Nove formatos testados, todos 404 em `GET` e `POST`:
+`parcelas/{id}/anexos`, `/anexo`, `/arquivos`, `eventos-financeiros/{idEvento}/anexos`,
+`eventos-financeiros/anexos`, `financeiro/anexos`, `/v1/anexos`, `/v1/arquivos`, `/v1/documentos`.
+
+**2. O serviço real de anexos é interno e recusa o token OAuth.** Lendo os bundles do ERP
+(`app.contaazul.com/modules/common-lib/*/index.min.js`) aparecem as rotas verdadeiras:
+
+```
+https://services.contaazul.com/contaazul-bff/ca-gateway/v1/attachment-uploads
+https://services.contaazul.com/attachment-service/v1/files/{id}
+https://services.contaazul.com/contaazul-bff/ca-gateway/v1/attachment-downloads
+```
+
+Repare no host: `services.contaazul.com`, o BFF do ERP — **não** `api-v2.contaazul.com`. Com o
+mesmo Bearer que devolve 200 em `/v1/pessoas/conta-conectada`, as três respondem **401**. É a
+sessão do ERP que autentica ali, não o OAuth de integração.
+
+**3. Nem a Captura resolve.** Uma despesa criada a partir da Captura (imagem enviada e aceita)
+também volta com `anexos: []`. A imagem fica no documento da captura, não vira anexo da despesa
+na visão da API.
+
+Conclusão: para ter o comprovante grudado no lançamento é preciso a interface do ERP, ou uma
+credencial de sessão que a API pública não fornece.
+
+## PATCH da parcela funciona — e o campo é `versao`, não `version`
+
+`PATCH /v1/financeiro/eventos-financeiros/parcelas/{idParcela}` existe (o `PUT` dá 405).
+
+Sem versão ele responde **409** com `"Versão informada para o recurso é inválida / name: version"`.
+A mensagem diz `version`, em inglês, mas **o campo aceito é `versao`** — mandar `version` continua
+dando 409. A versão atual vem no `versao` do detalhe da parcela e incrementa a cada alteração
+(travamento otimista).
+
+```json
+PATCH /v1/financeiro/eventos-financeiros/parcelas/{id}
+{ "versao": 0, "descricao": "ALMOÇO - 2 PESSOAS" }
+```
+
+Aceita: `descricao`, `nota`, `vencimento`, `composicao_valor`, `data_pagamento_esperado`,
+`metodo_pagamento`.
+
+**Não aceita categoria nem centro de custo.** Testadas três formas (`rateio` completo,
+`id_categoria` solto, aninhado em `evento`): todas devolvem **200 e incrementam a versão**, mas o
+rateio não muda. Aceita e ignora — não confie no 200.
+
+Consequência prática: dá para corrigir a descrição de um lançamento depois de criado, mas
+**a categoria só se define na criação**.
+
+## A Captura atribui categoria e fornecedor (corrige nota anterior)
+
+A observação anterior de que a Captura "nunca traz categoria nem centro de custo" vale para a
+**prévia**, mas não para o resultado. Medido em 07/08/2026, ao aceitar uma captura de cupom:
+
+| Campo | Resultado |
+| --- | --- |
+| Categoria | **Preenchida pela IA** — `Refeição - Almoço`, o mesmo id que usamos |
+| Fornecedor | **Preenchido**, com id de pessoa criado (`RESTAURANTE SABOR CASEIRO LTDA`) |
+| Centro de custo | **Vazio** (`rateio_centro_custo: []`) |
+| Descrição | Gerada pela IA: `Almoço Executivo, Refrigerante e Couvert - ago/2026` |
+| Anexo | `[]` |
+
+Ou seja, Captura e lançamento direto se complementam mas nenhum entrega tudo:
+
+| | Descrição padronizada | Categoria | Centro de custo | Fornecedor |
+| --- | --- | --- | --- | --- |
+| Lançamento direto | sim | sim | **sim** | não |
+| Captura + aceite | não (mas `PATCH` corrige) | sim (pela IA) | **não** | sim |
+
+O centro de custo é o que decide de qual obra é a despesa, e só o lançamento direto o grava.
 
 ## O que dá para cadastrar pela API
 
@@ -159,6 +315,8 @@ Vale memorizar, porque custou caro:
 | --- | --- | --- |
 | Composição do valor | `detalhe_valor` | `valor_composicao` |
 | Centro de custo | `rateio_centro_custo[].id_centro_custo` | `centros_de_custo[]` (na busca) |
+| Valor da parcela | `detalhe_valor.valor_bruto` | `total` (na busca) |
+| Protocolo do POST | (resposta: `protocolo`) | `evento.referencia.id` (no detalhe da parcela) |
 
 ## Captura (extração por IA), para comparação
 
