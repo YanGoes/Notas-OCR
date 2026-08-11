@@ -218,6 +218,17 @@ async function aceitarCaptura(idCaptura) {
     return requisicao(`/v1/captura/${encodeURIComponent(idCaptura)}`, { method: "POST" });
 }
 
+async function buscarParcelasDoEvento(eventoId) {
+    return requisicao(`/v1/financeiro/eventos-financeiros/${encodeURIComponent(eventoId)}/parcelas`);
+}
+
+async function patchParcela(idParcela, corpo) {
+    return requisicao(
+        `/v1/financeiro/eventos-financeiros/parcelas/${encodeURIComponent(idParcela)}`,
+        opcoesJson("PATCH", corpo)
+    );
+}
+
 function moverConjunto(imagem, destino) {
     fs.mkdirSync(destino, { recursive: true });
     const base = imagem.replace(/\.[^.]+$/, "");
@@ -275,6 +286,7 @@ module.exports = {
     API_URL, TOKEN_URL, credenciais, trocarCodigo, tokenValido, requisicao,
     empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
     buscarContasPagar, obterParcelaFinanceira, obterPessoaPorId,
+    buscarParcelasDoEvento, patchParcela,
     enviarDocumento, aguardarCaptura, obterPreviaCaptura, aceitarCaptura,
     iniciarMonitor, descricaoDaImagem,
 };
