@@ -60,7 +60,22 @@ function carregarMapeamento() {
 }
 
 function carregarCategorias() {
-    return lerJson(path.join(RAIZ, "configuracao", "categorias.json"), []);
+    const configuradas = lerJson(path.join(RAIZ, "configuracao", "categorias.json"), []) || [];
+    const baixadas = lerJson(path.join(RAIZ, "dados", "conta-azul", "categorias-despesa.json"), []) || [];
+
+    const mapa = new Map();
+    for (const cat of baixadas) {
+        if (cat?.id && cat?.nome) {
+            mapa.set(normalizar(cat.nome), { id: cat.id, nome: cat.nome, nome_conta_azul: cat.nome });
+        }
+    }
+    for (const cat of configuradas) {
+        const chave = normalizar(cat.nome_conta_azul || cat.nome);
+        if (cat?.id && !cat.id.startsWith("PREENCHER_")) {
+            mapa.set(chave, { id: cat.id, nome: cat.nome, nome_conta_azul: cat.nome_conta_azul || cat.nome });
+        }
+    }
+    return Array.from(mapa.values());
 }
 
 function carregarCentrosCusto() {

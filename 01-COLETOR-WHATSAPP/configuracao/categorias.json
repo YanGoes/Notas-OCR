@@ -41,6 +41,18 @@
     "apelidos": []
   },
   {
+    "nome": "ALMOCO",
+    "nome_conta_azul": "Refeição - Almoço",
+    "id": "4515b867-b36f-4703-ab50-7a1d35c2096f",
+    "apelidos": ["almoco", "almoço", "refeicao - almoco"]
+  },
+  {
+    "nome": "JANTAR",
+    "nome_conta_azul": "Refeição - Jantar",
+    "id": "a844a3ff-ec6a-4b9e-b9b0-adc0df0ea40e",
+    "apelidos": ["jantar", "refeicao - jantar"]
+  },
+  {
     "nome": "OUTROS - REVISAO OBRIGATORIA",
     "id": "PREENCHER_UUID_CONTA_AZUL",
     "apelidos": []
