@@ -423,6 +423,12 @@ async function buscarLancamentoRecente(valor, data, opcoes = {}) {
  * @returns {Promise<{ id: string, versao: number, evento: object }>}
  * @throws {Error} — se não encontrar parcelas
  */
+function extrairNumVersao(obj) {
+    if (typeof obj?.versao === "number") return obj.versao;
+    if (typeof obj?.version === "number") return obj.version;
+    return 0;
+}
+
 async function buscarParcela(eventoId, opcoes = {}) {
     const { log = console.log } = opcoes;
 
@@ -435,10 +441,11 @@ async function buscarParcela(eventoId, opcoes = {}) {
 
         if (parcelas.length > 0) {
             const parcela = parcelas[0];
-            log(`[Enriquecedor] Parcela encontrada: id=${parcela.id}, versão=${parcela.versao || parcela.version || 1}`);
+            const v = extrairNumVersao(parcela);
+            log(`[Enriquecedor] Parcela encontrada: id=${parcela.id}, versão=${v}`);
             return {
                 id: parcela.id,
-                versao: parcela.versao || parcela.version || 1,
+                versao: v,
                 parcela,
             };
         }
@@ -447,18 +454,15 @@ async function buscarParcela(eventoId, opcoes = {}) {
         log(`[Enriquecedor] Tentando via obterParcelaFinanceira (fallback)...`);
     }
 
-    // Fallback: se o evento tem campo parcelas embutido (alguns retornos da API)
-    // ou se precisamos buscar pelo ID da parcela diretamente.
-    // Nesse caso, tentamos obter o detalhe da parcela usando o ID do evento
-    // como ID da parcela (em alguns cenários da API, o evento tem uma única
-    // parcela cujo ID pode ser o próprio ID do evento).
+    // Fallback: obter detalhe da parcela via obterParcelaFinanceira
     try {
         const detalhe = await contaAzul.obterParcelaFinanceira(eventoId);
         if (detalhe?.id) {
-            log(`[Enriquecedor] Parcela obtida via fallback: id=${detalhe.id}, versão=${detalhe.versao || 1}`);
+            const v = extrairNumVersao(detalhe);
+            log(`[Enriquecedor] Parcela obtida via fallback: id=${detalhe.id}, versão=${v}`);
             return {
                 id: detalhe.id,
-                versao: detalhe.versao || detalhe.version || 1,
+                versao: v,
                 parcela: detalhe,
             };
         }
@@ -515,7 +519,8 @@ async function atualizarParcela(parcelaId, versao, dados, opcoes = {}) {
     }
 
     const corpo = {
-        versao,
+        versao: Number(versao),
+        version: Number(versao),
         rateio: [itemRateio],
     };
 
