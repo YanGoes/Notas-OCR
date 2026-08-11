@@ -7,6 +7,7 @@ CONFIGURACAO
 - 04_CONECTAR_CONTA_AZUL.bat: configura e autoriza o Conta Azul.
 - 10_CONFIGURAR_IDS_CONTA_AZUL.bat: consulta e configura categorias e centros de custo.
 - 05_TESTAR_PIPELINE.bat: testa a leitura sem fazer lancamento financeiro.
+- 11_TESTAR_ENRIQUECEDOR.bat: testa a busca e enriquecimento via PATCH no Conta Azul.
 
 SERVIDOR
 - 06_ATIVAR_INICIO_AUTOMATICO.bat: inicia junto com o Windows.
