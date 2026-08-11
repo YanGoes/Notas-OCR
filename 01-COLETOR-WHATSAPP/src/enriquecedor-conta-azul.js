@@ -373,7 +373,8 @@ async function buscarLancamentoRecente(valor, data, opcoes = {}) {
                 const lancamento = itens[0];
                 log(`[Enriquecedor] Lançamento encontrado na tentativa ${tentativa}/${tentativas}: id=${lancamento.id}`);
                 log(`[Enriquecedor]   Descrição: ${lancamento.descricao || "(sem descrição)"}`);
-                log(`[Enriquecedor]   Valor: R$ ${lancamento.valor}`);
+                const valorExibicao = lancamento.valor ?? lancamento.valor_total ?? lancamento.valor_bruto ?? valor;
+                log(`[Enriquecedor]   Valor: R$ ${valorExibicao}`);
                 log(`[Enriquecedor]   Data competência: ${lancamento.data_competencia}`);
 
                 if (itens.length > 1) {
@@ -631,7 +632,7 @@ async function enriquecer(valor, data, contexto, opcoes = {}) {
         resultado.etapas.lancamento = {
             id: lancamento.id,
             descricao: lancamento.descricao,
-            valor: lancamento.valor,
+            valor: lancamento.valor ?? lancamento.valor_total ?? valor,
             data_competencia: lancamento.data_competencia,
         };
 
