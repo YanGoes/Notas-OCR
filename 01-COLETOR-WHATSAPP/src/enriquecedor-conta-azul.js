@@ -138,10 +138,15 @@ function resolverCategoria(textoOperador, textoVeiculo = null) {
     }
 
     // -----------------------------------------------------------------------
-    // 3. Se há veículo informado e o tipo é combustível/manutenção,
+    // 3. Se há veículo informado e o tipo É combustível ou manutenção,
     //    buscar a categoria específica do veículo
     // -----------------------------------------------------------------------
-    if (textoVeiculo && mapeamento.veiculos) {
+    const ehCombustivelOuManutencao = [
+        "combustivel", "abastecimento", "gasolina", "etanol", "diesel",
+        "manutencao", "oficina", "mecanica", "auto pecas", "veiculo", "carro"
+    ].includes(chave);
+
+    if (textoVeiculo && mapeamento.veiculos && ehCombustivelOuManutencao) {
         const veiculoNorm = normalizar(textoVeiculo);
         // Procura pela placa ou alias no mapeamento.json
         for (const [placa, info] of Object.entries(mapeamento.veiculos)) {
@@ -332,6 +337,8 @@ async function buscarLancamentoRecente(valor, data, opcoes = {}) {
     const filtros = {
         data_competencia_de: formatarData(dataInicio),
         data_competencia_ate: formatarData(dataFim),
+        data_vencimento_de: formatarData(dataInicio),
+        data_vencimento_ate: formatarData(dataFim),
         valor_de: String(Math.max(0, valor - toleranciaValor).toFixed(2)),
         valor_ate: String((valor + toleranciaValor).toFixed(2)),
         tamanho_pagina: 20,

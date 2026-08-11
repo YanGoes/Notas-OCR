@@ -49,11 +49,13 @@ function parseArgs(argv) {
         const arg = argv[i];
         if (arg.startsWith("--")) {
             const chave = arg.slice(2);
-            // Se o próximo argumento não é uma flag, é o valor
-            if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
-                args[chave] = argv[++i];
+            const valores = [];
+            while (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
+                valores.push(argv[++i]);
+            }
+            if (valores.length > 0) {
+                args[chave] = valores.join(" ");
             } else {
-                // Flag booleana
                 args[chave] = true;
             }
         }
