@@ -125,12 +125,21 @@ async function processar(imagem, opcoes) {
     gravarAtomico(auditoriaPath, final);
     duplicidade.confirmar();
     const pasta = validacoes.bloqueado ? "bloqueados" : validacoes.revisao_necessaria ? "revisao" : "simulacao";
-    moverConjunto(imagem, path.join(RAIZ, "dados", pasta));
+    const destinoPasta = path.join(RAIZ, "dados", pasta);
+    moverConjunto(imagem, destinoPasta);
+    const imagemMovida = path.join(destinoPasta, path.basename(imagem));
     console.log(`Pipeline: ${path.basename(imagem)} -> ${pasta.toUpperCase()}${validacoes.motivos.length ? ` (${validacoes.motivos.join(" ")})` : ""}`);
+    if (typeof aoProcessar === "function") {
+        try {
+            await aoProcessar(imagemMovida, final);
+        } catch (erroCallback) {
+            console.error(`Pipeline: erro no callback pos-processamento: ${erroCallback.message || erroCallback}`);
+        }
+    }
     return final;
 }
 
-async function processarPendentes(pastaEntrada, opcoes) {
+async function processarPendentes(pastaEntrada, opcoes, aoProcessar) {
     if (executando) return;
     executando = true;
     try {
@@ -145,7 +154,7 @@ async function processarPendentes(pastaEntrada, opcoes) {
         });
         for (const nome of arquivos) {
             const imagem = path.join(pastaEntrada, nome);
-            try { await processar(imagem, opcoes); }
+            try { await processar(imagem, opcoes, aoProcessar); }
             catch (erro) {
                 console.error(`Pipeline: erro em ${nome}: ${erro.message}`);
                 const temporario = /429|temporariamente|Tempo limite|nao configurado/i.test(erro.message);
@@ -160,11 +169,11 @@ async function processarPendentes(pastaEntrada, opcoes) {
     } finally { executando = false; }
 }
 
-function iniciarPipeline(pastaEntrada, opcoes) {
+function iniciarPipeline(pastaEntrada, opcoes, aoProcessar) {
     if (!opcoes?.habilitado) return;
     garantirPastas();
     console.log(`Pipeline Azure ativo em modo ${String(opcoes.modo || "simulacao").toUpperCase()}. Nenhum lancamento financeiro sera criado.`);
-    const rodar = () => processarPendentes(pastaEntrada, opcoes).catch((erro) => console.error("Pipeline:", erro.message));
+    const rodar = () => processarPendentes(pastaEntrada, opcoes, aoProcessar).catch((erro) => console.error("Pipeline:", erro.message));
     setTimeout(rodar, 1500);
     setInterval(rodar, Math.max(5, Number(opcoes.intervalo_segundos || 10)) * 1000);
 }

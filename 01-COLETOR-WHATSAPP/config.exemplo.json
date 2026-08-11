@@ -10,6 +10,7 @@
     "120363000000000000@g.us": "UUID_DO_CENTRO_NO_CONTA_AZUL"
   },
   "exigir_legenda": true,
+  "numero_conta_ai": "5511999999999",
   "aceitar_webp": false,
   "aguardar_comentario_segundos": 45,
   "janela_associacao_comentario_segundos": 45,

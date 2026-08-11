@@ -66,7 +66,66 @@ let deslogando = false;
 const fotosRecentes = [];
 const comentariosRecentes = [];
 fs.mkdirSync(config.pasta_saida, { recursive: true });
-iniciarPipeline(config.pasta_saida, { ...config.pipeline, aguardar_comentario_segundos: config.aguardar_comentario_segundos });
+async function encaminharParaContaAI(caminhoImagem, auditoria) {
+    const numeroContaAI = config.numero_conta_ai || process.env.NUMERO_CONTA_AI;
+    if (!numeroContaAI) return;
+    if (!socketAtual || estado.status !== "conectado") {
+        console.log("Conta AI WhatsApp: Socket desconectado ou indisponivel no momento. Nao foi possivel encaminhar.");
+        return;
+    }
+    let jid = String(numeroContaAI).trim();
+    if (!jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@g.us")) {
+        jid = `${jid.replace(/\D/g, "")}@s.whatsapp.net`;
+    }
+
+    try {
+        console.log(`Conta AI WhatsApp: Encaminhando foto ${path.basename(caminhoImagem)} para ${jid}...`);
+        const buffer = fs.readFileSync(caminhoImagem);
+        const extensao = path.extname(caminhoImagem).toLowerCase();
+        const mimetype = extensao === ".png" ? "image/png" : "image/jpeg";
+        const legendaFoto = auditoria.conta_azul?.descricao_sugerida
+            ? `Comprovante: ${auditoria.conta_azul.descricao_sugerida}`
+            : "Comprovante de despesa";
+
+        await socketAtual.sendMessage(jid, {
+            image: buffer,
+            mimetype,
+            caption: legendaFoto,
+        });
+        console.log(`Conta AI WhatsApp: Foto enviada com sucesso para ${jid}.`);
+
+        const partes = ["Nova Despesa:"];
+        if (auditoria.classificacao?.categoria_nome) {
+            partes.push(`- Categoria: ${auditoria.classificacao.categoria_nome}`);
+        }
+        if (auditoria.classificacao?.centro_custo_nome) {
+            partes.push(`- Centro de Custo: ${auditoria.classificacao.centro_custo_nome}`);
+        }
+        if (auditoria.operador?.conta_informada) {
+            partes.push(`- Forma de Pagamento: ${auditoria.operador.conta_informada}`);
+        }
+        if (auditoria.classificacao?.placa || auditoria.dados_abastecimento?.placa) {
+            partes.push(`- Veículo / Placa: ${auditoria.classificacao.placa || auditoria.dados_abastecimento.placa}`);
+        }
+        if (auditoria.conta_azul?.descricao_sugerida) {
+            partes.push(`- Descrição: ${auditoria.conta_azul.descricao_sugerida}`);
+        }
+        partes.push("\nPor favor, lance esta despesa utilizando exatamente os dados acima.");
+
+        const textoComando = partes.join("\n");
+        await new Promise((r) => setTimeout(r, 1500));
+        await socketAtual.sendMessage(jid, { text: textoComando });
+        console.log(`Conta AI WhatsApp: Instrucoes de comando enviadas em texto com sucesso para ${jid}.`);
+    } catch (erro) {
+        console.error("Conta AI WhatsApp: Erro ao encaminhar mensagem:", erro?.message || erro);
+    }
+}
+
+iniciarPipeline(
+    config.pasta_saida,
+    { ...config.pipeline, aguardar_comentario_segundos: config.aguardar_comentario_segundos },
+    encaminharParaContaAI
+);
 
 function limparNome(valor) {
     return String(valor || "")
