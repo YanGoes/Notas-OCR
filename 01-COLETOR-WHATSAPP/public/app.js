@@ -185,7 +185,12 @@ async function atualizarDocumentos() {
         doc.classificacao?.tipo ? `<span>Tipo reconhecido: <b>${escapar(doc.classificacao.tipo)}</b></span>` : "",
         doc.classificacao?.centro_custo_nome ? `<span>Centro de custo: <b>${escapar(doc.classificacao.centro_custo_nome)}</b>${doc.classificacao.centro_custo_origem === "grupo_whatsapp" ? " (padrao do grupo)" : ""}</span>` : "",
       ].filter(Boolean).join("");
-      return `<article class="documento"><div class="documento-imagem">${imagem}</div><div class="documento-conteudo"><div class="documento-topo"><strong>${escapar(doc.arquivo || "Comprovante")}</strong><span class="status-doc status-${escapar(doc.status)}">${escapar(rotuloStatus(doc.status))}</span></div><div class="legenda-doc">${escapar(doc.legenda || "Sem legenda informada")}</div><div class="dados-ocr"><span>Fornecedor: <b>${escapar(doc.ocr?.fornecedor || "Não identificado")}</b></span><span>Valor: <b>${moeda(doc.ocr?.valor)}</b></span><span>Data: <b>${escapar(formatarDataDocumento(doc.ocr?.data))}</b></span><span>Confiança: <b>${confianca}</b></span>${detalhes}</div>${sugestao}${motivos.length ? `<ul class="motivos">${motivos.map((m) => `<li>${escapar(m)}</li>`).join("")}</ul>` : ""}${blocoContaAzul(doc)}</div></article>`;
+      const zapStatus = doc.encaminhamento_whatsapp?.status === "ENVIADO"
+        ? `<span class="pill ok" style="font-size:0.8rem;">✅ Enviado p/ Conta AI (Zap)</span>`
+        : doc.encaminhamento_whatsapp?.status === "ERRO"
+          ? `<span class="pill erro" style="font-size:0.8rem;" title="${escapar(doc.encaminhamento_whatsapp.erro || "")}">❌ Falha no envio Zap</span>`
+          : "";
+      return `<article class="documento"><div class="documento-imagem">${imagem}</div><div class="documento-conteudo"><div class="documento-topo"><strong>${escapar(doc.arquivo || "Comprovante")}</strong>${zapStatus}<span class="status-doc status-${escapar(doc.status)}">${escapar(rotuloStatus(doc.status))}</span></div><div class="legenda-doc">${escapar(doc.legenda || "Sem legenda informada")}</div><div class="dados-ocr"><span>Fornecedor: <b>${escapar(doc.ocr?.fornecedor || "Não identificado")}</b></span><span>Valor: <b>${moeda(doc.ocr?.valor)}</b></span><span>Data: <b>${escapar(formatarDataDocumento(doc.ocr?.data))}</b></span><span>Confiança: <b>${confianca}</b></span>${detalhes}</div>${sugestao}${motivos.length ? `<ul class="motivos">${motivos.map((m) => `<li>${escapar(m)}</li>`).join("")}</ul>` : ""}${blocoContaAzul(doc)}</div></article>`;
     }).join("");
     ativarAcoesContaAzul(lista);
   } catch (erro) { console.error(erro); }

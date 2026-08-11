@@ -87,6 +87,7 @@ function documentosRecentes(dataFiltro = "") {
                     legenda: dados.legenda_original, recebido_em: dados.recebido_em || dados.processado_em,
                     ocr: dados.ocr || {}, classificacao: dados.classificacao || {}, aprendizado: dados.aprendizado_historico || null, validacoes: dados.validacoes || {},
                     conta_azul: dados.conta_azul || { status: "NAO_ENVIADO" },
+                    encaminhamento_whatsapp: dados.encaminhamento_whatsapp || null,
                     envio_conta_azul: filaContaAzul.get(base) || null,
                 });
             } catch (_) { /* ignora JSON incompleto */ }

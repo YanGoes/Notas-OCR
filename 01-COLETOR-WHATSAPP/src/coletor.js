@@ -68,10 +68,11 @@ const comentariosRecentes = [];
 fs.mkdirSync(config.pasta_saida, { recursive: true });
 async function encaminharParaContaAI(caminhoImagem, auditoria) {
     const numeroContaAI = config.numero_conta_ai || process.env.NUMERO_CONTA_AI;
-    if (!numeroContaAI) return;
+    if (!numeroContaAI) {
+        throw new Error("Número do Conta AI não configurado em config.json ('numero_conta_ai').");
+    }
     if (!socketAtual || estado.status !== "conectado") {
-        console.log("Conta AI WhatsApp: Socket desconectado ou indisponivel no momento. Nao foi possivel encaminhar.");
-        return;
+        throw new Error("WhatsApp não está conectado. Conecte o WhatsApp no painel antes de encaminhar.");
     }
     let digitos = String(numeroContaAI).replace(/\D/g, "");
     if (digitos.length === 10 || digitos.length === 11) {
@@ -82,12 +83,15 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
         jid = `${digitos}@s.whatsapp.net`;
     }
 
+    const baseName = path.parse(caminhoImagem).name;
+    const auditoriaPath = path.join(RAIZ, "dados", "auditoria", `${baseName}.json`);
+
     try {
         console.log(`Conta AI WhatsApp: Encaminhando foto ${path.basename(caminhoImagem)} para ${jid}...`);
         const buffer = fs.readFileSync(caminhoImagem);
         const extensao = path.extname(caminhoImagem).toLowerCase();
         const mimetype = extensao === ".png" ? "image/png" : "image/jpeg";
-        const legendaFoto = auditoria.conta_azul?.descricao_sugerida
+        const legendaFoto = auditoria?.conta_azul?.descricao_sugerida
             ? `Comprovante: ${auditoria.conta_azul.descricao_sugerida}`
             : "Comprovante de despesa";
 
@@ -99,19 +103,19 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
         console.log(`Conta AI WhatsApp: Foto enviada com sucesso para ${jid}.`);
 
         const partes = ["Nova Despesa:"];
-        if (auditoria.classificacao?.categoria_nome) {
+        if (auditoria?.classificacao?.categoria_nome) {
             partes.push(`- Categoria: ${auditoria.classificacao.categoria_nome}`);
         }
-        if (auditoria.classificacao?.centro_custo_nome) {
+        if (auditoria?.classificacao?.centro_custo_nome) {
             partes.push(`- Centro de Custo: ${auditoria.classificacao.centro_custo_nome}`);
         }
-        if (auditoria.operador?.conta_informada) {
+        if (auditoria?.operador?.conta_informada) {
             partes.push(`- Forma de Pagamento: ${auditoria.operador.conta_informada}`);
         }
-        if (auditoria.classificacao?.placa || auditoria.dados_abastecimento?.placa) {
+        if (auditoria?.classificacao?.placa || auditoria?.dados_abastecimento?.placa) {
             partes.push(`- Veículo / Placa: ${auditoria.classificacao.placa || auditoria.dados_abastecimento.placa}`);
         }
-        if (auditoria.conta_azul?.descricao_sugerida) {
+        if (auditoria?.conta_azul?.descricao_sugerida) {
             partes.push(`- Descrição: ${auditoria.conta_azul.descricao_sugerida}`);
         }
         partes.push("\nPor favor, lance esta despesa utilizando exatamente os dados acima.");
@@ -120,8 +124,35 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
         await new Promise((r) => setTimeout(r, 1500));
         await socketAtual.sendMessage(jid, { text: textoComando });
         console.log(`Conta AI WhatsApp: Instrucoes de comando enviadas em texto com sucesso para ${jid}.`);
+
+        if (fs.existsSync(auditoriaPath)) {
+            try {
+                const aud = JSON.parse(fs.readFileSync(auditoriaPath, "utf8"));
+                aud.encaminhamento_whatsapp = {
+                    status: "ENVIADO",
+                    enviado_em: new Date().toISOString(),
+                    destino: jid,
+                    erro: null,
+                };
+                fs.writeFileSync(auditoriaPath, JSON.stringify(aud, null, 2), "utf8");
+            } catch (_) {}
+        }
+        return { ok: true, mensagem: `✅ Comprovante enviado com sucesso para o Conta AI (${jid})!` };
     } catch (erro) {
         console.error("Conta AI WhatsApp: Erro ao encaminhar mensagem:", erro?.message || erro);
+        if (fs.existsSync(auditoriaPath)) {
+            try {
+                const aud = JSON.parse(fs.readFileSync(auditoriaPath, "utf8"));
+                aud.encaminhamento_whatsapp = {
+                    status: "ERRO",
+                    tentado_em: new Date().toISOString(),
+                    destino: jid,
+                    erro: erro?.message || String(erro),
+                };
+                fs.writeFileSync(auditoriaPath, JSON.stringify(aud, null, 2), "utf8");
+            } catch (_) {}
+        }
+        throw new Error(`❌ Falha ao enviar para o Conta AI via WhatsApp: ${erro?.message || erro}`);
     }
 }
 
