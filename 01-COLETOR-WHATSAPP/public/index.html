@@ -52,8 +52,16 @@
       <div class="conta-links"><a href="https://app.contaazul.com/" target="_blank" rel="noreferrer">Abrir Conta Azul</a><span>Isto é apenas o caminho de conferência: prévia em Conta AI Captura; lançamento criado em Financeiro → Contas a pagar.</span></div>
     </section>
     <section class="card documentos-card">
-      <div class="card-title"><div><span class="step">4</span><h2>Comprovantes em tempo real</h2></div><span class="live-indicator">● AO VIVO</span></div>
+      <div class="card-title"><div><span class="step">4</span><h2>Comprovantes em tempo real</h2></div><div class="actions compact"><button id="encaminharTodosZap" class="primary" type="button">Encaminhar TODAS p/ Conta AI (Zap)</button><span class="live-indicator">● AO VIVO</span></div></div>
       <p class="muted">Imagens, legendas, leitura automática e dúvidas aparecem aqui sem precisar atualizar a página.</p>
+      <div class="upload-box" style="margin: 1rem 0; padding: 1rem; border: 2px dashed #ccc; border-radius: 8px; background: rgba(0,0,0,0.02);">
+        <h4 style="margin: 0 0 0.5rem 0;">📤 Enviar nota específica (Upload Manual direto da Tela)</h4>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+          <input type="file" id="uploadArquivoInput" accept="image/*,.pdf" style="flex: 1; min-width: 200px;">
+          <input type="text" id="uploadLegendaInput" placeholder="Legenda opcional (ex: almoco consol mg-050)" style="flex: 2; min-width: 250px; padding: 0.4rem;">
+          <button id="uploadNotaBtn" class="secondary" type="button">Subir Nota</button>
+        </div>
+      </div>
       <div class="date-filter"><label for="filtroData">Filtrar pelo dia recebido</label><input id="filtroData" type="date"><button id="filtrarHoje" class="secondary" type="button">Hoje</button><button id="mostrarTodos" class="ghost" type="button">Mostrar todos</button></div>
       <div id="documentosLista" class="documentos-lista"><div class="empty">Aguardando o primeiro comprovante do WhatsApp.</div></div>
     </section>

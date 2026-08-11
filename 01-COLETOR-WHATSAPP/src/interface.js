@@ -174,6 +174,64 @@ app.get("/api/documentos/:base/imagem", (req, res, next) => {
         return res.sendFile(imagem.caminho);
     } catch (erro) { return next(erro); }
 });
+
+app.post("/api/documentos/upload", (req, res, next) => {
+    try {
+        const { arquivo_base64, nome_arquivo, legenda } = req.body || {};
+        if (!arquivo_base64 || !nome_arquivo) throw new Error("Arquivo ou nome ausente.");
+        const buffer = Buffer.from(arquivo_base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+        const ext = path.extname(nome_arquivo).toLowerCase();
+        if (![".jpg", ".jpeg", ".png", ".bmp", ".pdf"].includes(ext)) throw new Error("Extensao nao suportada.");
+
+        const entrada = path.join(RAIZ, "dados", "entrada");
+        fs.mkdirSync(entrada, { recursive: true });
+        const agora = Date.now();
+        const baseLimpa = path.parse(nome_arquivo).name.replace(/[^a-z0-9_-]/gi, "_").slice(0, 40);
+        const nomeFinal = `manual_${agora}_${baseLimpa}${ext}`;
+        const caminhoImagem = path.join(entrada, nomeFinal);
+        fs.writeFileSync(caminhoImagem, buffer);
+        fs.writeFileSync(path.join(entrada, `manual_${agora}_${baseLimpa}.json`), JSON.stringify({
+            legenda: legenda || null,
+            remetente: "Upload Manual Web",
+            id_mensagem: `manual-${agora}`,
+            recebido_em_ms: agora,
+        }, null, 2), "utf8");
+
+        res.json({ ok: true, mensagem: "Arquivo enviado com sucesso para processamento!" });
+    } catch (erro) { next(erro); }
+});
+
+app.post("/api/documentos/:base/encaminhar-conta-ai", async (req, res, next) => {
+    try {
+        const base = String(req.params.base || "");
+        const imagem = localizarImagem(base);
+        if (!imagem) throw new Error("Imagem nao encontrada.");
+        const auditoriaPath = path.join(RAIZ, "dados", "auditoria", `${base}.json`);
+        const auditoria = fs.existsSync(auditoriaPath) ? JSON.parse(fs.readFileSync(auditoriaPath, "utf8")) : {};
+        await whatsapp.encaminharParaContaAI(imagem.caminho, auditoria);
+        res.json({ ok: true, mensagem: "Comprovante e instrucoes encaminhados ao Conta AI no WhatsApp." });
+    } catch (erro) { next(erro); }
+});
+
+app.post("/api/documentos/encaminhar-todos-conta-ai", async (req, res, next) => {
+    try {
+        const documentos = documentosRecentes();
+        const simulacao = documentos.filter((d) => d.status === "simulacao");
+        if (!simulacao.length) throw new Error("Nenhum comprovante pronto na fila de simulação.");
+        let contagem = 0;
+        for (const doc of simulacao) {
+            const imagem = localizarImagem(doc.base);
+            if (imagem) {
+                const auditoriaPath = path.join(RAIZ, "dados", "auditoria", `${doc.base}.json`);
+                const auditoria = fs.existsSync(auditoriaPath) ? JSON.parse(fs.readFileSync(auditoriaPath, "utf8")) : {};
+                await whatsapp.encaminharParaContaAI(imagem.caminho, auditoria);
+                contagem++;
+                await new Promise((r) => setTimeout(r, 2000));
+            }
+        }
+        res.json({ ok: true, quantidade: contagem, mensagem: `${contagem} comprovante(s) encaminhado(s) ao Conta AI no WhatsApp.` });
+    } catch (erro) { next(erro); }
+});
 app.put("/api/grupos", (req, res, next) => {
     try {
         if (!Array.isArray(req.body?.grupos)) throw new Error("Lista de grupos invalida.");

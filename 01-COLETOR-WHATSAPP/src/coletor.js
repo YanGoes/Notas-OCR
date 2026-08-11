@@ -73,9 +73,13 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
         console.log("Conta AI WhatsApp: Socket desconectado ou indisponivel no momento. Nao foi possivel encaminhar.");
         return;
     }
+    let digitos = String(numeroContaAI).replace(/\D/g, "");
+    if (digitos.length === 10 || digitos.length === 11) {
+        digitos = `55${digitos}`;
+    }
     let jid = String(numeroContaAI).trim();
     if (!jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@g.us")) {
-        jid = `${jid.replace(/\D/g, "")}@s.whatsapp.net`;
+        jid = `${digitos}@s.whatsapp.net`;
     }
 
     try {
@@ -384,5 +388,7 @@ module.exports = {
         grupos_permitidos: [...gruposPermitidos],
         nomes_dos_grupos: { ...config.nomes_dos_grupos },
         centros_custo_por_grupo: { ...config.centros_custo_por_grupo },
+        numero_conta_ai: config.numero_conta_ai || "",
     }),
+    encaminharParaContaAI,
 };

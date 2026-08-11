@@ -118,14 +118,13 @@ function blocoContaAzul(doc) {
   const resumoPrevia = previa.valor ? `<div class="ca-preview"><span>Prévia Conta Azul</span><b>${moeda(previa.valor)}</b><span>${escapar(formatarDataDocumento(previa.data_competencia))}</span><span>${escapar(previa.fornecedor?.nome || "Fornecedor não vinculado")}</span><span>${escapar(previa.categoria?.nome || "Categoria ausente")}</span><span>${escapar(previa.centro_custo?.nome || "Centro ausente")}</span></div>` : "";
   const divergencias = Array.isArray(conta.divergencias) && conta.divergencias.length
     ? `<ul class="ca-divergencias">${conta.divergencias.map((item) => `<li>${escapar(item)}</li>`).join("")}</ul>` : "";
-  const desabilitado = empresaConfirmada ? "" : "disabled title=\"Confirme primeiro a empresa do Conta Azul\"";
-  let acao = "";
+  let acao = `<button class="primary ca-zap" data-base="${escapar(doc.base)}">Encaminhar p/ Conta AI (Zap)</button>`;
   if (acaoPeloCartaoLiberada && ["NAO_ENVIADO", "ERRO_PREPARACAO"].includes(status) && envio.pronto) {
-    acao = `<button class="secondary ca-preparar" data-base="${escapar(doc.base)}" ${desabilitado}>Preparar no Conta Azul</button>`;
+    acao += `<button class="secondary ca-preparar" data-base="${escapar(doc.base)}" ${desabilitado}>Preparar no Conta Azul</button>`;
   } else if (acaoPeloCartaoLiberada && status === "PREVIA_CONFERIDA") {
-    acao = `<button class="primary ca-confirmar" data-base="${escapar(doc.base)}" data-token="${escapar(conta.token_confirmacao || "")}" ${desabilitado}>Criar despesa</button>`;
+    acao += `<button class="primary ca-confirmar" data-base="${escapar(doc.base)}" data-token="${escapar(conta.token_confirmacao || "")}" ${desabilitado}>Criar despesa</button>`;
   } else if (acaoPeloCartaoLiberada && ["PREVIA_DIVERGENTE", "PREPARACAO_INCERTA", "CONFIRMACAO_INCERTA"].includes(status)) {
-    acao = `<button class="ghost ca-verificar" data-base="${escapar(doc.base)}" ${desabilitado}>Verificar status</button>`;
+    acao += `<button class="ghost ca-verificar" data-base="${escapar(doc.base)}" ${desabilitado}>Verificar status</button>`;
   }
   const complemento = ["CONFIRMADO", "PILOTO_VALIDADO_NO_ERP"].includes(status)
     ? (String(conta.evento_id || "").trim()
@@ -142,6 +141,7 @@ function blocoContaAzul(doc) {
 }
 
 function ativarAcoesContaAzul(lista) {
+  lista.querySelectorAll(".ca-zap").forEach((botao) => { botao.onclick = () => encaminharNotaZap(botao.dataset.base); });
   lista.querySelectorAll(".ca-preparar").forEach((botao) => { botao.onclick = () => prepararDocumentoContaAzul(botao.dataset.base); });
   lista.querySelectorAll(".ca-confirmar").forEach((botao) => { botao.onclick = () => confirmarDocumentoContaAzul(botao.dataset.base, botao.dataset.token); });
   lista.querySelectorAll(".ca-verificar").forEach((botao) => { botao.onclick = () => verificarDocumentoContaAzul(botao.dataset.base); });
@@ -580,6 +580,54 @@ async function confirmarTodosContaAzul() {
   } catch (erro) { aviso(erro.message, true); }
 }
 
+async function encaminharNotaZap(base) {
+  try {
+    aviso("Encaminhando comprovante e instruções ao Conta AI no WhatsApp...");
+    const res = await api(`/api/documentos/${encodeURIComponent(base)}/encaminhar-conta-ai`, { method: "POST" });
+    aviso(res.mensagem || "Encaminhado com sucesso!");
+  } catch (erro) { aviso(erro.message, true); }
+}
+
+async function encaminharTodasZap() {
+  try {
+    if (!confirm("Deseja encaminhar TODOS os comprovantes aprovados para o Conta AI no WhatsApp?")) return;
+    aviso("Encaminhando todos os comprovantes para o Conta AI...");
+    const res = await api("/api/documentos/encaminhar-todos-conta-ai", { method: "POST" });
+    aviso(res.mensagem || "Todas as notas foram encaminhadas com sucesso!");
+  } catch (erro) { aviso(erro.message, true); }
+}
+
+async function subirNotaManual() {
+  const input = $("uploadArquivoInput");
+  const legendaInput = $("uploadLegendaInput");
+  if (!input || !input.files || !input.files[0]) {
+    aviso("Por favor, selecione um arquivo de nota/comprovante primeiro.", true);
+    return;
+  }
+  const arquivo = input.files[0];
+  const legenda = legendaInput ? legendaInput.value.trim() : "";
+  aviso(`Lendo e enviando arquivo ${arquivo.name}...`);
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const res = await api("/api/documentos/upload", {
+        method: "POST",
+        body: JSON.stringify({
+          arquivo_base64: reader.result,
+          nome_arquivo: arquivo.name,
+          legenda: legenda || null,
+        }),
+      });
+      aviso(res.mensagem || "Nota enviada com sucesso!");
+      input.value = "";
+      if (legendaInput) legendaInput.value = "";
+      assinaturaDocumentos = "";
+      atualizarDocumentos();
+    } catch (erro) { aviso(erro.message, true); }
+  };
+  reader.readAsDataURL(arquivo);
+}
+
 $("conectar").onclick = async () => { try { await api("/api/whatsapp/conectar", { method: "POST" }); aviso("Conexao iniciada."); } catch (erro) { aviso(erro.message, true); } atualizar(); };
 $("desconectar").onclick = async () => {
   if (!confirm("Sair do WhatsApp neste computador? Um novo QR Code sera necessario.")) return;
@@ -598,6 +646,8 @@ $("sincronizarCentros").onclick = sincronizarCentrosContaAzul;
 $("criarCentro").onclick = criarCentroContaAzul;
 $("prepararTodos").onclick = prepararTodosContaAzul;
 $("confirmarTodos").onclick = confirmarTodosContaAzul;
+if ($("uploadNotaBtn")) $("uploadNotaBtn").onclick = subirNotaManual;
+if ($("encaminharTodosZap")) $("encaminharTodosZap").onclick = encaminharTodasZap;
 $("notaPiloto").addEventListener("change", () => { notaPilotoSelecionada = $("notaPiloto").value; renderizarTestePiloto(); });
 $("acaoNotaPiloto").onclick = executarAcaoNotaPiloto;
 $("filtroData").addEventListener("change", () => { assinaturaDocumentos = ""; atualizarDocumentos(); });
