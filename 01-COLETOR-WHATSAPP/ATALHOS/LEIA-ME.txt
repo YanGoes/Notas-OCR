@@ -1,21 +1,47 @@
-USO NORMAL
-1. Na primeira vez, execute 01_INSTALAR_E_INICIAR.bat.
-2. Nas proximas vezes, execute 02_ABRIR_APLICATIVO.bat.
+ATALHOS DA CENTRAL DE DESPESAS
+==============================
 
-CONFIGURACAO
-- 03_CONFIGURAR_AZURE.bat: informa endpoint e chave do Azure.
-- 04_CONECTAR_CONTA_AZUL.bat: configura e autoriza o Conta Azul.
-- 10_CONFIGURAR_IDS_CONTA_AZUL.bat: consulta e configura categorias e centros de custo.
-- 05_TESTAR_PIPELINE.bat: testa a leitura sem fazer lancamento financeiro.
-- 11_TESTAR_ENRIQUECEDOR.bat: testa a busca e enriquecimento via PATCH no Conta Azul.
+No dia a dia voce nao precisa desta pasta. Use os dois atalhos que estao na
+pasta principal do programa:
 
-SERVIDOR
-- 06_ATIVAR_INICIO_AUTOMATICO.bat: inicia junto com o Windows.
-- 07_REMOVER_INICIO_AUTOMATICO.bat: desfaz a configuracao anterior.
+  INICIAR.bat           -> primeira instalacao (instala Node.js e bibliotecas)
+  ABRIR_APLICATIVO.bat  -> uso diario (abre na bandeja do Windows)
 
-IA
-- 08_TREINAR_IA.bat: treina com a planilha historica no caminho ja configurado.
-- Para usar outra planilha, arraste o arquivo .xls ou .xlsx sobre o BAT.
+Esta pasta guarda as tarefas ocasionais, na ordem em que costumam ser usadas.
 
-ENVIO
-- 09_GERAR_PACOTE_PARA_ENVIO.bat: cria o ZIP para outro computador.
+
+COMECAR
+  01_INSTALAR_E_INICIAR.bat   Primeira vez: instala tudo e abre o programa.
+  02_ABRIR_APLICATIVO.bat     Abre o programa no dia a dia.
+
+CONFIGURAR (uma vez, ou quando algo mudar)
+  03_CONFIGURAR_AZURE.bat            Endpoint e chave do Azure (leitura das notas).
+  04_CONECTAR_CONTA_AZUL.bat         Autoriza o acesso ao Conta Azul (OAuth).
+  05_CONFIGURAR_IDS_CONTA_AZUL.bat   Baixa categorias e centros de custo do
+                                     Conta Azul e atualiza o programa.
+                                     Rode sempre que criar categoria nova.
+
+TESTAR (nao cria despesa de verdade)
+  06_TESTAR_PIPELINE.bat        Le as notas em dados/entrada e mostra o
+                                resultado, sem lancar nada.
+  07_TESTAR_ENRIQUECEDOR.bat    Testa a busca de lancamento no Conta Azul.
+                                Sem a opcao --executar, nao altera nada.
+  08_SUBIR_NOTA.bat             Coloca uma foto na fila manualmente, sem
+                                passar pelo WhatsApp.
+
+DEIXAR RODANDO SOZINHO
+  09_ATIVAR_INICIO_AUTOMATICO.bat    Abre junto com o Windows.
+  10_REMOVER_INICIO_AUTOMATICO.bat   Desfaz o item acima.
+
+OUTROS
+  11_GERAR_PACOTE_PARA_ENVIO.bat  Gera um .zip do projeto sem fotos, sem
+                                  sessao do WhatsApp e sem credenciais.
+  12_TREINAR_IA.bat               Treina o apoio historico com a planilha de
+                                  lancamentos. Para usar outra planilha,
+                                  arraste o .xls ou .xlsx sobre o arquivo.
+
+
+ONDE ESTA O RESTO
+  ..\README.md   Como usar o programa, do inicio ao fim.
+  ..\docs\       Documentacao tecnica (API do Conta Azul, regras de
+                 classificacao, proximos passos).

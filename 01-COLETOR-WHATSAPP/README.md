@@ -20,7 +20,7 @@ Ele **não cria lançamentos no Conta Azul**. A integração financeira continua
 
 ## Primeiro teste do pipeline Azure
 
-1. Dê dois cliques em `CONFIGURAR_AZURE.bat`.
+1. Dê dois cliques em `ATALHOS\03_CONFIGURAR_AZURE.bat`.
 2. Preencha no `.env`:
 
 ```env
@@ -40,7 +40,7 @@ AZURE_DOCUMENT_MODEL_ID=prebuilt-receipt
 }
 ```
 
-5. Dê dois cliques em `TESTAR_PIPELINE.bat`.
+5. Dê dois cliques em `ATALHOS\06_TESTAR_PIPELINE.bat`.
 6. Confira o resultado em `dados/auditoria`. O conjunto será movido para:
 
 - `dados/simulacao`: passou em todas as regras;
@@ -95,8 +95,7 @@ Use o sincronizador descrito abaixo para fazer isso sem copiar UUIDs manualmente
 
 ### Configurar os IDs sem copiar UUIDs manualmente
 
-Depois de conectar a conta, dê dois cliques em **`CONFIGURAR_IDS_CONTA_AZUL.bat`** (ou em
-`ATALHOS\10_CONFIGURAR_IDS_CONTA_AZUL.bat`). A ferramenta:
+Depois de conectar a conta, dê dois cliques em **`ATALHOS\05_CONFIGURAR_IDS_CONTA_AZUL.bat`**. A ferramenta:
 
 1. consulta, somente por `GET`, as categorias de **DESPESA** e os centros de custo ativos da conta conectada;
 2. permite pesquisar uma categoria pelo nome e selecionar o resultado correto;
@@ -162,7 +161,7 @@ Para treinar novamente depois de acrescentar ou corrigir lançamentos na planilh
 npm.cmd run treinar-historico -- "C:\caminho\para\visao_contas_a_pagar.xls"
 ```
 
-O comando precisa ser executado dentro da pasta do projeto. Para evitar erro de pasta ou caminho, use diretamente `ATALHOS\08_TREINAR_IA.bat`: ele entra na pasta correta, instala a biblioteca de leitura e utiliza a planilha histórica já configurada. Também é possível arrastar outra planilha sobre esse BAT.
+O comando precisa ser executado dentro da pasta do projeto. Para evitar erro de pasta ou caminho, use diretamente `ATALHOS\12_TREINAR_IA.bat`: ele entra na pasta correta, instala a biblioteca de leitura e utiliza a planilha histórica já configurada. Também é possível arrastar outra planilha sobre esse BAT.
 
 O modelo atualizado fica em `configuracao/modelo-historico.json` e o relatório detalhado em `dados/aprendizado/relatorio-treinamento.json`. O sistema nunca deve aprender com as próprias previsões; somente lançamentos conferidos por uma pessoa devem voltar para o próximo treinamento.
 
@@ -212,6 +211,30 @@ Depois da primeira instalação pelo `INICIAR.bat`, use `ABRIR_APLICATIVO.bat` n
 
 Os grupos escolhidos ficam salvos em `config.json` e são carregados automaticamente no painel. Não é necessário atualizar ou salvar a lista a cada execução; esses botões servem somente para alterar a seleção.
 
+
+## Onde fica cada coisa
+
+```text
+INICIAR.bat            Primeira instalacao (instala Node.js e bibliotecas)
+ABRIR_APLICATIVO.bat   Uso diario: abre o programa na bandeja do Windows
+README.md              Este guia
+
+ATALHOS/               Tarefas ocasionais, numeradas na ordem de uso
+                       (configurar Azure e Conta Azul, testar, treinar)
+docs/                  Documentacao tecnica
+                       API-CONTA-AZUL.md ......... contrato da API, testado
+                       REGRAS-CLASSIFICACAO.md ... como a despesa e classificada
+                       PROXIMOS-PASSOS.md ........ o que ficou para depois
+configuracao/          Regras e mapeamentos (categorias, centros, veiculos)
+src/                   Codigo do programa
+public/                Painel que abre no navegador
+ferramentas/           Comandos de linha (testes e manutencao)
+scripts/               Scripts do Windows usados pelos atalhos
+testes/                Testes automatizados
+dados/                 Notas processadas e auditoria (nao versionado)
+legado/                Versoes antigas, mantidas so para consulta
+```
+
 ## Configuração
 
 Edite `config.json` com o Bloco de Notas:
@@ -241,7 +264,7 @@ Por segurança, a integração e a criação automática de despesas começam de
 
 1. Crie uma aplicação no [Portal do Desenvolvedor Conta Azul](https://developers-portal.contaazul.com/).
 2. Cadastre uma URL de redirecionamento e anote exatamente essa URL, o `client_id` e o `client_secret`.
-3. Dê dois cliques em `CONECTAR_CONTA_AZUL.bat`.
+3. Dê dois cliques em `ATALHOS\04_CONECTAR_CONTA_AZUL.bat`.
 4. Preencha o `.env`, salve, autorize pelo endereço exibido e cole o parâmetro `code` solicitado.
 
 O código de autorização expira rapidamente. Se a troca falhar, execute a conexão novamente. As credenciais ficam em `.env` e os tokens em `tokens_conta_azul.json`; nunca envie esses arquivos.
@@ -256,7 +279,7 @@ Para validar a conexão, execute:
 npm run conta-azul:testar
 ```
 
-Depois, execute `CONFIGURAR_IDS_CONTA_AZUL.bat` para selecionar as categorias e importar os centros
+Depois, execute `ATALHOS\05_CONFIGURAR_IDS_CONTA_AZUL.bat` para selecionar as categorias e importar os centros
 de custo da própria empresa. Essa etapa resolve os avisos “ID do Conta Azul ainda não foi configurado”.
 
 ### 2. Confirmar a empresa conectada
@@ -326,7 +349,7 @@ Copie o ID exibido para `grupos_permitidos` e, opcionalmente, associe um nome em
 
 ## O que enviar ao gestor
 
-Para criar automaticamente um `.zip` seguro, dê dois cliques em **`GERAR_PACOTE_PARA_ENVIO.bat`**. O arquivo será criado na pasta do projeto sem sessões, bibliotecas instaladas ou fotos.
+Para criar automaticamente um `.zip` seguro, dê dois cliques em **`ATALHOS\11_GERAR_PACOTE_PARA_ENVIO.bat`**. O arquivo será criado na pasta do projeto sem sessões, bibliotecas instaladas ou fotos.
 
 Se preferir fazer manualmente, envie estes itens compactados em `.zip`:
 
