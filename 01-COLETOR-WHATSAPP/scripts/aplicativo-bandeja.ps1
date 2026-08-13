@@ -26,8 +26,24 @@ function Porta-Ativa {
 function Iniciar-Servidor {
     if (Porta-Ativa) { return }
     $env:NAO_ABRIR_NAVEGADOR = "1"
-    $script = Join-Path $raizProjeto "src\interface.js"
-    $script:processoNode = Start-Process -FilePath $node -ArgumentList $script -WorkingDirectory $raizProjeto -WindowStyle Hidden -PassThru
+    $caminhoScript = Join-Path $raizProjeto "src\interface.js"
+
+    # O caminho do projeto tem espaco ("PROGRAMA OCR"). Sem as aspas, o node
+    # recebe o caminho cortado no espaco e morre antes de abrir o painel.
+    $script:processoNode = Start-Process -FilePath $node -ArgumentList "`"$caminhoScript`"" `
+        -WorkingDirectory $raizProjeto -WindowStyle Hidden -PassThru
+
+    # Espera o painel subir de fato, para nao abrir o navegador em uma porta morta.
+    for ($tentativa = 0; $tentativa -lt 30; $tentativa++) {
+        Start-Sleep -Milliseconds 500
+        if (Porta-Ativa) { return }
+        if ($script:processoNode.HasExited) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "O painel nao conseguiu iniciar.`n`nSe o programa ja estiver aberto, use o icone que esta na bandeja do Windows. Caso contrario, execute INICIAR.bat para ver a mensagem de erro.",
+                "Central de Despesas") | Out-Null
+            return
+        }
+    }
 }
 
 function Abrir-Painel { Start-Process $urlPainel }

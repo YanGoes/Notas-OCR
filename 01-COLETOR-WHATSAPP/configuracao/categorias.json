@@ -13,7 +13,7 @@
   },
   {
     "nome": "HOSPEDAGEM",
-    "id": "PREENCHER_UUID_CONTA_AZUL",
+    "id": "b0f7d999-9bbd-4036-8c2b-40f3191010a4",
     "apelidos": []
   },
   {
@@ -44,17 +44,42 @@
     "nome": "ALMOCO",
     "nome_conta_azul": "Refeição - Almoço",
     "id": "4515b867-b36f-4703-ab50-7a1d35c2096f",
-    "apelidos": ["almoco", "almoço", "refeicao - almoco"]
+    "apelidos": [
+      "almoco",
+      "almoço",
+      "refeicao - almoco"
+    ]
   },
   {
     "nome": "JANTAR",
     "nome_conta_azul": "Refeição - Jantar",
     "id": "a844a3ff-ec6a-4b9e-b9b0-adc0df0ea40e",
-    "apelidos": ["jantar", "refeicao - jantar"]
+    "apelidos": [
+      "jantar",
+      "refeicao - jantar"
+    ]
   },
   {
     "nome": "OUTROS - REVISAO OBRIGATORIA",
     "id": "PREENCHER_UUID_CONTA_AZUL",
+    "apelidos": []
+  },
+  {
+    "nome": "CAFE DA MANHA",
+    "nome_conta_azul": "Refeição - Café da Manhã",
+    "id": "8e1e121c-8f29-4c82-9895-a1b84f75e324",
+    "apelidos": []
+  },
+  {
+    "nome": "PEDAGIO",
+    "nome_conta_azul": "Pedágios",
+    "id": "93f1c473-4acf-44f5-98c5-eaf5bf6772d0",
+    "apelidos": []
+  },
+  {
+    "nome": "ESTACIONAMENTO",
+    "nome_conta_azul": "Estacionamento",
+    "id": "2126af41-82bd-452a-8807-3384397e17c9",
     "apelidos": []
   }
 ]

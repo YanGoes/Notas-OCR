@@ -26,6 +26,14 @@
     "habilitado": true,
     "modo": "simulacao",
     "intervalo_segundos": 10,
-    "timeout_azure_segundos": 180
+    "timeout_azure_segundos": 180,
+    "encaminhar_automaticamente_conta_ai": false
+  },
+  "conclusao_automatica": {
+    "habilitada": false,
+    "simular": true,
+    "aguardar_segundos": 60,
+    "tentativas": 6,
+    "intervalo_inicial_ms": 15000
   }
 }

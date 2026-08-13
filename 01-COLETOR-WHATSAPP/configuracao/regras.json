@@ -1,19 +1,218 @@
 {
-  "confianca_minima": 0.95,
+  "confianca_minima": 0.94,
   "tolerancia_valor": 0.05,
   "tipos_proibidos": [
-    "salario", "pro-labore", "adiantamento salarial", "fgts", "imposto",
-    "emprestimo", "financiamento", "consorcio", "honorarios contabeis",
-    "honorarios juridicos", "plano de saude", "despesa administrativa"
+    "salario",
+    "pro-labore",
+    "adiantamento salarial",
+    "fgts",
+    "imposto",
+    "emprestimo",
+    "financiamento",
+    "consorcio",
+    "honorarios contabeis",
+    "honorarios juridicos",
+    "plano de saude",
+    "despesa administrativa"
   ],
   "tipos_permitidos": [
-    { "nome": "alimentacao", "apelidos": ["alimentacao", "almoco", "jantar", "lanche", "cafe", "cafe da manha", "refeicao", "restaurante", "lanchonete", "padaria", "hamburguer", "coxinha", "salgado", "lasanha", "nhoque", "escondidinho", "empada", "empadao", "pao recheado", "torta"], "categoria": "ALIMENTACAO EM CAMPO", "exige_veiculo": false },
-    { "nome": "combustivel", "apelidos": ["combustivel", "abastecimento", "gasolina", "etanol", "diesel"], "categoria": "COMBUSTIVEL", "exige_veiculo": true },
-    { "nome": "hospedagem", "apelidos": ["hospedagem", "hotel", "pousada", "diaria"], "categoria": "HOSPEDAGEM", "exige_veiculo": false },
-    { "nome": "farmacia", "apelidos": ["farmacia", "medicamento", "remedio", "drogaria"], "categoria": "FARMACIA", "exige_veiculo": false },
-    { "nome": "deslocamento", "apelidos": ["deslocamento", "pedagio", "estacionamento", "taxi", "aplicativo"], "categoria": "DESLOCAMENTO", "exige_veiculo": false },
-    { "nome": "manutencao", "apelidos": ["manutencao", "manutencao de veiculo", "manutencao de equipamento", "oficina", "mecanica", "auto pecas"], "categoria": "MANUTENCAO", "exige_veiculo": true },
-    { "nome": "material", "apelidos": ["material", "material de campo", "ferramenta", "epi", "consumivel"], "categoria": "MATERIAL DE CAMPO", "exige_veiculo": false },
-    { "nome": "outros", "apelidos": ["outros", "outra despesa", "outras despesas"], "categoria": "OUTROS - REVISAO OBRIGATORIA", "exige_veiculo": false, "sempre_revisar": true }
+    {
+      "nome": "alimentacao",
+      "apelidos": [
+        "alimentacao",
+        "marmita",
+        "pizza",
+        "churrasco",
+        "self service",
+        "buffet",
+        "lanche",
+        "refeicao",
+        "restaurante",
+        "lanchonete",
+        "padaria",
+        "hamburguer",
+        "coxinha",
+        "salgado",
+        "lasanha",
+        "nhoque",
+        "escondidinho",
+        "empada",
+        "empadao",
+        "pao recheado",
+        "torta",
+        "panificadora",
+        "confeitaria",
+        "pastelaria",
+        "acougue",
+        "supermercado",
+        "mercado",
+        "conveniencia"
+      ],
+      "categoria": "ALIMENTACAO EM CAMPO",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "combustivel",
+      "apelidos": [
+        "combustivel",
+        "abastecimento",
+        "gasolina",
+        "etanol",
+        "alcool",
+        "diesel",
+        "posto",
+        "arla",
+        "auto posto",
+        "posto de gasolina",
+        "combustiveis",
+        "derivados de petroleo"
+      ],
+      "categoria": "COMBUSTIVEL",
+      "exige_veiculo": true
+    },
+    {
+      "nome": "hospedagem",
+      "apelidos": [
+        "hospedagem",
+        "hotel",
+        "pousada",
+        "motel",
+        "hostel",
+        "diaria",
+        "diarias"
+      ],
+      "categoria": "HOSPEDAGEM",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "farmacia",
+      "apelidos": [
+        "farmacia",
+        "medicamento",
+        "remedio",
+        "drogaria"
+      ],
+      "categoria": "FARMACIA",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "deslocamento",
+      "apelidos": [
+        "deslocamento",
+        "pedagio",
+        "estacionamento",
+        "taxi",
+        "aplicativo"
+      ],
+      "categoria": "DESLOCAMENTO",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "manutencao",
+      "apelidos": [
+        "manutencao",
+        "manutencao de veiculo",
+        "manutencao de equipamento",
+        "oficina",
+        "mecanica",
+        "auto pecas",
+        "bateria",
+        "baterias",
+        "pneu",
+        "pneus",
+        "autopecas",
+        "retifica",
+        "borracharia",
+        "auto center",
+        "autocenter"
+      ],
+      "categoria": "MANUTENCAO",
+      "exige_veiculo": true
+    },
+    {
+      "nome": "material",
+      "apelidos": [
+        "material",
+        "material de campo",
+        "ferramenta",
+        "epi",
+        "consumivel"
+      ],
+      "categoria": "MATERIAL DE CAMPO",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "outros",
+      "apelidos": [
+        "outros",
+        "outra despesa",
+        "outras despesas"
+      ],
+      "categoria": "OUTROS - REVISAO OBRIGATORIA",
+      "exige_veiculo": false,
+      "sempre_revisar": true
+    },
+    {
+      "nome": "almoco",
+      "apelidos": [
+        "almoco",
+        "almoço",
+        "refeicao do meio dia",
+        "self service",
+        "buffet",
+        "marmita",
+        "pf",
+        "prato feito"
+      ],
+      "categoria": "ALMOCO",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "jantar",
+      "apelidos": [
+        "jantar",
+        "janta",
+        "refeicao da noite"
+      ],
+      "categoria": "JANTAR",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "cafe",
+      "apelidos": [
+        "cafe da manha",
+        "café da manhã",
+        "cafe",
+        "café",
+        "lanche da manha",
+        "padaria"
+      ],
+      "categoria": "CAFE DA MANHA",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "pedagio",
+      "apelidos": [
+        "pedagio",
+        "pedágio",
+        "praca de pedagio",
+        "sem parar",
+        "conectcar",
+        "veloe"
+      ],
+      "categoria": "PEDAGIO",
+      "exige_veiculo": false
+    },
+    {
+      "nome": "estacionamento",
+      "apelidos": [
+        "estacionamento",
+        "zona azul",
+        "parquimetro",
+        "vaga"
+      ],
+      "categoria": "ESTACIONAMENTO",
+      "exige_veiculo": false
+    }
   ]
 }

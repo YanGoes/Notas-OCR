@@ -152,6 +152,10 @@ async function buscarContasPagar(filtros = {}) {
     return requisicao(`/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?${parametros.toString()}`);
 }
 
+async function criarContaPagar(corpo) {
+    return requisicao("/v1/financeiro/eventos-financeiros/contas-a-pagar", opcoesJson("POST", corpo));
+}
+
 async function obterParcelaFinanceira(idParcela) {
     return requisicao(`/v1/financeiro/eventos-financeiros/parcelas/${encodeURIComponent(idParcela)}`);
 }
@@ -285,7 +289,7 @@ function iniciarMonitor(pastaEntrada, opcoes) {
 module.exports = {
     API_URL, TOKEN_URL, credenciais, trocarCodigo, tokenValido, requisicao,
     empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
-    buscarContasPagar, obterParcelaFinanceira, obterPessoaPorId,
+    buscarContasPagar, criarContaPagar, obterParcelaFinanceira, obterPessoaPorId,
     buscarParcelasDoEvento, patchParcela,
     enviarDocumento, aguardarCaptura, obterPreviaCaptura, aceitarCaptura,
     iniciarMonitor, descricaoDaImagem,

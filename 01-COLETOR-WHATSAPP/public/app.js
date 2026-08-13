@@ -8,6 +8,7 @@ let estadoContaAzul = null;
 let filaContaAzul = { itens: [], lote_liberado: false, processando: [] };
 let carregandoContaAzul = false;
 let notaPilotoSelecionada = "";
+let assinaturaNotificacoes = "";
 
 async function api(url, opts = {}) {
   const resposta = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -118,7 +119,11 @@ function blocoContaAzul(doc) {
   const resumoPrevia = previa.valor ? `<div class="ca-preview"><span>Prévia Conta Azul</span><b>${moeda(previa.valor)}</b><span>${escapar(formatarDataDocumento(previa.data_competencia))}</span><span>${escapar(previa.fornecedor?.nome || "Fornecedor não vinculado")}</span><span>${escapar(previa.categoria?.nome || "Categoria ausente")}</span><span>${escapar(previa.centro_custo?.nome || "Centro ausente")}</span></div>` : "";
   const divergencias = Array.isArray(conta.divergencias) && conta.divergencias.length
     ? `<ul class="ca-divergencias">${conta.divergencias.map((item) => `<li>${escapar(item)}</li>`).join("")}</ul>` : "";
-  let acao = `<button class="primary ca-zap" data-base="${escapar(doc.base)}">Encaminhar p/ Conta AI (Zap)</button>`;
+  // Botoes que alteram o Conta Azul ficam travados enquanto a empresa nao for
+  // confirmada ou enquanto o documento estiver sendo processado.
+  const emProcessamento = Array.isArray(filaContaAzul.processando) && filaContaAzul.processando.includes(doc.base);
+  const desabilitado = !empresaConfirmada || emProcessamento ? "disabled" : "";
+  let acao = "";
   if (acaoPeloCartaoLiberada && ["NAO_ENVIADO", "ERRO_PREPARACAO"].includes(status) && envio.pronto) {
     acao += `<button class="secondary ca-preparar" data-base="${escapar(doc.base)}" ${desabilitado}>Preparar no Conta Azul</button>`;
   } else if (acaoPeloCartaoLiberada && status === "PREVIA_CONFERIDA") {
@@ -140,7 +145,52 @@ function blocoContaAzul(doc) {
   return `<div class="ca-documento ${classeContaAzul(status)}"><div class="ca-documento-topo"><div><small>Conta Azul</small><strong>${escapar(rotuloContaAzul(status))}</strong></div>${acao}</div>${resumoPrevia}${divergencias}${complemento}${orientacaoConfirmacaoIncerta}${orientacaoPiloto}</div>`;
 }
 
+/**
+ * Lancamento direto pela API: cria a despesa ja com categoria e centro de
+ * custo. E o caminho que garante esses dois campos — o Conta AI nao os
+ * preenche e nao aceita instrucoes por texto.
+ */
+function blocoLancamentoDireto(doc) {
+  const pronto = doc.classificacao?.categoria_id && doc.classificacao?.centro_custo_id && !doc.validacoes?.bloqueado;
+  const lancado = doc.lancamento_direto?.status === "CRIADO";
+  if (lancado) {
+    return `<span class="lancado-tag">✔ Lançado no Conta Azul${doc.lancamento_direto.lancamento_id ? ` (${escapar(String(doc.lancamento_direto.lancamento_id).slice(0, 8))}…)` : ""}</span>`;
+  }
+  if (!pronto) return "";
+  return `<button class="btn-lancar ca-lancar" data-base="${escapar(doc.base)}" title="Cria a despesa no Conta Azul com categoria e centro de custo">🏦 Lançar direto no Conta Azul</button>`;
+}
+
+async function lancarDiretoContaAzul(base) {
+  try {
+    aviso("Simulando o lançamento (nada será criado ainda)...");
+    const previa = await api(`/api/documentos/${encodeURIComponent(base)}/lancar-direto`, {
+      method: "POST", body: JSON.stringify({}),
+    });
+    const p = previa.payload || {};
+    const centro = p.rateio?.[0]?.rateio_centro_custo?.[0]?.id_centro_custo;
+    const confirmado = confirm(
+      `CRIAR DESPESA REAL no Conta Azul?\n\n`
+      + `Descrição: ${p.descricao}\n`
+      + `Valor: ${moeda(p.valor)}\n`
+      + `Competência: ${p.data_competencia}\n`
+      + `Categoria: ${p.rateio?.[0]?.id_categoria}\n`
+      + `Centro de custo: ${centro}\n\n`
+      + `A API do Conta Azul não permite excluir lançamento. Confirme apenas se os dados acima estiverem corretos.`
+    );
+    if (!confirmado) return aviso("Lançamento cancelado. Nada foi criado.");
+
+    aviso("Criando a despesa no Conta Azul...");
+    const res = await api(`/api/documentos/${encodeURIComponent(base)}/lancar-direto`, {
+      method: "POST", body: JSON.stringify({ confirmacao: "LANCAR_NO_CONTA_AZUL" }),
+    });
+    aviso(res.mensagem || "Despesa criada.");
+    assinaturaDocumentos = "";
+    atualizarDocumentos();
+  } catch (erro) { aviso(erro.message, true); }
+}
+
 function ativarAcoesContaAzul(lista) {
+  lista.querySelectorAll(".ca-lancar").forEach((botao) => { botao.onclick = () => lancarDiretoContaAzul(botao.dataset.base); });
   lista.querySelectorAll(".ca-zap").forEach((botao) => { botao.onclick = () => encaminharNotaZap(botao.dataset.base); });
   lista.querySelectorAll(".ca-preparar").forEach((botao) => { botao.onclick = () => prepararDocumentoContaAzul(botao.dataset.base); });
   lista.querySelectorAll(".ca-confirmar").forEach((botao) => { botao.onclick = () => confirmarDocumentoContaAzul(botao.dataset.base, botao.dataset.token); });
@@ -186,11 +236,21 @@ async function atualizarDocumentos() {
         doc.classificacao?.centro_custo_nome ? `<span>Centro de custo: <b>${escapar(doc.classificacao.centro_custo_nome)}</b>${doc.classificacao.centro_custo_origem === "grupo_whatsapp" ? " (padrao do grupo)" : ""}</span>` : "",
       ].filter(Boolean).join("");
       const zapStatus = doc.encaminhamento_whatsapp?.status === "ENVIADO"
-        ? `<span class="pill ok" style="font-size:0.8rem;">✅ Enviado p/ Conta AI (Zap)</span>`
+        ? `<span class="pill ok" style="font-size:0.8rem;">✅ Enviado para Conta Azul</span>`
         : doc.encaminhamento_whatsapp?.status === "ERRO"
-          ? `<span class="pill erro" style="font-size:0.8rem;" title="${escapar(doc.encaminhamento_whatsapp.erro || "")}">❌ Falha no envio Zap</span>`
+          ? `<span class="pill erro" style="font-size:0.8rem;" title="${escapar(doc.encaminhamento_whatsapp.erro || "")}">❌ Falha no envio</span>`
           : "";
-      return `<article class="documento"><div class="documento-imagem">${imagem}</div><div class="documento-conteudo"><div class="documento-topo"><strong>${escapar(doc.arquivo || "Comprovante")}</strong>${zapStatus}<span class="status-doc status-${escapar(doc.status)}">${escapar(rotuloStatus(doc.status))}</span></div><div class="legenda-doc">${escapar(doc.legenda || "Sem legenda informada")}</div><div class="dados-ocr"><span>Fornecedor: <b>${escapar(doc.ocr?.fornecedor || "Não identificado")}</b></span><span>Valor: <b>${moeda(doc.ocr?.valor)}</b></span><span>Data: <b>${escapar(formatarDataDocumento(doc.ocr?.data))}</b></span><span>Confiança: <b>${confianca}</b></span>${detalhes}</div>${sugestao}${motivos.length ? `<ul class="motivos">${motivos.map((m) => `<li>${escapar(m)}</li>`).join("")}</ul>` : ""}${blocoContaAzul(doc)}</div></article>`;
+      const jaEnviado = doc.encaminhamento_whatsapp?.status === "ENVIADO";
+      const acoesDocumento = doc.validacoes?.bloqueado
+        ? `<div class="documento-acoes bloqueado"><span class="acao-dica">Documento bloqueado por duplicidade ou fora do escopo — não pode ser encaminhado.</span></div>`
+        : `<div class="documento-acoes">
+             <button class="btn-zap ca-zap" data-base="${escapar(doc.base)}" title="Enviar esta nota para o Conta AI no WhatsApp">
+               <span class="btn-zap-icone" aria-hidden="true">➤</span>${jaEnviado ? "Enviar novamente ao Conta AI" : "Encaminhar p/ Conta AI"}
+             </button>
+             <span class="acao-dica">${jaEnviado ? "Esta nota já foi enviada; reenvie apenas se necessário." : "Envia a foto e os dados lidos para o Conta AI criar a despesa."}</span>
+             ${blocoLancamentoDireto(doc)}
+           </div>`;
+      return `<article class="documento"><div class="documento-imagem">${imagem}</div><div class="documento-conteudo"><div class="documento-topo"><strong>${escapar(doc.arquivo || "Comprovante")}</strong>${zapStatus}<span class="status-doc status-${escapar(doc.status)}">${escapar(rotuloStatus(doc.status))}</span></div><div class="legenda-doc">${escapar(doc.legenda || "Sem legenda informada")}</div><div class="dados-ocr"><span>Fornecedor: <b>${escapar(doc.ocr?.fornecedor || "Não identificado")}</b></span><span>Valor: <b>${moeda(doc.ocr?.valor)}</b></span><span>Data: <b>${escapar(formatarDataDocumento(doc.ocr?.data))}</b></span><span>Confiança: <b>${confianca}</b></span>${detalhes}</div>${sugestao}${motivos.length ? `<ul class="motivos">${motivos.map((m) => `<li>${escapar(m)}</li>`).join("")}</ul>` : ""}${acoesDocumento}${blocoContaAzul(doc)}</div></article>`;
     }).join("");
     ativarAcoesContaAzul(lista);
   } catch (erro) { console.error(erro); }
@@ -602,41 +662,77 @@ async function encaminharTodasZap() {
   } catch (erro) { aviso(erro.message, true); }
 }
 
-async function subirNotaManual() {
-  const input = $("uploadArquivoInput");
-  const legendaInput = $("uploadLegendaInput");
-  if (!input || !input.files || !input.files[0]) {
-    aviso("Por favor, selecione um arquivo de nota/comprovante primeiro.", true);
-    return;
-  }
-  const arquivo = input.files[0];
-  const legenda = legendaInput ? legendaInput.value.trim() : "";
-  aviso(`Lendo e enviando arquivo ${arquivo.name}...`);
-  const reader = new FileReader();
-  reader.onload = async () => {
-    try {
-      const res = await api("/api/documentos/upload", {
-        method: "POST",
-        body: JSON.stringify({
-          arquivo_base64: reader.result,
-          nome_arquivo: arquivo.name,
-          legenda: legenda || null,
-        }),
-      });
-      aviso(res.mensagem || "Nota enviada com sucesso!");
-      input.value = "";
-      if (legendaInput) legendaInput.value = "";
-      assinaturaDocumentos = "";
-      atualizarDocumentos();
-    } catch (erro) { aviso(erro.message, true); }
-  };
-  reader.readAsDataURL(arquivo);
+// --- Avisos do sistema -------------------------------------------------------
+
+function iconeNivel(nivel) {
+  if (nivel === "sucesso") return "✅";
+  if (nivel === "erro") return "❌";
+  return "⚠️";
+}
+
+async function atualizarNotificacoes() {
+  try {
+    const dados = await api("/api/notificacoes");
+    const itens = Array.isArray(dados.itens) ? dados.itens : [];
+    const assinatura = JSON.stringify(itens.map((item) => [item.id, item.lida]));
+    if (assinatura === assinaturaNotificacoes) return;
+    assinaturaNotificacoes = assinatura;
+
+    const card = $("cardNotificacoes");
+    const lista = $("notificacoesLista");
+    const contador = $("notificacoesContador");
+    if (!card || !lista) return;
+
+    if (!itens.length) { card.classList.add("oculto"); return; }
+    card.classList.remove("oculto");
+    if (contador) contador.textContent = String(dados.nao_lidas || 0);
+
+    lista.innerHTML = itens.slice(0, 20).map((item) => {
+      const quando = new Date(item.criada_em).toLocaleString("pt-BR");
+      const pendencias = (item.pendencias || []).length
+        ? `<ul class="notificacao-pendencias">${item.pendencias.map((p) => `<li>${escapar(p)}</li>`).join("")}</ul>`
+        : "";
+      return `<article class="notificacao nivel-${escapar(item.nivel || "atencao")} ${item.lida ? "lida" : ""}">
+        <div class="notificacao-topo">
+          <strong>${iconeNivel(item.nivel)} ${escapar(item.titulo)}</strong>
+          <span class="notificacao-data">${escapar(quando)}</span>
+        </div>
+        <pre class="notificacao-texto">${escapar(item.texto)}</pre>
+        ${pendencias}
+      </article>`;
+    }).join("");
+  } catch (erro) { console.error(erro); }
+}
+
+async function marcarNotificacoesLidas() {
+  try {
+    await api("/api/notificacoes/lidas", { method: "POST", body: JSON.stringify({}) });
+    assinaturaNotificacoes = "";
+    atualizarNotificacoes();
+  } catch (erro) { aviso(erro.message, true); }
 }
 
 $("conectar").onclick = async () => { try { await api("/api/whatsapp/conectar", { method: "POST" }); aviso("Conexao iniciada."); } catch (erro) { aviso(erro.message, true); } atualizar(); };
 $("desconectar").onclick = async () => {
   if (!confirm("Sair do WhatsApp neste computador? Um novo QR Code sera necessario.")) return;
   try { await api("/api/whatsapp/desconectar", { method: "POST" }); grupos = []; $("buscaArea").classList.add("oculto"); $("listaGrupos").innerHTML = '<div class="empty">WhatsApp desconectado.</div>'; aviso("Sessao removida deste computador."); } catch (erro) { aviso(erro.message, true); } atualizar();
+};
+if ($("conectarCodigo")) $("conectarCodigo").onclick = async () => {
+  const numero = ($("numeroPareamento").value || "").replace(/\D/g, "");
+  if (numero.length < 12 || numero.length > 13) {
+    return aviso("Informe o número com DDI e DDD, só números. Exemplo: 5531999998888.", true);
+  }
+  const botao = $("conectarCodigo");
+  botao.disabled = true;
+  try {
+    aviso("Gerando código de pareamento...");
+    const res = await api("/api/whatsapp/codigo", { method: "POST", body: JSON.stringify({ numero }) });
+    const area = $("codigoPareamento");
+    area.classList.remove("oculto");
+    area.innerHTML = `<strong>${escapar(res.codigo)}</strong><span>No celular: <b>WhatsApp → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone</b> e digite este código. Ele vale por poucos minutos.</span>`;
+    aviso("Código gerado. Digite no celular agora.");
+  } catch (erro) { aviso(erro.message, true); }
+  finally { botao.disabled = false; }
 };
 $("carregarGrupos").onclick = () => carregarGrupos(true);
 $("buscarGrupo").addEventListener("input", renderizarGrupos);
@@ -651,8 +747,8 @@ $("sincronizarCentros").onclick = sincronizarCentrosContaAzul;
 $("criarCentro").onclick = criarCentroContaAzul;
 $("prepararTodos").onclick = prepararTodosContaAzul;
 $("confirmarTodos").onclick = confirmarTodosContaAzul;
-if ($("uploadNotaBtn")) $("uploadNotaBtn").onclick = subirNotaManual;
 if ($("encaminharTodosZap")) $("encaminharTodosZap").onclick = encaminharTodasZap;
+if ($("marcarNotificacoesLidas")) $("marcarNotificacoesLidas").onclick = marcarNotificacoesLidas;
 $("notaPiloto").addEventListener("change", () => { notaPilotoSelecionada = $("notaPiloto").value; renderizarTestePiloto(); });
 $("acaoNotaPiloto").onclick = executarAcaoNotaPiloto;
 $("filtroData").addEventListener("change", () => { assinaturaDocumentos = ""; atualizarDocumentos(); });
@@ -664,5 +760,5 @@ $("filtrarHoje").onclick = () => {
 $("mostrarTodos").onclick = () => { $("filtroData").value = ""; assinaturaDocumentos = ""; atualizarDocumentos(); };
 $("temaToggle").onclick = () => aplicarTema(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 aplicarTema(document.documentElement.dataset.theme || "light");
-atualizar(); atualizarDocumentos(); carregarContaAzul(false);
-setInterval(() => { atualizar(); atualizarFilaContaAzul(); atualizarDocumentos(); }, 2500);
+atualizar(); atualizarDocumentos(); carregarContaAzul(false); atualizarNotificacoes();
+setInterval(() => { atualizar(); atualizarFilaContaAzul(); atualizarDocumentos(); atualizarNotificacoes(); }, 2500);

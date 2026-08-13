@@ -12,12 +12,34 @@
   <main>
     <section class="hero"><div><p class="eyebrow">VMAC ENGENHARIA · PAINEL LOCAL SEGURO</p><h1>Comprovantes sob controle.</h1><p id="modoDescricao">Conecte o WhatsApp, escolha os grupos e acompanhe cada documento sem lançar despesas durante a simulação.</p></div><div class="mode"><span>Modo atual</span><strong id="modoTitulo">SIMULAÇÃO</strong><small id="modoDetalhe">Nenhum lançamento financeiro</small></div></section>
     <div id="aviso" class="aviso oculto"></div>
+    <section id="cardNotificacoes" class="card notificacoes-card oculto">
+      <details id="notificacoesDetalhe" open>
+        <summary class="notificacoes-resumo">
+          <span class="notificacoes-titulo"><span class="step">!</span> Avisos do sistema</span>
+          <span id="notificacoesContador" class="counter">0</span>
+        </summary>
+        <div class="notificacoes-corpo">
+          <p class="muted">O que o fechamento automático concluiu e o que ainda depende de você. O mesmo aviso também vai para o WhatsApp.</p>
+          <div class="actions compact"><button id="marcarNotificacoesLidas" class="ghost" type="button">Marcar todas como lidas</button></div>
+          <div id="notificacoesLista" class="notificacoes-lista"></div>
+        </div>
+      </details>
+    </section>
     <section class="grid principal">
       <article class="card">
         <div class="card-title"><div><span class="step">1</span><h2>WhatsApp</h2></div><span id="whatsStatus" class="dot-label">Verificando…</span></div>
         <div id="qrArea" class="qr-area oculto"><img id="qrImagem" alt="QR Code"><p>Abra no celular: <b>WhatsApp → Aparelhos conectados → Conectar aparelho</b></p></div>
         <p id="whatsTexto" class="muted">Carregando estado da sessão...</p>
         <div class="actions"><button id="conectar" class="primary">Conectar</button><button id="desconectar" class="danger ghost">Sair do WhatsApp</button></div>
+        <details class="pairing-box">
+          <summary>O QR Code não funcionou?</summary>
+          <p class="muted">Conecte digitando um código no celular, sem ler o QR. Informe o número deste WhatsApp com DDI e DDD, só números.</p>
+          <div class="pairing-row">
+            <input id="numeroPareamento" type="tel" inputmode="numeric" maxlength="15" placeholder="5531999998888" autocomplete="off">
+            <button id="conectarCodigo" class="secondary" type="button">Gerar código</button>
+          </div>
+          <div id="codigoPareamento" class="pairing-code oculto"></div>
+        </details>
       </article>
       <article class="card">
         <div class="card-title"><div><span class="step">2</span><h2>Grupos monitorados</h2></div><span id="grupoTotal" class="counter">0</span></div>
@@ -54,14 +76,6 @@
     <section class="card documentos-card">
       <div class="card-title"><div><span class="step">4</span><h2>Comprovantes em tempo real</h2></div><div class="actions compact"><button id="encaminharTodosZap" class="primary" type="button">Encaminhar TODAS p/ Conta AI (Zap)</button><span class="live-indicator">● AO VIVO</span></div></div>
       <p class="muted">Imagens, legendas, leitura automática e dúvidas aparecem aqui sem precisar atualizar a página.</p>
-      <div class="upload-box" style="margin: 1rem 0; padding: 1rem; border: 2px dashed #ccc; border-radius: 8px; background: rgba(0,0,0,0.02);">
-        <h4 style="margin: 0 0 0.5rem 0;">📤 Enviar nota específica (Upload Manual direto da Tela)</h4>
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-          <input type="file" id="uploadArquivoInput" accept="image/*,.pdf" style="flex: 1; min-width: 200px;">
-          <input type="text" id="uploadLegendaInput" placeholder="Legenda opcional (ex: almoco consol mg-050)" style="flex: 2; min-width: 250px; padding: 0.4rem;">
-          <button id="uploadNotaBtn" class="secondary" type="button">Subir Nota</button>
-        </div>
-      </div>
       <div class="date-filter"><label for="filtroData">Filtrar pelo dia recebido</label><input id="filtroData" type="date"><button id="filtrarHoje" class="secondary" type="button">Hoje</button><button id="mostrarTodos" class="ghost" type="button">Mostrar todos</button></div>
       <div id="documentosLista" class="documentos-lista"><div class="empty">Aguardando o primeiro comprovante do WhatsApp.</div></div>
     </section>

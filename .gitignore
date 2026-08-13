@@ -60,3 +60,12 @@ fornecedores.json
 venv/
 *.tmp
 *.bak
+
+# Fotos extraidas para teste (pesadas, nunca versionar)
+temp_notinhas/
+FOTOS*.zip
+*.bak2
+
+# Ferramentas de IA e specs locais
+.agents/
+openspec/

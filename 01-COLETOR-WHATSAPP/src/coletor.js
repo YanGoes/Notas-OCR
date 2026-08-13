@@ -6,11 +6,17 @@ const pino = require("pino");
 const qrcode = require("qrcode-terminal");
 const EventEmitter = require("events");
 const { iniciarPipeline } = require("./pipeline");
+const { normalizar } = require("./legenda");
+const { concluirDocumento } = require("./conclusao-automatica");
+const notificacoes = require("./notificacoes");
+const { arquivar } = require("./arquivo-drive");
 const {
     default: makeWASocket,
     useMultiFileAuthState,
     DisconnectReason,
     downloadMediaMessage,
+    fetchLatestBaileysVersion,
+    Browsers,
 } = require("@whiskeysockets/baileys");
 
 const RAIZ = path.resolve(__dirname, "..");
@@ -57,15 +63,201 @@ function centroCustoDoGrupo(idGrupo) {
     return centro ? { id: String(centro.id), nome: String(centro.nome) } : null;
 }
 
+// ---------------------------------------------------------------------------
+// Comando de centro de custo pelo proprio WhatsApp
+// ---------------------------------------------------------------------------
+// Como todas as notas chegam por um unico grupo e o projeto muda com o tempo,
+// o operador troca o centro de custo vigente mandando uma mensagem no grupo,
+// sem precisar abrir o painel. Usa prefixo explicito (#centro / #projeto) para
+// nunca ser confundido com um comentario de foto.
+const COMANDO_CENTRO = /^\s*#\s*(?:centro(?:\s*de\s*custo)?|projeto|cc)\b\s*:?\s*(.*)$/i;
+
+function resolverCentroCustoPorTexto(texto) {
+    const alvo = normalizar(texto);
+    if (!alvo) return null;
+    const centros = carregarCentrosCusto();
+    return centros.find((centro) => normalizar(centro.nome) === alvo)
+        || centros.find((centro) => (centro.apelidos || []).some((apelido) => normalizar(apelido) === alvo))
+        || centros.find((centro) => alvo.length >= 3 && normalizar(centro.nome).includes(alvo))
+        || null;
+}
+
+function definirCentroCustoDoGrupo(idGrupo, centro) {
+    config.centros_custo_por_grupo[idGrupo] = String(centro.id);
+    const persistido = JSON.parse(fs.readFileSync(ARQUIVO_CONFIG, "utf8"));
+    persistido.centros_custo_por_grupo = { ...(persistido.centros_custo_por_grupo || {}), [idGrupo]: String(centro.id) };
+    fs.writeFileSync(ARQUIVO_CONFIG, JSON.stringify(persistido, null, 2) + "\n", "utf8");
+}
+
+async function tratarComandoCentroCusto(socket, idGrupo, texto) {
+    const achado = String(texto || "").match(COMANDO_CENTRO);
+    if (!achado) return false;
+
+    const pedido = String(achado[1] || "").trim();
+    const atual = centroCustoDoGrupo(idGrupo);
+    const responder = async (mensagem) => {
+        try { await socket.sendMessage(idGrupo, { text: mensagem }); }
+        catch (erro) { console.error("Nao consegui responder o comando no grupo:", erro?.message || erro); }
+    };
+
+    if (!pedido) {
+        const centros = carregarCentrosCusto();
+        const lista = centros.slice(0, 25).map((centro) => `• ${centro.nome}`).join("\n");
+        await responder(
+            `Centro de custo atual: *${atual?.nome || "nenhum"}*\n\n`
+            + `Para trocar, envie:\n#centro NOME DO PROJETO\n\n`
+            + (lista ? `Disponiveis:\n${lista}` : "Nenhum centro de custo sincronizado ainda. Use o painel para sincronizar.")
+        );
+        return true;
+    }
+
+    const centro = resolverCentroCustoPorTexto(pedido);
+    if (!centro) {
+        await responder(`Nao encontrei o centro de custo "${pedido}".\n\nEnvie *#centro* (sem nome) para ver a lista disponivel.`);
+        return true;
+    }
+
+    definirCentroCustoDoGrupo(idGrupo, centro);
+    console.log(`Centro de custo do grupo '${nomeGrupo(idGrupo)}' alterado para '${centro.nome}'.`);
+    await responder(`✅ Centro de custo agora e *${centro.nome}*.\nVale para as proximas fotos enviadas neste grupo.`);
+    return true;
+}
+
 const config = carregarConfig();
 let gruposPermitidos = new Set(config.grupos_permitidos);
 const eventos = new EventEmitter();
-const estado = { status: "parado", qr: null, erro: null, conectado_desde: null };
+const estado = { status: "parado", qr: null, erro: null, conectado_desde: null, codigo_pareamento: null };
 let socketAtual = null;
 let deslogando = false;
 const fotosRecentes = [];
 const comentariosRecentes = [];
 fs.mkdirSync(config.pasta_saida, { recursive: true });
+/**
+ * Dispara a conclusao automatica depois que a foto chegou ao Conta AI:
+ * espera ele criar o lancamento, complementa o que faltou e avisa o operador
+ * no proprio grupo. Nao bloqueia o envio — roda em segundo plano.
+ */
+function agendarConclusaoAutomatica(caminhoImagem, auditoria) {
+    // Le o config na hora: mudar config.json passa a valer sem reiniciar o programa.
+    let opcoes = config.conclusao_automatica || {};
+    try { opcoes = JSON.parse(fs.readFileSync(ARQUIVO_CONFIG, "utf8")).conclusao_automatica || opcoes; } catch (_) {}
+    if (!opcoes.habilitada) return;
+
+    const base = path.parse(caminhoImagem).name;
+    const idGrupo = auditoria?.grupo_id || null;
+    const atrasoMs = Math.max(0, Number(opcoes.aguardar_segundos ?? 60)) * 1000;
+    const simular = opcoes.simular !== false;
+
+    console.log(`Conclusao automatica agendada para ${base} em ${atrasoMs / 1000}s${simular ? " (modo simulacao)" : ""}.`);
+
+    setTimeout(() => {
+        concluirDocumento(base, {
+            simular,
+            retry: {
+                tentativas: Number(opcoes.tentativas || 6),
+                intervaloInicialMs: Number(opcoes.intervalo_inicial_ms || 15000),
+            },
+            notificar: idGrupo
+                ? async (texto) => {
+                    if (!socketAtual || estado.status !== "conectado") {
+                        console.log(`Conclusao automatica (sem WhatsApp conectado):\n${texto}`);
+                        return;
+                    }
+                    try { await socketAtual.sendMessage(idGrupo, { text: texto }); }
+                    catch (erro) { console.error("Nao consegui enviar a notificacao:", erro?.message || erro); }
+                }
+                : async (texto) => console.log(`Conclusao automatica:\n${texto}`),
+        }).catch((erro) => console.error(`Conclusao automatica falhou para ${base}:`, erro?.message || erro));
+    }, atrasoMs);
+}
+
+/** Le o config do disco, para mudancas valerem sem reiniciar o programa. */
+function configAtual() {
+    try { return JSON.parse(fs.readFileSync(ARQUIVO_CONFIG, "utf8")); }
+    catch (_) { return config; }
+}
+
+/**
+ * Cria a despesa no Conta Azul automaticamente, com categoria e centro de
+ * custo — sem depender do Conta AI, que nao preenche esses campos.
+ *
+ * So dispara para nota totalmente aprovada. Nota em revisao humana espera
+ * uma pessoa: e justamente o caso em que alguma informacao esta incerta.
+ */
+async function lancarAutomaticamente(caminhoImagem, auditoria) {
+    const opcoes = configAtual().lancamento_automatico || {};
+    if (!opcoes.habilitado) return;
+
+    if (auditoria?.validacoes?.bloqueado || auditoria?.validacoes?.revisao_necessaria) {
+        console.log(`Lancamento automatico: ${path.basename(caminhoImagem)} precisa de revisao humana; nao sera lancado.`);
+        return;
+    }
+
+    const base = path.parse(caminhoImagem).name;
+    const simular = opcoes.simular === true;
+    const { lancarDespesa } = require("./lancamento-direto");
+
+    try {
+        const resultado = await lancarDespesa(base, { simular, dryRun: simular });
+        const texto = resultado.criado
+            ? `✅ *Despesa lancada no Conta Azul*\n\n`
+                + `📄 ${auditoria.ocr?.fornecedor || "Fornecedor nao identificado"} — R$ ${Number(auditoria.ocr?.valor || 0).toFixed(2)}\n`
+                + `📅 ${auditoria.ocr?.data}\n`
+                + `🏷️ Categoria: ${auditoria.classificacao?.categoria_nome}\n`
+                + `🏗️ Centro de custo: ${auditoria.classificacao?.centro_custo_nome}\n`
+                + `${auditoria.forma_pagamento?.codigo ? `💳 Pagamento: ${auditoria.forma_pagamento.codigo}\n` : ""}`
+                + `\n_${auditoria.arquivo_imagem || base}_`
+            : `⚠️ *Nao consegui lancar esta despesa*\n\n`
+                + `📄 ${auditoria.ocr?.fornecedor || "-"} — R$ ${Number(auditoria.ocr?.valor || 0).toFixed(2)}\n\n`
+                + `*Motivo:* ${resultado.erro || (resultado.impedimentos || []).join(" ") || "desconhecido"}\n`
+                + `\n_${auditoria.arquivo_imagem || base}_`;
+
+        notificacoes.registrar({
+            titulo: resultado.criado ? "Despesa lancada no Conta Azul" : "Nao consegui lancar esta despesa",
+            texto,
+            nivel: resultado.criado ? "sucesso" : "atencao",
+            base,
+            pendencias: resultado.criado ? [] : (resultado.impedimentos || []),
+        });
+
+        const idGrupo = auditoria?.grupo_id;
+        if (idGrupo && socketAtual && estado.status === "conectado") {
+            try { await socketAtual.sendMessage(idGrupo, { text: texto }); }
+            catch (erro) { console.error("Nao consegui avisar no grupo:", erro?.message || erro); }
+        }
+    } catch (erro) {
+        console.error(`Lancamento automatico falhou para ${base}:`, erro?.message || erro);
+    }
+}
+
+/**
+ * Ponto unico de decisao do que acontece depois que uma nota e processada.
+ * Cada acao tem sua propria chave no config.json.
+ */
+async function aposProcessar(caminhoImagem, auditoria) {
+    const cfg = configAtual();
+
+    // Arquiva a foto no Drive da empresa (copia; o original fica local).
+    const drive = arquivar(caminhoImagem, auditoria, cfg.arquivo_drive || {});
+    if (drive.arquivado && !drive.jaExistia) {
+        console.log(`Drive: comprovante arquivado em ${drive.pasta_relativa}`);
+    } else if (drive.erro) {
+        console.error(`Drive: nao consegui arquivar — ${drive.erro}`);
+        notificacoes.registrar({
+            titulo: "Nao consegui arquivar a foto no Drive",
+            texto: `A despesa segue normalmente, mas a foto nao foi copiada para o Drive.\n\nMotivo: ${drive.erro}`,
+            nivel: "atencao",
+            base: path.parse(caminhoImagem).name,
+        });
+    }
+
+    if (cfg.pipeline?.encaminhar_automaticamente_conta_ai) {
+        try { await encaminharParaContaAI(caminhoImagem, auditoria); }
+        catch (erro) { console.error("Encaminhamento automatico falhou:", erro?.message || erro); }
+    }
+    await lancarAutomaticamente(caminhoImagem, auditoria);
+}
+
 async function encaminharParaContaAI(caminhoImagem, auditoria) {
     const numeroContaAI = config.numero_conta_ai || process.env.NUMERO_CONTA_AI;
     if (!numeroContaAI) {
@@ -137,6 +329,7 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
                 fs.writeFileSync(auditoriaPath, JSON.stringify(aud, null, 2), "utf8");
             } catch (_) {}
         }
+        agendarConclusaoAutomatica(caminhoImagem, auditoria);
         return { ok: true, mensagem: `✅ Comprovante enviado com sucesso para o Conta AI (${jid})!` };
     } catch (erro) {
         console.error("Conta AI WhatsApp: Erro ao encaminhar mensagem:", erro?.message || erro);
@@ -159,7 +352,7 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
 iniciarPipeline(
     config.pasta_saida,
     { ...config.pipeline, aguardar_comentario_segundos: config.aguardar_comentario_segundos },
-    encaminharParaContaAI
+    aposProcessar
 );
 
 function limparNome(valor) {
@@ -283,6 +476,40 @@ async function listarGrupos() {
     })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
+const esperar = (ms) => new Promise((resolver) => setTimeout(resolver, ms));
+
+/**
+ * Alternativa ao QR Code: gera um codigo de 8 caracteres para o operador
+ * digitar em "WhatsApp > Aparelhos conectados > Conectar com numero de
+ * telefone". Costuma funcionar quando a leitura do QR e recusada.
+ *
+ * @param {string} numero — com DDI e DDD, ex.: 5531999998888
+ * @returns {Promise<string>} o codigo de pareamento
+ */
+async function solicitarCodigoPareamento(numero) {
+    const digitos = String(numero || "").replace(/\D/g, "");
+    if (digitos.length < 12 || digitos.length > 13) {
+        throw new Error("Informe o numero com DDI e DDD, sem espacos. Exemplo: 5531999998888.");
+    }
+    if (estado.status === "conectado") {
+        throw new Error("O WhatsApp ja esta conectado neste computador.");
+    }
+
+    if (!socketAtual || !["conectando", "aguardando_qr", "aguardando_codigo"].includes(estado.status)) {
+        await iniciar();
+        await esperar(3000);
+    }
+    if (!socketAtual) throw new Error("Nao consegui iniciar a conexao com o WhatsApp. Tente novamente.");
+    if (socketAtual.authState?.creds?.registered) {
+        throw new Error("Esta sessao ja esta registrada. Use 'Sair do WhatsApp' antes de parear de novo.");
+    }
+
+    const codigo = await socketAtual.requestPairingCode(digitos);
+    atualizarEstado({ status: "aguardando_codigo", codigo_pareamento: codigo, erro: null });
+    console.log(`Codigo de pareamento gerado: ${codigo}`);
+    return codigo;
+}
+
 async function desconectar() {
     deslogando = true;
     atualizarEstado({ status: "desconectando", qr: null, erro: null });
@@ -302,11 +529,16 @@ async function processar(socket, pacote) {
         const timestamp = timestampNumero(pacote.messageTimestamp);
         const timestampMs = timestamp * 1000;
         const remetente = remetenteDaMensagem(pacote.key);
+        // Nome que aparece no WhatsApp: e o que permite identificar de qual
+        // operador de campo e a nota (o remetente vem como um id opaco @lid).
+        const nomeRemetente = String(pacote.pushName || "").trim();
         const idMensagem = String(pacote.key.id || Date.now());
         const imagem = extrairImagem(pacote.message);
         if (!imagem) {
             const texto = extrairTexto(pacote.message);
-            if (texto?.texto) registrarComentarioSeparado(idGrupo, remetente, idMensagem, timestampMs, texto.texto, texto.citadoId);
+            if (!texto?.texto) return;
+            if (await tratarComandoCentroCusto(socket, idGrupo, texto.texto)) return;
+            registrarComentarioSeparado(idGrupo, remetente, idMensagem, timestampMs, texto.texto, texto.citadoId);
             return;
         }
         limparRecentes();
@@ -345,13 +577,13 @@ async function processar(socket, pacote) {
             "=== DADOS DO WHATSAPP ===", "", `Data: ${dataTexto}`,
             `Grupo: ${nomeGrupo(idGrupo)}`, `ID do grupo: ${idGrupo}`,
             `Centro de custo padrao do grupo: ${centroCustoPadrao?.nome || "Nao configurado"}`,
-            `Remetente: ${remetente}`, `Enviada por mim: ${pacote.key.fromMe ? "Sim" : "Nao"}`,
+            `Remetente: ${nomeRemetente ? nomeRemetente + " (" + remetente + ")" : remetente}`, `Enviada por mim: ${pacote.key.fromMe ? "Sim" : "Nao"}`,
             `ID da mensagem: ${idMensagem}`, "", "=== LEGENDA / COMENTARIO ===", "",
             legenda || "Sem legenda informada.", "",
         ].join("\n"), "utf8");
         fs.writeFileSync(path.join(config.pasta_saida, `${base}.json`), JSON.stringify({
             data: dataTexto, timestamp, grupo: nomeGrupo(idGrupo), id_grupo: idGrupo,
-            remetente, enviada_por_mim: Boolean(pacote.key.fromMe), id_mensagem: idMensagem,
+            remetente, remetente_nome: nomeRemetente || null, enviada_por_mim: Boolean(pacote.key.fromMe), id_mensagem: idMensagem,
             legenda: legenda || null, legenda_origem: legendaOrigem, recebido_em_ms: timestampMs,
             centro_custo_padrao: centroCustoPadrao,
             arquivo_imagem: path.basename(caminhoImagem), mimetype,
@@ -369,7 +601,24 @@ async function iniciar() {
     deslogando = false;
     atualizarEstado({ status: "conectando", erro: null });
     const { state, saveCreds } = await useMultiFileAuthState(PASTA_SESSAO);
-    const socket = makeWASocket({ auth: state, logger, browser: ["Coletor de Fotos", "Chrome", "1.0.0"], markOnlineOnConnect: false, syncFullHistory: false });
+
+    // Versao do WhatsApp Web: busca a atual e, sem internet, usa a embutida na
+    // biblioteca. Uma versao defasada faz o celular recusar o pareamento.
+    let versao;
+    try {
+        versao = (await fetchLatestBaileysVersion()).version;
+    } catch (_) { versao = undefined; }
+
+    const socket = makeWASocket({
+        auth: state,
+        logger,
+        version: versao,
+        // Identificador padrao de navegador. Nomes customizados vinham sendo
+        // recusados pelo WhatsApp no momento de vincular o aparelho.
+        browser: Browsers.macOS("Desktop"),
+        markOnlineOnConnect: false,
+        syncFullHistory: false,
+    });
     socketAtual = socket;
     socket.ev.on("creds.update", saveCreds);
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
@@ -413,7 +662,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-    iniciar, desconectar, listarGrupos, salvarGrupos,
+    iniciar, desconectar, listarGrupos, salvarGrupos, solicitarCodigoPareamento,
     obterEstado: () => ({ ...estado }), eventos,
     obterConfiguracao: () => ({
         grupos_permitidos: [...gruposPermitidos],

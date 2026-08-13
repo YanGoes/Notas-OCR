@@ -36,6 +36,13 @@ const contaAzul = require("./conta-azul");
 let _cache = {};
 
 /**
+ * Trava de execução: evita que duas chamadas concorrentes de `enriquecer()`
+ * para a mesma despesa (mesmo valor + data, ou a chave informada pelo
+ * chamador) rodem ao mesmo tempo e apliquem PATCHs conflitantes/duplicados.
+ */
+const _emExecucao = new Set();
+
+/**
  * Limpa o cache de configuração.
  * Útil para testes ou quando os arquivos são alterados em runtime.
  */
@@ -326,9 +333,14 @@ function resolverMetodoPagamento(textoOperador) {
  * @param {number} [opcoes.intervaloInicialMs=10000] — espera inicial (10s)
  * @param {number} [opcoes.toleranciaValor=0.01] — tolerância no valor (±R$0.01)
  * @param {number} [opcoes.toleranciaDias=1] — tolerância na data (±1 dia)
+ * @param {string} [opcoes.fornecedorCnpj] — CNPJ/CPF (só dígitos) do fornecedor
+ *   esperado, usado apenas para desempatar quando mais de um lançamento bate
+ *   com valor+data. Não é usado como filtro de busca, só de desambiguação.
  * @param {Function} [opcoes.log] — função de log (padrão: console.log)
  * @returns {Promise<object>} — o evento financeiro encontrado
- * @throws {Error} — se não encontrar após todas as tentativas
+ * @throws {Error} — se não encontrar após todas as tentativas, ou se houver
+ *   mais de um candidato e não for possível desambiguar com segurança
+ *   (nesse caso o erro tem `erro.ambiguo = true` e não é retentado).
  */
 async function buscarLancamentoRecente(valor, data, opcoes = {}) {
     const {
@@ -336,6 +348,7 @@ async function buscarLancamentoRecente(valor, data, opcoes = {}) {
         intervaloInicialMs = 10000,
         toleranciaValor = 0.01,
         toleranciaDias = 1,
+        fornecedorCnpj = null,
         log = console.log,
     } = opcoes;
 
@@ -369,17 +382,42 @@ async function buscarLancamentoRecente(valor, data, opcoes = {}) {
             const itens = resposta?.itens || resposta?.items || [];
 
             if (itens.length > 0) {
-                // Pegar o lançamento mais recente (primeiro, já ordenado por data_alteracao desc)
-                const lancamento = itens[0];
+                let candidatos = itens;
+
+                if (itens.length > 1) {
+                    log(`[Enriquecedor] ⚠ ${itens.length} lançamentos encontrados no período/valor.`);
+                    if (fornecedorCnpj) {
+                        const alvo = String(fornecedorCnpj).replace(/\D/g, "");
+                        const filtrados = itens.filter((item) => {
+                            const cnpjItem = String(
+                                item.fornecedor?.documento || item.fornecedor?.cnpj || item.contato?.documento || ""
+                            ).replace(/\D/g, "");
+                            return alvo && cnpjItem && cnpjItem === alvo;
+                        });
+                        if (filtrados.length === 1) {
+                            candidatos = filtrados;
+                            log(`[Enriquecedor] Desambiguado por fornecedor (CNPJ/CPF): id=${candidatos[0].id}`);
+                        }
+                    }
+                    if (candidatos.length > 1) {
+                        // Nunca escolher "o primeiro" quando ha ambiguidade real: risco de
+                        // aplicar categoria/centro/metodo no lancamento errado.
+                        const erroAmbiguo = new Error(
+                            `[Enriquecedor] ${candidatos.length} lançamentos ambíguos para valor=R$ ${valor}, `
+                            + `data=${data}. Não é seguro escolher automaticamente qual complementar; `
+                            + `informe o CNPJ/CPF do fornecedor ou complete manualmente no Conta Azul.`
+                        );
+                        erroAmbiguo.ambiguo = true;
+                        throw erroAmbiguo;
+                    }
+                }
+
+                const lancamento = candidatos[0];
                 log(`[Enriquecedor] Lançamento encontrado na tentativa ${tentativa}/${tentativas}: id=${lancamento.id}`);
                 log(`[Enriquecedor]   Descrição: ${lancamento.descricao || "(sem descrição)"}`);
                 const valorExibicao = lancamento.valor ?? lancamento.valor_total ?? lancamento.valor_bruto ?? valor;
                 log(`[Enriquecedor]   Valor: R$ ${valorExibicao}`);
                 log(`[Enriquecedor]   Data competência: ${lancamento.data_competencia}`);
-
-                if (itens.length > 1) {
-                    log(`[Enriquecedor] ⚠ ${itens.length} lançamentos encontrados no período/valor. Usando o mais recente.`);
-                }
 
                 return lancamento;
             }
@@ -391,6 +429,10 @@ async function buscarLancamentoRecente(valor, data, opcoes = {}) {
                 await esperar(espera);
             }
         } catch (erro) {
+            // Ambiguidade nunca deve ser retentada: tentar de novo não resolve
+            // qual lançamento é o certo, só atrasa o erro.
+            if (erro.ambiguo) throw erro;
+
             // Erros de rede/API não devem abortar o retry
             log(`[Enriquecedor] Tentativa ${tentativa}/${tentativas}: erro na busca — ${erro.message}`);
             if (tentativa < tentativas) {
@@ -427,6 +469,58 @@ function extrairNumVersao(obj) {
     if (typeof obj?.versao === "number") return obj.versao;
     if (typeof obj?.version === "number") return obj.version;
     return 0;
+}
+
+/**
+ * Lê o que já está preenchido numa parcela (retorno de
+ * `GET /v1/financeiro/eventos-financeiros/parcelas/{id}`), para que o
+ * enriquecedor só complemente o que a Conta AI deixou ausente — nunca
+ * sobrescreva um valor que ela já identificou corretamente.
+ *
+ * @param {object} parcela — objeto retornado por buscarParcela()/obterParcelaFinanceira()
+ * @returns {{ categoriaId: string|null, centroCustoId: string|null, metodoPagamento: string|null }}
+ */
+function extrairEstadoAtual(parcela) {
+    const rateio = Array.isArray(parcela?.rateio) ? parcela.rateio[0] : null;
+    const centroRateio = Array.isArray(rateio?.rateio_centro_custo) ? rateio.rateio_centro_custo[0] : null;
+    const anexos = parcela?.anexos ?? parcela?.evento?.anexos;
+    return {
+        categoriaId: rateio?.id_categoria || null,
+        centroCustoId: centroRateio?.id_centro_custo || null,
+        metodoPagamento: parcela?.metodo_pagamento || null,
+        // Campos que o enriquecedor nao altera, mas confere para avisar o operador
+        descricao: parcela?.descricao || parcela?.evento?.descricao || null,
+        fornecedor: parcela?.fornecedor?.nome || parcela?.contato?.nome || parcela?.evento?.fornecedor?.nome || null,
+        dataCompetencia: parcela?.data_competencia || parcela?.evento?.data_competencia || null,
+        dataVencimento: parcela?.data_vencimento || null,
+        contaFinanceira: parcela?.conta_financeira?.id || parcela?.id_conta_financeira || null,
+        valor: parcela?.valor ?? parcela?.valor_composicao?.valor_bruto ?? null,
+        anexos: Array.isArray(anexos) ? anexos.length : null,
+    };
+}
+
+/**
+ * Confere o lancamento inteiro e devolve o que continua vazio no Conta Azul,
+ * separando o que este modulo consegue preencher do que depende de uma pessoa.
+ *
+ * @returns {Array<{campo:string, rotulo:string, preenchivel:boolean}>}
+ */
+function camposFaltantes(estadoAtual = {}) {
+    const conferencia = [
+        { campo: "categoria", rotulo: "Categoria", valor: estadoAtual.categoriaId, preenchivel: true },
+        { campo: "centro_custo", rotulo: "Centro de custo", valor: estadoAtual.centroCustoId, preenchivel: true },
+        { campo: "metodo_pagamento", rotulo: "Forma de pagamento", valor: estadoAtual.metodoPagamento, preenchivel: true },
+        { campo: "descricao", rotulo: "Descricao", valor: estadoAtual.descricao, preenchivel: false },
+        { campo: "fornecedor", rotulo: "Fornecedor", valor: estadoAtual.fornecedor, preenchivel: false },
+        { campo: "data_competencia", rotulo: "Data de competencia", valor: estadoAtual.dataCompetencia, preenchivel: false },
+        { campo: "data_vencimento", rotulo: "Data de vencimento", valor: estadoAtual.dataVencimento, preenchivel: false },
+        { campo: "conta_financeira", rotulo: "Conta financeira", valor: estadoAtual.contaFinanceira, preenchivel: false },
+        { campo: "valor", rotulo: "Valor", valor: estadoAtual.valor, preenchivel: false },
+        { campo: "anexo", rotulo: "Imagem anexada", valor: estadoAtual.anexos, preenchivel: false },
+    ];
+    return conferencia
+        .filter(({ valor }) => valor === null || valor === undefined || valor === "" || valor === 0)
+        .map(({ campo, rotulo, preenchivel }) => ({ campo, rotulo, preenchivel }));
 }
 
 async function buscarParcela(eventoId, opcoes = {}) {
@@ -481,64 +575,100 @@ async function buscarParcela(eventoId, opcoes = {}) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Detecta se um erro de PATCH parece ser rejeição de um campo específico
+ * (400/422) — caso em que vale tentar um payload menor — em oposição a
+ * erro de autenticação, rede ou versão desatualizada, que não deve ser
+ * mascarado tentando outro formato de corpo.
+ */
+function pareceRejeicaoDeCampo(mensagemErro) {
+    return /Conta Azul (400|422):/i.test(String(mensagemErro || ""));
+}
+
+/**
  * Atualiza uma parcela existente com Categoria, Centro de Custo e Método
  * de Pagamento via PATCH.
+ *
+ * IMPORTANTE — o contrato oficial documenta `rateio`/`rateio_centro_custo`
+ * apenas para a CRIAÇÃO do lançamento; só `metodo_pagamento` foi confirmado
+ * por teste real como aceito no PATCH da parcela (ver API-CONTA-AZUL.md).
+ * Por isso esta função não assume que o payload completo será aceito: ela
+ * tenta o payload completo primeiro e, apenas se a API rejeitar
+ * especificamente por causa de um campo (400/422), tenta payloads
+ * progressivamente menores. Erros de autenticação/rede/versão nunca
+ * disparam esse fallback — são propagados imediatamente.
  *
  * O body envia a `versao` atual para controle otimista de concorrência
  * (a API rejeita se a versão mudou desde a leitura).
  *
  * @param {string} parcelaId — UUID da parcela
  * @param {number} versao — versão atual da parcela (controle de concorrência)
- * @param {object} dados — campos a injetar
- * @param {string} dados.categoriaId — UUID da categoria
+ * @param {object} dados — campos a injetar (usar `null` para "nada a enviar nesse campo")
+ * @param {string} [dados.categoriaId] — UUID da categoria
  * @param {number} dados.valor — valor da despesa (obrigatório no rateio)
  * @param {string} [dados.centroCustoId] — UUID do centro de custo
  * @param {string} [dados.metodoPagamento] — string da API (ex: "PIX")
  * @param {object} [opcoes]
  * @param {Function} [opcoes.log] — função de log
- * @returns {Promise<object>} — resposta da API
+ * @returns {Promise<{resposta:object, tentativaAplicada:string, categoriaAplicada:boolean, centroCustoAplicado:boolean, metodoPagamentoAplicado:boolean}>}
+ * @throws {Error} — se nenhuma tentativa for aceita
  */
 async function atualizarParcela(parcelaId, versao, dados, opcoes = {}) {
     const { log = console.log } = opcoes;
 
-    // Montar o rateio com categoria e, opcionalmente, centro de custo
-    const itemRateio = {
-        id_categoria: dados.categoriaId,
-        valor: dados.valor,
-    };
-
-    // Centro de custo vai DENTRO do rateio, como array
-    // (conforme documentado em API-CONTA-AZUL.md, linhas 117-121)
-    if (dados.centroCustoId) {
-        itemRateio.rateio_centro_custo = [
-            {
-                id_centro_custo: dados.centroCustoId,
-                valor: dados.valor,
-            },
-        ];
+    function montarCorpo({ incluirRateio, incluirCentro, incluirMetodo }) {
+        const corpo = { versao: Number(versao), version: Number(versao) };
+        if (incluirRateio && dados.categoriaId) {
+            const itemRateio = { id_categoria: dados.categoriaId, valor: dados.valor };
+            // Centro de custo vai DENTRO do rateio, como array
+            // (conforme documentado em API-CONTA-AZUL.md, linhas 117-121)
+            if (incluirCentro && dados.centroCustoId) {
+                itemRateio.rateio_centro_custo = [{ id_centro_custo: dados.centroCustoId, valor: dados.valor }];
+            }
+            corpo.rateio = [itemRateio];
+        }
+        if (incluirMetodo && dados.metodoPagamento) corpo.metodo_pagamento = dados.metodoPagamento;
+        return corpo;
     }
 
-    const corpo = {
-        versao: Number(versao),
-        version: Number(versao),
-        rateio: [itemRateio],
-    };
-
-    // Método de pagamento, se informado
+    const tentativas = [];
+    if (dados.categoriaId) {
+        tentativas.push({ nome: "rateio_completo", incluirRateio: true, incluirCentro: true, incluirMetodo: true });
+        if (dados.centroCustoId) {
+            tentativas.push({ nome: "rateio_sem_centro_custo", incluirRateio: true, incluirCentro: false, incluirMetodo: true });
+        }
+    }
     if (dados.metodoPagamento) {
-        corpo.metodo_pagamento = dados.metodoPagamento;
+        tentativas.push({ nome: "somente_metodo_pagamento", incluirRateio: false, incluirCentro: false, incluirMetodo: true });
     }
 
-    log(`[Enriquecedor] Atualizando parcela ${parcelaId} (versão ${versao}):`);
-    log(`[Enriquecedor]   Categoria: ${dados.categoriaId}`);
-    if (dados.centroCustoId) log(`[Enriquecedor]   Centro de Custo: ${dados.centroCustoId}`);
-    if (dados.metodoPagamento) log(`[Enriquecedor]   Método Pagamento: ${dados.metodoPagamento}`);
-    log(`[Enriquecedor]   Body: ${JSON.stringify(corpo, null, 2)}`);
+    let ultimoErro = null;
+    for (const tentativa of tentativas) {
+        const corpo = montarCorpo(tentativa);
+        if (!corpo.rateio && !corpo.metodo_pagamento) continue; // nada a enviar nesse payload
 
-    const resposta = await contaAzul.patchParcela(parcelaId, corpo);
+        log(`[Enriquecedor] Tentativa "${tentativa.nome}" na parcela ${parcelaId} (versão ${versao}):`);
+        log(`[Enriquecedor]   Body: ${JSON.stringify(corpo, null, 2)}`);
 
-    log(`[Enriquecedor] ✓ Parcela atualizada com sucesso!`);
-    return resposta;
+        try {
+            const resposta = await contaAzul.patchParcela(parcelaId, corpo);
+            log(`[Enriquecedor] ✓ PATCH aceito na tentativa "${tentativa.nome}"!`);
+            return {
+                resposta,
+                tentativaAplicada: tentativa.nome,
+                categoriaAplicada: Boolean(corpo.rateio),
+                centroCustoAplicado: Boolean(corpo.rateio?.[0]?.rateio_centro_custo),
+                metodoPagamentoAplicado: Boolean(corpo.metodo_pagamento),
+            };
+        } catch (erro) {
+            ultimoErro = erro;
+            log(`[Enriquecedor] ✗ Tentativa "${tentativa.nome}" falhou: ${erro.message}`);
+            // Só tenta um payload menor quando a API rejeitou por causa de um campo
+            // (400/422). Auth/rede/versão desatualizada não devem ser mascarados.
+            if (!pareceRejeicaoDeCampo(erro.message)) throw erro;
+        }
+    }
+
+    throw ultimoErro || new Error("[Enriquecedor] Nenhum campo para atualizar (categoria/centro/método ausentes).");
 }
 
 // ---------------------------------------------------------------------------
@@ -560,12 +690,25 @@ async function atualizarParcela(parcelaId, versao, dados, opcoes = {}) {
  * @param {string} [contexto.metodoPagamento] — texto do método (ex: "pix", "dinheiro")
  * @param {object} [opcoes] — configurações de retry, log, etc.
  * @param {boolean} [opcoes.dryRun=false] — se true, não executa o PATCH
+ * @param {string} [opcoes.chaveIdempotencia] — chave para a trava de execução
+ *   concorrente (ex: nome base do arquivo da nota). Se omitida, usa `valor|data`.
+ * @param {string} [opcoes.fornecedorCnpj] — CNPJ/CPF do fornecedor, usado só
+ *   para desambiguar quando há mais de um lançamento candidato.
  * @param {Function} [opcoes.log] — função de log
  * @returns {Promise<object>} — resultado completo do enriquecimento
  */
 async function enriquecer(valor, data, contexto, opcoes = {}) {
-    const { dryRun = false, log = console.log, ...opcoesRetry } = opcoes;
+    const { dryRun = false, log = console.log, chaveIdempotencia, ...opcoesRetry } = opcoes;
     const inicio = Date.now();
+    const chave = chaveIdempotencia || `${valor}|${data}`;
+
+    if (_emExecucao.has(chave)) {
+        throw new Error(
+            `[Enriquecedor] Já existe um enriquecimento em andamento para esta despesa (${chave}). `
+            + `Evite clicar/chamar novamente; aguarde a execução anterior terminar.`
+        );
+    }
+    _emExecucao.add(chave);
 
     log("=".repeat(70));
     log("[Enriquecedor] Iniciando enriquecimento de lançamento");
@@ -581,6 +724,7 @@ async function enriquecer(valor, data, contexto, opcoes = {}) {
         data,
         contexto,
         etapas: {},
+        pendencias: [],
         erro: null,
         duracao_ms: 0,
     };
@@ -589,10 +733,11 @@ async function enriquecer(valor, data, contexto, opcoes = {}) {
         // -------------------------------------------------------------------
         // Resolver UUIDs localmente ANTES de buscar na API
         // -------------------------------------------------------------------
-        const categoriaResolvida = resolverCategoria(
-            contexto.categoria,
-            contexto.veiculo || null
-        );
+        // Quando o pipeline ja resolveu os UUIDs (classificacao local), reaproveita
+        // em vez de resolver o texto de novo — evita divergencia entre as duas etapas.
+        const categoriaResolvida = contexto.categoriaId
+            ? { id: contexto.categoriaId, nome: contexto.categoriaNome || contexto.categoriaId }
+            : resolverCategoria(contexto.categoria, contexto.veiculo || null);
         if (!categoriaResolvida) {
             throw new Error(
                 `Categoria não encontrada para "${contexto.categoria}"`
@@ -604,7 +749,10 @@ async function enriquecer(valor, data, contexto, opcoes = {}) {
         log(`[Enriquecedor] Categoria resolvida: "${categoriaResolvida.nome}" → ${categoriaResolvida.id}`);
 
         let centroCustoResolvido = null;
-        if (contexto.centroCusto) {
+        if (contexto.centroCustoId) {
+            centroCustoResolvido = { id: contexto.centroCustoId, nome: contexto.centroCustoNome || contexto.centroCustoId };
+            log(`[Enriquecedor] Centro de custo recebido ja resolvido: "${centroCustoResolvido.nome}" → ${centroCustoResolvido.id}`);
+        } else if (contexto.centroCusto) {
             centroCustoResolvido = resolverCentroCusto(contexto.centroCusto);
             if (!centroCustoResolvido) {
                 throw new Error(
@@ -633,7 +781,11 @@ async function enriquecer(valor, data, contexto, opcoes = {}) {
         // ETAPA 2 — Buscar lançamento
         // -------------------------------------------------------------------
         log("\n--- ETAPA 2: Busca do lançamento ---");
-        const lancamento = await buscarLancamentoRecente(valor, data, { ...opcoesRetry, log });
+        const lancamento = await buscarLancamentoRecente(valor, data, {
+            ...opcoesRetry,
+            fornecedorCnpj: opcoes.fornecedorCnpj || null,
+            log,
+        });
         resultado.etapas.lancamento = {
             id: lancamento.id,
             descricao: lancamento.descricao,
@@ -648,25 +800,59 @@ async function enriquecer(valor, data, contexto, opcoes = {}) {
         const { id: parcelaId, versao, parcela } = await buscarParcela(lancamento.id, { log });
         resultado.etapas.parcela = { id: parcelaId, versao };
 
+        // O que a Conta AI já preencheu — nunca sobrescrever isso automaticamente.
+        const estadoAtual = extrairEstadoAtual(parcela);
+        const categoriaJaPresente = Boolean(estadoAtual.categoriaId);
+        const centroJaPresente = Boolean(estadoAtual.centroCustoId);
+        const metodoJaPresente = Boolean(estadoAtual.metodoPagamento);
+        log(
+            `[Enriquecedor] Estado atual na Conta Azul — categoria: ${estadoAtual.categoriaId || "(ausente)"}, `
+            + `centro de custo: ${estadoAtual.centroCustoId || "(ausente)"}, `
+            + `método de pagamento: ${estadoAtual.metodoPagamento || "(ausente)"}`
+        );
+        resultado.etapas.estado_atual = estadoAtual;
+        resultado.etapas.campos_faltantes = camposFaltantes(estadoAtual);
+        resultado.etapas.campos_mantidos = {
+            categoria: categoriaJaPresente,
+            centro_custo: centroJaPresente,
+            metodo_pagamento: metodoJaPresente,
+        };
+
         // -------------------------------------------------------------------
-        // ETAPA 4 — PATCH de enriquecimento
+        // ETAPA 4 — PATCH de enriquecimento (só dos campos ainda ausentes)
         // -------------------------------------------------------------------
         log("\n--- ETAPA 4: Enriquecimento via PATCH ---");
 
         const dadosPatch = {
-            categoriaId: categoriaResolvida.id,
+            // Categoria é obrigatória no rateio: mantém a já existente se houver,
+            // só usa a resolvida localmente quando a Conta AI não preencheu nada.
+            categoriaId: estadoAtual.categoriaId || categoriaResolvida.id,
             valor: Number(lancamento.valor || valor),
-            centroCustoId: centroCustoResolvido?.id || null,
-            metodoPagamento: metodoPagamentoResolvido,
+            centroCustoId: centroJaPresente ? null : (centroCustoResolvido?.id || null),
+            metodoPagamento: metodoJaPresente ? null : metodoPagamentoResolvido,
         };
 
-        if (dryRun) {
+        const nadaAComplementar = categoriaJaPresente
+            && (centroJaPresente || !dadosPatch.centroCustoId)
+            && (metodoJaPresente || !dadosPatch.metodoPagamento);
+
+        if (nadaAComplementar) {
+            log("[Enriquecedor] A Conta AI já preencheu tudo que este módulo poderia complementar; nenhum PATCH necessário.");
+            resultado.etapas.patch = { executado: false, motivo: "nada_a_complementar" };
+        } else if (dryRun) {
             log("[Enriquecedor] *** DRY-RUN: PATCH NÃO EXECUTADO ***");
             log(`[Enriquecedor] Payload que seria enviado: ${JSON.stringify(dadosPatch, null, 2)}`);
             resultado.etapas.patch = { dryRun: true, payload: dadosPatch };
         } else {
-            const respostaPatch = await atualizarParcela(parcelaId, versao, dadosPatch, { log });
-            resultado.etapas.patch = { executado: true, resposta: respostaPatch };
+            const aplicado = await atualizarParcela(parcelaId, versao, dadosPatch, { log });
+            resultado.etapas.patch = { executado: true, ...aplicado };
+            if (dadosPatch.centroCustoId && !aplicado.centroCustoAplicado) {
+                log("[Enriquecedor] ⚠ Centro de custo não pôde ser confirmado via PATCH; requer revisão manual no Conta Azul.");
+                resultado.pendencias.push("centro_de_custo_nao_aplicado_via_api");
+            }
+            if (dadosPatch.metodoPagamento && !aplicado.metodoPagamentoAplicado) {
+                resultado.pendencias.push("metodo_pagamento_nao_aplicado_via_api");
+            }
         }
 
         resultado.sucesso = true;
@@ -675,6 +861,8 @@ async function enriquecer(valor, data, contexto, opcoes = {}) {
     } catch (erro) {
         resultado.erro = erro.message;
         log(`\n[Enriquecedor] ✗ ERRO: ${erro.message}`);
+    } finally {
+        _emExecucao.delete(chave);
     }
 
     resultado.duracao_ms = Date.now() - inicio;
@@ -693,6 +881,8 @@ module.exports = {
     buscarLancamentoRecente,
     buscarParcela,
     atualizarParcela,
+    extrairEstadoAtual,
+    camposFaltantes,
 
     // Resolvedores locais
     resolverCategoria,

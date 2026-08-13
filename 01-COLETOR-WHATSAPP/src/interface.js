@@ -6,6 +6,8 @@ const fs = require("fs");
 const { execFile } = require("child_process");
 const QRCode = require("qrcode");
 const whatsapp = require("./coletor");
+const notificacoes = require("./notificacoes");
+const { lancarDespesa } = require("./lancamento-direto");
 const { configuracaoAzure } = require("./azure-ocr");
 const {
     obterEstadoContaAzul,
@@ -88,6 +90,7 @@ function documentosRecentes(dataFiltro = "") {
                     ocr: dados.ocr || {}, classificacao: dados.classificacao || {}, aprendizado: dados.aprendizado_historico || null, validacoes: dados.validacoes || {},
                     conta_azul: dados.conta_azul || { status: "NAO_ENVIADO" },
                     encaminhamento_whatsapp: dados.encaminhamento_whatsapp || null,
+                    lancamento_direto: dados.lancamento_direto || null,
                     envio_conta_azul: filaContaAzul.get(base) || null,
                 });
             } catch (_) { /* ignora JSON incompleto */ }
@@ -209,8 +212,49 @@ app.post("/api/documentos/:base/encaminhar-conta-ai", async (req, res, next) => 
         if (!imagem) throw new Error("Imagem nao encontrada.");
         const auditoriaPath = path.join(RAIZ, "dados", "auditoria", `${base}.json`);
         const auditoria = fs.existsSync(auditoriaPath) ? JSON.parse(fs.readFileSync(auditoriaPath, "utf8")) : {};
+        if (auditoria.validacoes?.bloqueado) {
+            throw new Error("Documento bloqueado por duplicidade ou fora do escopo; o encaminhamento nao e permitido.");
+        }
         await whatsapp.encaminharParaContaAI(imagem.caminho, auditoria);
         res.json({ ok: true, mensagem: "Comprovante e instrucoes encaminhados ao Conta AI no WhatsApp." });
+    } catch (erro) { next(erro); }
+});
+
+app.post("/api/documentos/:base/lancar-direto", async (req, res, next) => {
+    try {
+        const base = String(req.params.base || "");
+        if (!base || path.basename(base) !== base) throw new Error("Nome de documento invalido.");
+        // Criar despesa altera o Conta Azul e nao tem desfazer: exige confirmacao explicita.
+        const simular = req.body?.confirmacao !== "LANCAR_NO_CONTA_AZUL";
+        const resultado = await lancarDespesa(base, { dryRun: simular });
+
+        if (resultado.impedimentos?.length) {
+            return res.status(400).json({ erro: `Nao e possivel lancar: ${resultado.impedimentos.join(" ")}` });
+        }
+        if (resultado.erro) return res.status(400).json({ erro: resultado.erro, ...resultado });
+
+        const mensagem = simular
+            ? `Simulacao: a despesa seria criada com categoria e centro de custo preenchidos (R$ ${resultado.payload.valor}).`
+            : `Despesa criada no Conta Azul${resultado.lancamento_id ? ` (id ${resultado.lancamento_id})` : ""}.`;
+        return res.json({ ok: true, mensagem, ...resultado });
+    } catch (erro) { return next(erro); }
+});
+
+app.post("/api/whatsapp/codigo", async (req, res, next) => {
+    try {
+        const codigo = await whatsapp.solicitarCodigoPareamento(req.body?.numero);
+        res.json({ ok: true, codigo });
+    } catch (erro) { next(erro); }
+});
+
+app.get("/api/notificacoes", (_req, res) => {
+    res.json({ itens: notificacoes.listar(), nao_lidas: notificacoes.contarNaoLidas() });
+});
+
+app.post("/api/notificacoes/lidas", (req, res, next) => {
+    try {
+        const naoLidas = notificacoes.marcarLida(req.body?.id ? String(req.body.id) : null);
+        res.json({ ok: true, nao_lidas: naoLidas });
     } catch (erro) { next(erro); }
 });
 
@@ -303,9 +347,34 @@ app.post("/api/conta-azul/despesas/:base/validar-no-erp", async (req, res, next)
 app.use((erro, _req, res, _next) => res.status(400).json({ erro: erro.message || "Erro inesperado." }));
 app.get("*splat", (_req, res) => res.sendFile(path.join(RAIZ, "public", "index.html")));
 
-app.listen(porta, "127.0.0.1", () => {
+const servidor = app.listen(porta, "127.0.0.1", () => {
     const url = `http://127.0.0.1:${porta}`;
     console.log(`\nPainel aberto em ${url}\n`);
-    whatsapp.iniciar().catch((erro) => console.error("WhatsApp:", erro.message));
+    // NAO_CONECTAR_WHATSAPP=1 sobe o painel sem abrir conexao com o WhatsApp.
+    // Serve para testes e diagnosticos: duas conexoes simultaneas usando a
+    // mesma pasta de sessao fazem o WhatsApp recusar o pareamento.
+    if (process.env.NAO_CONECTAR_WHATSAPP === "1") {
+        console.log("Modo diagnostico: o WhatsApp NAO sera conectado nesta execucao.\n");
+    } else {
+        whatsapp.iniciar().catch((erro) => console.error("WhatsApp:", erro.message));
+    }
     if (process.platform === "win32" && process.env.NAO_ABRIR_NAVEGADOR !== "1") execFile("explorer.exe", [url], () => {});
+});
+
+// Trava de instancia unica. Duas copias abertas ao mesmo tempo compartilham a
+// mesma pasta de sessao e abrem conexoes simultaneas com o WhatsApp — e o
+// WhatsApp recusa o pareamento ("Nao foi possivel conectar o dispositivo").
+servidor.on("error", (erro) => {
+    if (erro.code === "EADDRINUSE") {
+        console.error(
+            `\nO programa JA ESTA ABERTO nesta maquina (porta ${porta} em uso).`
+            + `\nUse a janela que ja esta aberta, ou o icone na bandeja do Windows,`
+            + `\nem vez de abrir uma segunda copia.`
+            + `\n\nSe voce acha que a copia anterior travou, feche-a pelo icone da bandeja`
+            + `\n(botao direito > encerrar) e abra o programa novamente.\n`
+        );
+    } else {
+        console.error(`\nNao consegui abrir o painel: ${erro.message}\n`);
+    }
+    process.exit(1);
 });

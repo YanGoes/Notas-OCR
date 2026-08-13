@@ -24,9 +24,28 @@ function dadosAbastecimento(ocr = {}, classificacao = {}) {
     };
 }
 
-function descricaoContaAzul({ legenda, ocr = {}, classificacao = {} }) {
+const ROTULO_PAGAMENTO = {
+    DINHEIRO: "Dinheiro",
+    CARTAO_DEBITO: "Cartao de debito",
+    CARTAO_CREDITO: "Cartao de credito",
+    PIX: "Pix",
+    BOLETO: "Boleto",
+    TRANSFERENCIA: "Transferencia",
+};
+
+function rotuloFormaPagamento(pagamento) {
+    if (!pagamento?.codigo) return null;
+    const rotulo = ROTULO_PAGAMENTO[pagamento.codigo] || pagamento.codigo;
+    return pagamento.conta_cartao ? `${rotulo} (${pagamento.conta_cartao})` : rotulo;
+}
+
+function descricaoContaAzul({ legenda, ocr = {}, classificacao = {}, pagamento = null }) {
     const dados = dadosAbastecimento(ocr, classificacao);
     const partes = [String(legenda || classificacao.tipo_reconhecido?.nome || classificacao.tipo || "Despesa").trim()];
+    const formaPagamento = rotuloFormaPagamento(pagamento);
+    if (formaPagamento && !/conta\/cart|pagamento/i.test(String(legenda || ""))) {
+        partes.push(`Pagamento: ${formaPagamento}`);
+    }
     if (dados) {
         if (dados.placa) partes.push(`Placa: ${dados.placa}`);
         if (dados.litragem) partes.push(`Litragem: ${numeroBr(dados.litragem)} ${dados.unidade}`);
@@ -37,4 +56,4 @@ function descricaoContaAzul({ legenda, ocr = {}, classificacao = {} }) {
     return partes.filter(Boolean).join(" | ").slice(0, 255);
 }
 
-module.exports = { litragemDoOcr, dadosAbastecimento, descricaoContaAzul };
+module.exports = { litragemDoOcr, dadosAbastecimento, descricaoContaAzul, rotuloFormaPagamento };

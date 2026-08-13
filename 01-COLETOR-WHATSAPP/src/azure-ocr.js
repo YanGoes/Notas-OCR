@@ -339,13 +339,131 @@ function nomeFantasiaDoTexto(texto, fornecedor = "") {
 }
 
 function placaDoTexto(texto) {
-    const achado = String(texto || "").match(/\bplaca\s*:?\s*([A-Z]{3})[-\s]?([0-9][A-Z0-9][0-9]{2})\b/i);
-    return achado ? `${achado[1].toUpperCase()}-${achado[2].toUpperCase()}` : null;
+    const bruto = String(texto || "");
+    const rotulada = bruto.match(/\bplaca\s*:?\s*([A-Z]{3})[-\s]?([0-9][A-Z0-9][0-9]{2})\b/i);
+    if (rotulada) return `${rotulada[1].toUpperCase()}-${rotulada[2].toUpperCase()}`;
+
+    // Sem o rotulo "Placa:", so aceita quando o comprovante tem exatamente uma
+    // sequencia com cara de placa (antiga ABC1234 ou Mercosul ABC1D23), em
+    // caixa alta como e impresso. Duas ou mais = ambiguo, nao arrisca.
+    const candidatos = new Set();
+    for (const achado of bruto.matchAll(/(?<![A-Z0-9])([A-Z]{3})[-\s]?([0-9][A-Z0-9][0-9]{2})(?![A-Z0-9])/g)) {
+        candidatos.add(`${achado[1]}-${achado[2]}`);
+    }
+    return candidatos.size === 1 ? [...candidatos][0] : null;
+}
+
+/**
+ * Litragem lida direto do texto, para quando o Azure nao devolve o item
+ * estruturado com unidade em litros. Aceita apenas quando ha um unico
+ * numero seguido de L/LT/LITROS no comprovante.
+ */
+function litragemDoTexto(texto) {
+    const candidatos = new Set();
+    for (const achado of String(texto || "").matchAll(/(\d{1,3}(?:[.,]\d{1,3})?)\s*(?:L|LT|LTS|LITROS?)\b(?![\wÀ-ÿ])/gi)) {
+        const numero = Number(String(achado[1]).replace(",", "."));
+        if (Number.isFinite(numero) && numero > 0 && numero <= 999) candidatos.add(numero);
+    }
+    return candidatos.size === 1 ? [...candidatos][0] : null;
 }
 
 function kmDoTexto(texto) {
     const achado = String(texto || "").match(/\bkm\s*:?\s*([\d.]{2,})\b/i);
     return achado ? Number(achado[1].replace(/\D/g, "")) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Forma de pagamento
+// ---------------------------------------------------------------------------
+// Os codigos sao exatamente os aceitos pela API do Conta Azul.
+const METODOS_PAGAMENTO = [
+    { codigo: "PIX", padrao: /\bpix\b/i },
+    { codigo: "CARTAO_DEBITO", padrao: /\bd[eé]bito\b|\bcart[aã]o\s*deb\b|\bdeb\.?\s*(?:a\s*)?vista\b/i },
+    { codigo: "CARTAO_CREDITO", padrao: /\bcr[eé]dito\b|\bcart[aã]o\s*cred\b/i },
+    { codigo: "DINHEIRO", padrao: /\bdinheiro\b|\besp[eé]cie\b/i },
+    { codigo: "BOLETO", padrao: /\bboleto\b/i },
+    { codigo: "TRANSFERENCIA", padrao: /\btransfer[eê]ncia\b|\bted\b|\bdoc\b/i },
+];
+
+const BANDEIRAS_CARTAO = /\b(mastercard|master|visa\s*electron|visa|elo|amex|american\s*express|hipercard|cabal|alelo|sodexo|ticket|vr)\b/i;
+
+/**
+ * Recorta a secao "FORMA DE PAGAMENTO" da NFC-e — o campo fiscal e a fonte
+ * autoritativa. Fora dessa secao aparecem resumos do POS/adquirente (ex.:
+ * "BK BANK CREDITO") que descrevem a liquidacao, nao como o cliente pagou.
+ */
+function secaoFormaPagamento(texto) {
+    const linhas = String(texto || "").split(/\r?\n/);
+    const inicio = linhas.findIndex((linha) => /forma\s*(?:de\s*)?paga?(?:mento|to)\b/i.test(linha));
+    if (inicio < 0) return null;
+    return linhas.slice(inicio, inicio + 4).join("\n");
+}
+
+function metodosNoTrecho(trecho) {
+    return [...new Set(METODOS_PAGAMENTO.filter(({ padrao }) => padrao.test(trecho)).map(({ codigo }) => codigo))];
+}
+
+function linhaDoMetodo(trecho, codigo) {
+    const padrao = METODOS_PAGAMENTO.find((metodo) => metodo.codigo === codigo)?.padrao;
+    if (!padrao) return null;
+    const linha = String(trecho || "").split(/\r?\n/).find((item) => padrao.test(item));
+    return linha ? linha.replace(/\s{2,}/g, " ").trim().slice(0, 80) : null;
+}
+
+/**
+ * Le a forma de pagamento do comprovante.
+ *
+ * Nunca "chuta" entre metodos conflitantes: quando o texto traz mais de um
+ * (tipico de cupom fiscal com comprovante de cartao grampeado junto), devolve
+ * `codigo: null` com `evidencia: "ambiguo"` e a lista de candidatos, para o
+ * documento ir para revisao humana em vez de lancar a forma errada.
+ *
+ * @returns {{codigo:string|null, texto:string|null, evidencia:string|null, candidatos:string[], bandeira:string|null, adquirente:string|null}}
+ */
+function formaPagamentoDoTexto(texto) {
+    const bruto = String(texto || "");
+    const bandeira = bruto.match(BANDEIRAS_CARTAO);
+    const adquirente = bruto.match(INTERMEDIARIOS_PAGAMENTO);
+    const base = {
+        bandeira: bandeira ? bandeira[1].toUpperCase().replace(/\s+/g, " ") : null,
+        adquirente: adquirente ? adquirente[0].toUpperCase() : null,
+    };
+
+    const secao = secaoFormaPagamento(bruto);
+    if (secao) {
+        const achados = metodosNoTrecho(secao);
+        if (achados.length === 1) {
+            const noFiscal = achados[0];
+            // Cupom dizendo um metodo com comprovante de cartao grampeado dizendo
+            // outro: acontece quando o caixa registra "dinheiro" e o cliente paga
+            // no cartao. Marca a divergencia em vez de escolher sozinho.
+            const noCartao = metodosNoTrecho(bruto).filter((codigo) => codigo !== noFiscal
+                && ["CARTAO_DEBITO", "CARTAO_CREDITO"].includes(codigo));
+            const temComprovanteCartao = Boolean(base.bandeira || base.adquirente);
+            if (noCartao.length === 1 && temComprovanteCartao) {
+                return {
+                    ...base,
+                    codigo: null,
+                    texto: linhaDoMetodo(secao, noFiscal),
+                    evidencia: "divergente",
+                    candidatos: [noFiscal, noCartao[0]],
+                };
+            }
+            return { ...base, codigo: noFiscal, texto: linhaDoMetodo(secao, noFiscal), evidencia: "campo_fiscal", candidatos: achados };
+        }
+        if (achados.length > 1) {
+            return { ...base, codigo: null, texto: null, evidencia: "ambiguo", candidatos: achados };
+        }
+    }
+
+    const achadosGerais = metodosNoTrecho(bruto);
+    if (achadosGerais.length === 1) {
+        return { ...base, codigo: achadosGerais[0], texto: linhaDoMetodo(bruto, achadosGerais[0]), evidencia: "texto_geral", candidatos: achadosGerais };
+    }
+    if (achadosGerais.length > 1) {
+        return { ...base, codigo: null, texto: null, evidencia: "ambiguo", candidatos: achadosGerais };
+    }
+    return { ...base, codigo: null, texto: null, evidencia: null, candidatos: [] };
 }
 
 function candidatosCidadeEstado(texto) {
@@ -461,6 +579,7 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
     const itens = itensDosCampos(campos);
     const itemLitros = itens.find((item) => /^(l|lt|litro|litros)$/i.test(String(item.unidade || "").trim()) && Number(item.quantidade) > 0);
     const endereco = enderecoDoCampo(campos.MerchantAddress, texto, chaveFiscal?.estado);
+    const formaPagamento = formaPagamentoDoTexto(texto);
     return {
         fornecedor,
         fornecedor_origem: fornecedorHeuristico ? "heuristica_texto_azure" : fornecedor ? "campo_estruturado_azure" : null,
@@ -474,10 +593,17 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
         hora: valorCampo(campos.TransactionTime),
         valor: valorFinal,
         itens,
-        litragem: itemLitros ? Number(itemLitros.quantidade) : null,
+        litragem: itemLitros ? Number(itemLitros.quantidade) : litragemDoTexto(texto),
+        litragem_origem: itemLitros ? "campo_estruturado_azure" : litragemDoTexto(texto) ? "heuristica_texto_azure" : null,
         produto_principal: itens[0]?.descricao || null,
         placa: placaDoTexto(texto),
         quilometragem: kmDoTexto(texto),
+        forma_pagamento: formaPagamento.codigo,
+        forma_pagamento_texto: formaPagamento.texto,
+        forma_pagamento_origem: formaPagamento.evidencia,
+        forma_pagamento_candidatos: formaPagamento.candidatos,
+        cartao_bandeira: formaPagamento.bandeira,
+        cartao_adquirente: formaPagamento.adquirente,
         tipo_recibo_azure: valorCampo(campos.ReceiptType),
         tipo_despesa_sugerido: tipoSugeridoAzure(documento, campos),
         valor_origem: valorEstruturado !== null && valorEstruturado !== undefined ? "campo_estruturado_azure" : detalhesValor.valor !== null ? "heuristica_texto_azure" : null,
@@ -527,6 +653,6 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
 module.exports = {
     analisarDocumento, configuracaoAzure, valorCampo, cnpjDoTexto, cnpjValido, chaveNfeValida, dadosChaveFiscalDoTexto, fornecedorDoTexto,
     valorDoTexto, detalhesValorDoTexto, normalizarData, dataDoTexto, nomeFantasiaDoTexto,
-    placaDoTexto, kmDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
+    placaDoTexto, litragemDoTexto, kmDoTexto, formaPagamentoDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
     confiancaLeitura, normalizarResultadoAzure,
 };

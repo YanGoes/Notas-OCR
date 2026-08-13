@@ -231,6 +231,7 @@ Edite `config.json` com o Bloco de Notas:
 - `nomes_dos_grupos`: nomes usados nos arquivos salvos.
 - `exigir_legenda`: quando `true`, ignora fotos sem legenda.
 - `aceitar_webp`: quando `true`, também salva imagens WEBP/figurinhas.
+- `pipeline.encaminhar_automaticamente_conta_ai`: desligado por padrão. Quando `true`, cada foto que o pipeline local processa (e que não for bloqueada por duplicidade ou fora do escopo) é encaminhada automaticamente para o número do Conta AI configurado em `numero_conta_ai`. Isso só envia a foto para a Conta AI processar — não cria nenhuma despesa; a criação continua exigindo os passos manuais descritos em "Integração com o Conta Azul".
 
 ## Integração com o Conta Azul
 

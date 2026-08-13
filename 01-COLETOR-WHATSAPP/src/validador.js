@@ -12,7 +12,12 @@ function chaveFiscal(ocr) {
 }
 function idValido(id) { return Boolean(id) && !String(id).startsWith("PREENCHER_"); }
 
-function validar({ operador, ocr, classificacao, regras, duplicado }) {
+const ROTULO_PAGAMENTO_CURTO = {
+    DINHEIRO: "dinheiro", CARTAO_DEBITO: "debito", CARTAO_CREDITO: "credito",
+    PIX: "pix", BOLETO: "boleto", TRANSFERENCIA: "transferencia",
+};
+
+function validar({ operador, ocr, classificacao, regras, duplicado, pagamento = null }) {
     const motivos = [];
     let bloqueado = false;
     if (classificacao.escopo_proibido) { motivos.push("Despesa fora do escopo permitido."); bloqueado = true; }
@@ -29,9 +34,23 @@ function validar({ operador, ocr, classificacao, regras, duplicado }) {
         if (!litragemDoOcr(ocr)) motivos.push("Litragem do abastecimento nao identificada no comprovante.");
     } else if (classificacao.tipo_reconhecido?.exige_veiculo && !classificacao.veiculo) motivos.push("Veiculo obrigatorio, ausente ou nao reconhecido.");
     if (classificacao.tipo_reconhecido?.sempre_revisar) motivos.push("Tipo 'outros' exige revisao humana obrigatoria.");
+    if (pagamento?.incerto) {
+        const opcoes = (pagamento.candidatos || []).map((codigo) => ROTULO_PAGAMENTO_CURTO[codigo] || codigo).join(" ou ");
+        motivos.push(`Forma de pagamento incerta no comprovante${opcoes ? ` (${opcoes})` : ""}; informe na legenda com "Conta/cartao:".`);
+    }
     if (ocr.erro_leitura) motivos.push(`Leitura automatica inconclusiva: ${ocr.erro_leitura}`);
     if (!Number.isFinite(Number(ocr.valor)) || Number(ocr.valor) <= 0) motivos.push("Valor nao identificado com seguranca pelo OCR.");
     if (!ocr.data) motivos.push("Data nao identificada pelo OCR.");
+    else {
+        // Data no futuro quase sempre e erro de leitura (ex.: 15/02/25 lido como
+        // 2035). Lancar com competencia errada bagunca o fechamento do mes.
+        const lida = new Date(`${ocr.data}T12:00:00Z`);
+        const limite = new Date();
+        limite.setDate(limite.getDate() + 2);
+        if (!Number.isNaN(lida.getTime()) && lida > limite) {
+            motivos.push(`Data lida (${ocr.data}) esta no futuro; provavel erro de leitura. Confira o comprovante.`);
+        }
+    }
     if (Number(ocr.confianca || 0) < Number(regras.confianca_minima)) motivos.push("Confianca do OCR abaixo do minimo; requer leitura humana.");
     const divergencia = operador.valor_informado !== null && ocr.valor !== null
         ? Math.abs(Number(operador.valor_informado) - Number(ocr.valor)) : 0;
