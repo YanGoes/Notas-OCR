@@ -1,0 +1,16 @@
+[
+  {
+    "codigo": "INTER",
+    "rotulo": "CRÉDITO INTER",
+    "forma_pagamento": "CARTAO_CREDITO",
+    "conta_conta_azul_id": null,
+    "apelidos": ["credito inter", "cartao inter", "inter"]
+  },
+  {
+    "codigo": "C6",
+    "rotulo": "CRÉDITO C6",
+    "forma_pagamento": "CARTAO_CREDITO",
+    "conta_conta_azul_id": null,
+    "apelidos": ["credito c6", "cartao c6", "c6"]
+  }
+]

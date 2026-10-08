@@ -1,0 +1,9 @@
+{
+  "_leia_me": "Copie para pessoas.json (que NAO vai para o Git) e preencha os telefones. papel: OPERADOR, ADMINISTRATIVO ou GESTOR. autoridade_financeira=true permite que a mensagem da pessoa defina cartao/projeto. pasta_drive=null significa que a pessoa nao tem pasta individual de despesas.",
+  "pessoas": [
+    { "id": "vanessa", "nome": "Vanessa", "telefone": "55DDDNUMERO", "papel": "ADMINISTRATIVO", "autoridade_financeira": true, "pasta_drive": null },
+    { "id": "almir", "nome": "Almir", "telefone": "55DDDNUMERO", "papel": "OPERADOR", "autoridade_financeira": false, "pasta_drive": "Almir" },
+    { "id": "lorran", "nome": "Lorran", "telefone": "55DDDNUMERO", "papel": "OPERADOR", "autoridade_financeira": false, "pasta_drive": "Lorran",
+      "regras_especiais": [ { "tipo": "ABASTECIMENTO_MOTO_PARTICULAR", "categoria_nome": "PREENCHER_CATEGORIA_ADMINISTRATIVA", "descricao_anexo": "Abastecimento moto Lorran" } ] }
+  ]
+}

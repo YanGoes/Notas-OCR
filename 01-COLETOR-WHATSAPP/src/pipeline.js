@@ -200,6 +200,21 @@ async function processar(imagem, opcoes, aoProcessar) {
         rastreabilidade: { sha256: hash, chave_fiscal: fiscal },
         conta_azul: { status: "NAO_ENVIADO", protocolo: null, id_confirmado: null, descricao_sugerida: descricaoContaAzul({ legenda: meta.legenda, ocr, classificacao, pagamento }) },
     };
+    // Central VMac: gera as previas por comprovante (contexto do lote, regras
+    // VMac, duplicidade por documento). Opcional e isolado: se falhar, o fluxo
+    // antigo continua igual. Nao lanca nada no Conta Azul.
+    if (typeof opcoes.registrarNaCentral === "function") {
+        try {
+            final.central = opcoes.registrarNaCentral({
+                arquivo: path.basename(imagem), sha256: hash, meta,
+                brutoAzure: ocrCompleto.erro_leitura ? null : resposta_bruta,
+                modelId: ocr.modelo, erroLeitura: ocrCompleto.erro_leitura || null, regras,
+            });
+        } catch (erroCentral) {
+            final.central = { erro: erroCentral.message };
+            console.error(`Central: nao consegui gerar a previa de ${path.basename(imagem)}: ${erroCentral.message}`);
+        }
+    }
     const auditoriaPath = path.join(RAIZ, "dados", "auditoria", `${path.parse(imagem).name}.json`);
     gravarAtomico(auditoriaPath, final);
     duplicidade.confirmar();

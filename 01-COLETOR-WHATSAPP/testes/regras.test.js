@@ -50,7 +50,8 @@ test("reconhece combustivel e placa diretamente do OCR Azure", () => {
     const classificacao = classificar(operador, { produto_principal: "DIESEL S10 ADITIVADO", placa: "REP-7B39", texto_bruto: "POSTO ALVORADA" });
     assert.equal(classificacao.tipo_reconhecido.nome, "combustivel");
     assert.equal(classificacao.tipo_origem, "texto_ocr_azure");
-    assert.equal(classificacao.veiculo.placa, "REP-7B39");
+    // A placa agora esta na frota cadastrada (veiculos.json), entao volta no formato do cadastro.
+    assert.equal(classificacao.veiculo.placa.replace(/\W/g, ""), "REP7B39");
     assert.equal(classificacao.categoria_nome, "COMBUSTIVEL");
     assert.equal(idValido(classificacao.categoria_id), true);
 });

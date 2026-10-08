@@ -1,0 +1,8 @@
+{
+  "_leia_me": "Estabelecimentos recorrentes: quando o OCR ler um destes, o fornecedor usa o nome oficial. Loja fora desta lista NAO e descartada: usa o nome lido; mercado nao recorrente usa o fornecedor generico.",
+  "fornecedor_generico_mercado": "MERCADO",
+  "recorrentes": [
+    { "nome": "BELLAVIA SUPERMERCADO", "apelidos": ["bellavia", "bella via"] },
+    { "nome": "BOM DIA SUPERMERCADOS", "apelidos": ["bom dia supermercado", "bom dia supermercados", "supermercado bom dia"] }
+  ]
+}

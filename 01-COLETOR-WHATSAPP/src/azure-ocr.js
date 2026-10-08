@@ -367,9 +367,45 @@ function litragemDoTexto(texto) {
     return candidatos.size === 1 ? [...candidatos][0] : null;
 }
 
+/**
+ * Hodometro (km do painel do veiculo) lido na nota.
+ *
+ * Cuidado com o endereco do posto: "ROD BR-116 KM 245" e o km da rodovia, nao
+ * o hodometro. Por isso linhas de endereco sao ignoradas, valores abaixo de
+ * 1.000 sao descartados e, havendo dois hodometros diferentes, nao escolhe.
+ */
+function odometroDoTexto(texto) {
+    const candidatos = new Set();
+    const rotulo = /\b(?:h?od[oô]metro|odom\.?|km\s*(?:atual|veic(?:ulo)?|rodados?)?|quilometragem|od)\s*[:.\-]?\s*(\d{1,3}(?:[.\s]\d{3})+|\d{4,7})(?![\d,])/gi;
+    for (const linha of String(texto || "").split(/\r?\n/)) {
+        if (/\b(rod(ovia)?\.?|br\s*-?\s*\d{3}|av(enida)?\.?|rua|estrada|anel\s+vi[aá]rio|end(ere[cç]o)?)\b/i.test(linha)) continue;
+        for (const achado of linha.matchAll(rotulo)) {
+            const numero = Number(achado[1].replace(/\D/g, ""));
+            if (numero >= 1000 && numero <= 9999999) candidatos.add(numero);
+        }
+    }
+    return candidatos.size === 1 ? [...candidatos][0] : null;
+}
+
+/**
+ * Litragem no formato de NFC-e de posto: "24.510 x 6,29" (QTDE x UNITARIO),
+ * logo abaixo/ao lado do combustivel. So aceita um unico candidato.
+ */
+function litragemQtdeVezesUnitario(texto) {
+    const linhas = String(texto || "").split(/\r?\n/);
+    const candidatos = new Set();
+    linhas.forEach((linha, indice) => {
+        const achado = linha.match(/\b(\d{1,3}[.,]\d{3})\s*[xX]\s*\d{1,2}[.,:]\d{2,3}\b/);
+        if (!achado) return;
+        const vizinhanca = linhas.slice(Math.max(0, indice - 3), indice + 1).join(" ");
+        if (!/gasolina|etanol|alcool|álcool|diesel|gnv|combust/i.test(vizinhanca)) return;
+        candidatos.add(Number(achado[1].replace(",", ".")));
+    });
+    return candidatos.size === 1 ? [...candidatos][0] : null;
+}
+
 function kmDoTexto(texto) {
-    const achado = String(texto || "").match(/\bkm\s*:?\s*([\d.]{2,})\b/i);
-    return achado ? Number(achado[1].replace(/\D/g, "")) : null;
+    return odometroDoTexto(texto);
 }
 
 // ---------------------------------------------------------------------------
@@ -593,11 +629,14 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
         hora: valorCampo(campos.TransactionTime),
         valor: valorFinal,
         itens,
-        litragem: itemLitros ? Number(itemLitros.quantidade) : litragemDoTexto(texto),
-        litragem_origem: itemLitros ? "campo_estruturado_azure" : litragemDoTexto(texto) ? "heuristica_texto_azure" : null,
+        litragem: itemLitros ? Number(itemLitros.quantidade) : (litragemDoTexto(texto) ?? litragemQtdeVezesUnitario(texto)),
+        litragem_origem: itemLitros ? "campo_estruturado_azure"
+            : litragemDoTexto(texto) ? "heuristica_texto_azure"
+                : litragemQtdeVezesUnitario(texto) ? "heuristica_qtde_x_unitario" : null,
         produto_principal: itens[0]?.descricao || null,
         placa: placaDoTexto(texto),
         quilometragem: kmDoTexto(texto),
+        odometro: odometroDoTexto(texto),
         forma_pagamento: formaPagamento.codigo,
         forma_pagamento_texto: formaPagamento.texto,
         forma_pagamento_origem: formaPagamento.evidencia,
@@ -653,6 +692,6 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
 module.exports = {
     analisarDocumento, configuracaoAzure, valorCampo, cnpjDoTexto, cnpjValido, chaveNfeValida, dadosChaveFiscalDoTexto, fornecedorDoTexto,
     valorDoTexto, detalhesValorDoTexto, normalizarData, dataDoTexto, nomeFantasiaDoTexto,
-    placaDoTexto, litragemDoTexto, kmDoTexto, formaPagamentoDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
+    placaDoTexto, litragemDoTexto, litragemQtdeVezesUnitario, kmDoTexto, odometroDoTexto, formaPagamentoDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
     confiancaLeitura, normalizarResultadoAzure,
 };

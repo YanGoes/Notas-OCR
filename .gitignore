@@ -69,3 +69,10 @@ FOTOS*.zip
 # Ferramentas de IA e specs locais
 .agents/
 openspec/
+
+# Cadastro de pessoas com telefones (dado pessoal, LGPD)
+configuracao/pessoas.json
+# Banco local da Central
+*.db
+*.db-wal
+*.db-shm

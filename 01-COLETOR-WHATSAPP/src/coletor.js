@@ -349,9 +349,44 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Central VMac: registra mensagens e gera previas no banco (dados/central.db).
+// Desligavel em config.json com "central": { "habilitada": false }.
+// ---------------------------------------------------------------------------
+function centralHabilitada() {
+    return configAtual().central?.habilitada !== false;
+}
+
+function central() {
+    const { banco } = require("./central/banco");
+    return { db: banco(), cad: require("./central/cadastros").carregar(), orquestrador: require("./central/orquestrador") };
+}
+
+function registrarNaCentral(entrada) {
+    if (!centralHabilitada()) return null;
+    const { db, cad, orquestrador } = central();
+    const resultado = orquestrador.processarFoto(db, cad, entrada);
+    console.log(`Central: ${entrada.arquivo} -> ${resultado.repetida ? "foto repetida (sem despesa nova)" : `${resultado.despesas.length} previa(s)`}.`);
+    return resultado;
+}
+
+function registrarTextoNaCentral(msg) {
+    if (!centralHabilitada()) return;
+    try {
+        const { db, cad, orquestrador } = central();
+        const resultado = orquestrador.processarMensagemTexto(db, cad, msg);
+        const intencao = resultado.interpretacao?.intencao;
+        if (intencao && !["CONVERSA_IRRELEVANTE", "CONFIRMACAO"].includes(intencao)) {
+            console.log(`Central: mensagem de ${msg.remetenteNome || msg.remetenteId} entendida como ${intencao}.`);
+        }
+    } catch (erro) {
+        console.error("Central: nao consegui registrar a mensagem:", erro?.message || erro);
+    }
+}
+
 iniciarPipeline(
     config.pasta_saida,
-    { ...config.pipeline, aguardar_comentario_segundos: config.aguardar_comentario_segundos },
+    { ...config.pipeline, aguardar_comentario_segundos: config.aguardar_comentario_segundos, registrarNaCentral },
     aposProcessar
 );
 
@@ -537,6 +572,10 @@ async function processar(socket, pacote) {
         if (!imagem) {
             const texto = extrairTexto(pacote.message);
             if (!texto?.texto) return;
+            registrarTextoNaCentral({
+                grupoId: idGrupo, mensagemId: idMensagem, remetenteId: remetente, remetenteNome: nomeRemetente,
+                enviadaEm: new Date(timestampMs).toISOString(), texto: texto.texto, citadoId: texto.citadoId,
+            });
             if (await tratarComandoCentroCusto(socket, idGrupo, texto.texto)) return;
             registrarComentarioSeparado(idGrupo, remetente, idMensagem, timestampMs, texto.texto, texto.citadoId);
             return;

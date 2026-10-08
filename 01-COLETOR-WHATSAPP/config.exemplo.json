@@ -35,5 +35,20 @@
     "aguardar_segundos": 60,
     "tentativas": 6,
     "intervalo_inicial_ms": 15000
+  },
+  "central": {
+    "habilitada": true
+  },
+  "lancamento_automatico": {
+    "habilitado": false,
+    "simular": true
+  },
+  "arquivo_drive": {
+    "habilitado": false,
+    "raiz": "K:Meu DriveDEMANDAS_FWD_VMAC\u0003 - GESTÃOControle Financeiro - VMac",
+    "modelo_pasta_ano": "Despesas de Campo {ano}",
+    "usar_data_da_nota": true,
+    "pasta_nao_identificado": "Nao identificado",
+    "operadores": {}
   }
 }

@@ -1,12 +1,156 @@
 [
   {
     "nome": "FIAT SCUDO - SGR4B54",
+    "modelo": "FIAT SCUDO",
     "placa": "SGR4B54",
     "apelidos": [
       "fiat scudo",
-      "scudo"
+      "scudo",
+      "van"
     ],
     "categoria_id": "3e15fda5-d668-40aa-985e-0ee1971fac85",
-    "categoria_nome_conta_azul": "FIAT SCUDO - SGR4B54"
+    "categoria_nome_conta_azul": "FIAT SCUDO - SGR4B54",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO FIAT SCUDO SGR4B54",
+    "ativo": true
+  },
+  {
+    "nome": "ETIOS - JKM0196",
+    "modelo": "ETIOS",
+    "placa": "JKM0196",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "ETIOS - JKM0I96",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO ETIOS JKM0196",
+    "ativo": true,
+    "_atencao": "Historico usa JKM0I96 (letra I) na categoria de combustivel e JKM0196 na de manutencao. Confirmar a placa real."
+  },
+  {
+    "nome": "ETIOS - OVN1505",
+    "modelo": "ETIOS",
+    "placa": "OVN1505",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "ETIOS - OVN1505",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO ETIOS OVN1505",
+    "ativo": true
+  },
+  {
+    "nome": "SAVEIRO - FHH3G21",
+    "modelo": "SAVEIRO",
+    "placa": "FHH3G21",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": null,
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": null,
+    "ativo": true,
+    "_atencao": "Placa nova informada em 06/10/2026; categoria no Conta Azul ainda nao identificada."
+  },
+  {
+    "nome": "SAVEIRO - RBT2E25",
+    "modelo": "SAVEIRO",
+    "placa": "RBT2E25",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "SAVEIRO - RBT2E25",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO SAVEIRO - RBT2E25",
+    "ativo": true
+  },
+  {
+    "nome": "CAMINHAO F14K - CQA6B42",
+    "modelo": "CAMINHAO F14K",
+    "placa": "CQA6B42",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": null,
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": null,
+    "ativo": true,
+    "_atencao": "Placa nova informada em 06/10/2026; categoria no Conta Azul ainda nao identificada."
+  },
+  {
+    "nome": "HILUX - OVN5J98",
+    "modelo": "HILUX",
+    "placa": "OVN5J98",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "HILUX - OVN5J98",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO HILUX OVN5J98",
+    "ativo": true
+  },
+  {
+    "nome": "HILUX - OMU7H82",
+    "modelo": "HILUX",
+    "placa": "OMU7H82",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "HILUX - OMU7H82",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO HILUX OMU7H82",
+    "ativo": true
+  },
+  {
+    "nome": "S10 - PRE3B59",
+    "modelo": "S10",
+    "placa": "PRE3B59",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "S10 - PRE5B39",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "Manutenção S10 PRE - 3B59",
+    "ativo": true,
+    "_atencao": "Informada como PRE3B59; o historico tem categoria S10 - PRE5B39. Confirmar a placa real."
+  },
+  {
+    "nome": "S10 - REP7B39",
+    "modelo": "S10",
+    "placa": "REP7B39",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "S10 - REP7B39",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO S10 REP7B39",
+    "ativo": true
+  },
+  {
+    "nome": "GOL - RLQ4C16",
+    "modelo": "GOL",
+    "placa": "RLQ4C16",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "GOL - RLQ4C16",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO GOL RLQ4C16",
+    "ativo": null,
+    "_atencao": "Consta no historico, nao na lista de frota de 06/10/2026."
+  },
+  {
+    "nome": "ONIX - SFI4A94",
+    "modelo": "ONIX",
+    "placa": "SFI4A94",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "ONIX - SFI4A94",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO ONIX SFI4A94",
+    "ativo": null,
+    "_atencao": "Consta no historico, nao na lista de frota de 06/10/2026."
+  },
+  {
+    "nome": "DUSTER - JJK0492",
+    "modelo": "DUSTER",
+    "placa": "JJK0492",
+    "apelidos": [],
+    "categoria_id": null,
+    "categoria_nome_conta_azul": "DUSTER - JJK0492",
+    "manutencao_categoria_id": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO DUSTER JJK0492",
+    "ativo": null,
+    "_atencao": "Consta no historico, nao na lista de frota de 06/10/2026."
   }
 ]

@@ -153,3 +153,25 @@ test("callback NUNCA dispara para documento bloqueado por duplicidade", async ()
         }
     });
 });
+
+test("pipeline entrega a foto lida para a Central e segue mesmo se a Central falhar", async () => {
+    await comIndiceIsolado(async () => {
+        const nomeBase = `teste_pipeline_central_${Date.now()}`;
+        const imagem = criarImagem(nomeBase, pngMinusculo());
+        const outra = criarImagem(`${nomeBase}_b`, Buffer.concat([pngMinusculo(), Buffer.from([7])]));
+        try {
+            let recebido = null;
+            const final = await pipeline.processar(imagem, { modo: "simulacao", registrarNaCentral: (entrada) => { recebido = entrada; return { despesas: [1] }; } });
+            assert.equal(recebido.arquivo, `${nomeBase}.png`);
+            assert.match(recebido.sha256, /^[0-9a-f]{64}$/);
+            assert.equal(recebido.meta.remetente, "teste-pipeline");
+            assert.deepEqual(final.central, { despesas: [1] });
+
+            const comFalha = await pipeline.processar(outra, { modo: "simulacao", registrarNaCentral: () => { throw new Error("banco fora"); } });
+            assert.deepEqual(comFalha.central, { erro: "banco fora" });
+            assert.ok(comFalha.validacoes, "o fluxo antigo continuou");
+        } finally {
+            limparArtefatos(nomeBase);
+        }
+    });
+});

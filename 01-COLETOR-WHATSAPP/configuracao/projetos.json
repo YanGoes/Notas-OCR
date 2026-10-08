@@ -1,0 +1,26 @@
+{
+  "_leia_me": "Projetos/centros de custo. 'ativo' precisa ser confirmado (true) para o projeto ser escolhido automaticamente; null = nao confirmado. 'id_conta_azul' e preenchido pela sincronizacao com o Conta Azul (pelo nome oficial). 'apelidos' sao as formas como os operadores escrevem; so correspondencia EXATA a um nome ou apelido resolve o projeto.",
+  "projetos": [
+    { "nome_oficial": "DYNATEST - GO", "id_conta_azul": null, "ativo": null, "servico": null, "apelidos": [] },
+    { "nome_oficial": "DYNATEST - GO 28.11", "id_conta_azul": null, "ativo": null, "servico": null, "apelidos": [] },
+    { "nome_oficial": "DYNATEST - GO 04.12", "id_conta_azul": null, "ativo": null, "servico": null, "apelidos": [] },
+    { "nome_oficial": "CTVM-IRI-ATR-IGG-DEGRAU DYNA BR_040_DF", "id_conta_azul": null, "ativo": null, "servico": "IRI", "apelidos": [] },
+    { "nome_oficial": "CTVM-IRI-MODERA GO", "id_conta_azul": null, "ativo": null, "servico": "IRI", "apelidos": [] },
+    { "nome_oficial": "CTVM-VDRod. DYNA BR020 e 242", "id_conta_azul": null, "ativo": null, "servico": "VDROD", "apelidos": [] },
+    { "nome_oficial": "CTVM-BR116 - BR251", "id_conta_azul": null, "ativo": null, "servico": null, "apelidos": [] },
+    { "nome_oficial": "DYNATEST - GO 2.0", "id_conta_azul": null, "ativo": null, "servico": null, "apelidos": [] },
+    { "nome_oficial": "CTVM-IRI-ATR-FWD HOUER BR116 e 324BA", "id_conta_azul": null, "ativo": null, "servico": "FWD", "apelidos": [] },
+    { "nome_oficial": "CTVM-IRI-ATR-LVC HOUER RS", "id_conta_azul": null, "ativo": null, "servico": "IRI", "apelidos": [] },
+    { "nome_oficial": "CTVM-VDRod. DYNA CICLO III GOINFRA", "id_conta_azul": null, "ativo": null, "servico": "VDROD", "apelidos": [] },
+    { "nome_oficial": "REVISÃO - DYNATEST 040", "id_conta_azul": null, "ativo": null, "servico": null, "apelidos": [] },
+    { "nome_oficial": "CTVM-FWD-IMTRAFF IGUAÇU EPR PR", "id_conta_azul": null, "ativo": null, "servico": "FWD", "apelidos": [] },
+    { "nome_oficial": "CTVM-FWD-ADE-IMTRAFF_MT", "id_conta_azul": null, "ativo": null, "servico": "FWD", "apelidos": [] },
+    { "nome_oficial": "CTVM-VDRod-FWD-VIGA_ETEL_GO", "id_conta_azul": null, "ativo": null, "servico": "VDROD", "apelidos": [] },
+    { "nome_oficial": "CTVM-FWD-IRI-MG CONSOL", "id_conta_azul": null, "ativo": null, "servico": "FWD", "apelidos": [] },
+    { "nome_oficial": "CTVM-IRI-ITAX PR 08.26", "id_conta_azul": null, "ativo": null, "servico": "IRI", "apelidos": [] },
+    { "nome_oficial": "CTVM-RETRO-IRI-CONSORCIO GO", "id_conta_azul": null, "ativo": null, "servico": "IRI", "apelidos": [] },
+    { "nome_oficial": "CTVM-IRI-ATR-IGG HOUER MT", "id_conta_azul": null, "ativo": null, "servico": "IRI", "apelidos": [] },
+    { "nome_oficial": "CTVM-IRI-ATR-IGG HOUER MT - ARCO NORTE", "id_conta_azul": null, "ativo": null, "servico": "IRI", "apelidos": [] },
+    { "nome_oficial": "TESTE", "id_conta_azul": null, "ativo": false, "servico": null, "apelidos": [] }
+  ]
+}
