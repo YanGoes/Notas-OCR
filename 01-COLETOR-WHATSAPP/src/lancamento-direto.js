@@ -274,7 +274,13 @@ async function lancarDespesa(base, opcoes = {}) {
         emExecucao.delete(base);
         try {
             const auditoria = JSON.parse(fs.readFileSync(auditoriaPath, "utf8"));
-            auditoria.lancamento_direto = {
+            // Uma tentativa recusada ("ja foi lancada", simulacao...) nunca pode
+            // apagar o registro de um lancamento ja CRIADO: e ele que impede duplicar.
+            if (auditoria.lancamento_direto?.status === "CRIADO" && !resultado.criado) {
+                auditoria.lancamento_direto.ultima_tentativa_recusada = {
+                    em: new Date().toISOString(), impedimentos: resultado.impedimentos, erro: resultado.erro,
+                };
+            } else auditoria.lancamento_direto = {
                 status: resultado.criado ? "CRIADO" : resultado.simulado ? "SIMULADO" : "NAO_CRIADO",
                 em: new Date().toISOString(),
                 lancamento_id: resultado.lancamento_id || null,

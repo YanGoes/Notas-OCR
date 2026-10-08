@@ -252,3 +252,18 @@ test("se a API recusar a observacao, cria sem ela mantendo categoria e centro", 
         assert.equal(aceito.rateio[0].rateio_centro_custo[0].id_centro_custo, CENTRO);
     } finally { limpar(base); }
 });
+
+test("tentar lancar de novo uma nota ja CRIADA nao apaga o registro do lancamento", async () => {
+    const base = `teste_lancado_duas_vezes_${Date.now()}`;
+    escrever(base, auditoria({ lancamento_direto: { status: "CRIADO", lancamento_id: "evento-1" } }));
+    try {
+        const resultado = await lancarDespesa(base, { dryRun: true, log: semLog });
+        assert.equal(resultado.criado, false);
+        const salvo = JSON.parse(fs.readFileSync(path.join(PASTA_AUDITORIA, `${base}.json`), "utf8"));
+        assert.equal(salvo.lancamento_direto.status, "CRIADO");
+        assert.equal(salvo.lancamento_direto.lancamento_id, "evento-1");
+        assert.ok(salvo.lancamento_direto.ultima_tentativa_recusada);
+    } finally {
+        limpar(base);
+    }
+});

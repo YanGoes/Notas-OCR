@@ -51,6 +51,7 @@ async function trocarToken(parametros) {
     const { clientId, clientSecret } = credenciais();
     const resposta = await fetch(TOKEN_URL, {
         method: "POST",
+        signal: AbortSignal.timeout(30000),
         headers: {
             Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
             "Content-Type": "application/x-www-form-urlencoded",
@@ -83,6 +84,7 @@ async function tokenValido(forcar = false) {
 async function requisicao(endpoint, opcoes = {}, repetir = true) {
     const token = await tokenValido();
     const resposta = await fetch(`${API_URL}${endpoint}`, {
+        signal: AbortSignal.timeout(60000),
         ...opcoes,
         headers: { Accept: "application/json", Authorization: `Bearer ${token}`, ...(opcoes.headers || {}) },
     });

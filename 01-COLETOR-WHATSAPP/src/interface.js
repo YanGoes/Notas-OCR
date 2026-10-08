@@ -24,6 +24,9 @@ const {
 const RAIZ = path.resolve(__dirname, "..");
 const app = express();
 const porta = Number(process.env.PORT || 3210);
+// O upload manual manda a foto em base64 (fotos de celular passam de 5 MB);
+// as demais rotas continuam com limite pequeno.
+app.use("/api/documentos/upload", express.json({ limit: "15mb" }));
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
     if (req.path === "/" || /\.(?:html|js|css)$/i.test(req.path)) {
@@ -261,8 +264,11 @@ app.post("/api/notificacoes/lidas", (req, res, next) => {
 app.post("/api/documentos/encaminhar-todos-conta-ai", async (req, res, next) => {
     try {
         const documentos = documentosRecentes();
-        const simulacao = documentos.filter((d) => d.status === "simulacao");
-        if (!simulacao.length) throw new Error("Nenhum comprovante pronto na fila de simulação.");
+        // Nunca reenvia o que ja foi encaminhado ou lancado: isso duplicaria despesa.
+        const simulacao = documentos.filter((d) => d.status === "simulacao"
+            && d.encaminhamento_whatsapp?.status !== "ENVIADO"
+            && d.lancamento_direto?.status !== "CRIADO");
+        if (!simulacao.length) throw new Error("Nenhum comprovante pronto e ainda nao enviado na fila de simulação.");
         let contagem = 0;
         for (const doc of simulacao) {
             const imagem = localizarImagem(doc.base);

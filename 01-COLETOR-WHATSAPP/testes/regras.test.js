@@ -139,3 +139,25 @@ test("metadado antigo sem centro de custo continua compativel", () => {
     assert.equal(contexto.operador.centro_custo_informado, null);
     assert.equal(contexto.origem, null);
 });
+
+test("tipo escrito exatamente respeita a ordem de prioridade (pedagio nao vira deslocamento)", () => {
+    assert.equal(classificar(interpretarLegenda("pedagio"), {}).categoria_nome, "PEDAGIO");
+    assert.equal(classificar(interpretarLegenda("estacionamento"), {}).categoria_nome, "ESTACIONAMENTO");
+    assert.equal(classificar(interpretarLegenda("marmita"), {}).categoria_nome, "ALMOCO");
+});
+
+test("texto do cupom e comparado por palavra inteira (CPF nao e 'pf', impostos nao e 'posto')", () => {
+    assert.equal(classificar(interpretarLegenda(""), { texto_bruto: "CONSUMIDOR NAO IDENTIFICADO CPF" }).tipo_reconhecido, null);
+    assert.equal(classificar(interpretarLegenda(""), { texto_bruto: "Valor aprox. impostos federais" }).tipo_reconhecido, null);
+});
+
+test("mesmo CNPJ, data e valor gera suspeita para revisao, nao bloqueio", () => {
+    const operador = interpretarLegenda("Tipo: Alimentacao\nCentro de custo: CONSOL MG-050");
+    const ocr = { valor: 35, data: "2026-09-30", confianca: 0.99, fornecedor: "X" };
+    const classificacao = classificar(operador, ocr);
+    const regras = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "..", "configuracao", "regras.json"), "utf8"));
+    const resultado = validar({ operador, ocr, classificacao, regras, duplicado: false, suspeitaDuplicidade: true });
+    assert.equal(resultado.bloqueado, false);
+    assert.equal(resultado.revisao_necessaria, true);
+    assert.match(resultado.motivos.join(" "), /Possivel duplicidade/);
+});

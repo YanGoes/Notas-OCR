@@ -28,7 +28,8 @@ async function fetchComRetry(url, opcoes, tentativas = 5) {
     let ultimoErro;
     for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
         try {
-            const resposta = await fetch(url, opcoes);
+            // Sem limite de tempo, uma conexao pendurada travava o pipeline inteiro.
+            const resposta = await fetch(url, { ...opcoes, signal: AbortSignal.timeout(90000) });
             if (resposta.status !== 429 && resposta.status < 500) return resposta;
             const retryAfter = Number(resposta.headers.get("retry-after") || tentativa * 2);
             ultimoErro = new Error(`Azure temporariamente indisponivel (${resposta.status}).`);

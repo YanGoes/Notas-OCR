@@ -55,10 +55,13 @@ function limparCache() {
  * Se o arquivo não existir, retorna o valor `fallback`.
  */
 function lerJson(caminho, fallback = null) {
-    if (_cache[caminho]) return _cache[caminho];
     if (!fs.existsSync(caminho)) return fallback;
+    // O cache vale enquanto o arquivo nao muda: sincronizar centros/categorias
+    // passa a valer sem reiniciar o programa.
+    const mtime = fs.statSync(caminho).mtimeMs;
+    if (_cache[caminho] && _cache[caminho].mtime === mtime) return _cache[caminho].dados;
     const dados = JSON.parse(fs.readFileSync(caminho, "utf8"));
-    _cache[caminho] = dados;
+    _cache[caminho] = { mtime, dados };
     return dados;
 }
 

@@ -199,6 +199,12 @@ async function lancarAutomaticamente(caminhoImagem, auditoria) {
 
     try {
         const resultado = await lancarDespesa(base, { simular, dryRun: simular });
+        // Em simulacao nao avisa o grupo: antes mandava "Nao consegui lancar —
+        // motivo desconhecido" para cada nota, o que confundia os operadores.
+        if (resultado.simulado) {
+            console.log(`Lancamento automatico (simulacao): ${base} seria lancado com R$ ${resultado.payload?.valor}.`);
+            return;
+        }
         const texto = resultado.criado
             ? `✅ *Despesa lancada no Conta Azul*\n\n`
                 + `📄 ${auditoria.ocr?.fornecedor || "Fornecedor nao identificado"} — R$ ${Number(auditoria.ocr?.valor || 0).toFixed(2)}\n`
@@ -635,8 +641,9 @@ async function processar(socket, pacote) {
 }
 
 let reconectando = false;
+let tentativasReconexao = 0;
 async function iniciar() {
-    if (socketAtual && ["conectando", "conectado", "aguardando_qr"].includes(estado.status)) return;
+    if (socketAtual && ["conectando", "conectado", "aguardando_qr", "aguardando_codigo"].includes(estado.status)) return;
     deslogando = false;
     atualizarEstado({ status: "conectando", erro: null });
     const { state, saveCreds } = await useMultiFileAuthState(PASTA_SESSAO);
@@ -672,21 +679,35 @@ async function iniciar() {
         }
         if (connection === "open") {
             reconectando = false;
+            tentativasReconexao = 0;
             atualizarEstado({ status: "conectado", qr: null, conectado_desde: new Date().toISOString(), erro: null });
             console.log(`\nCOLETOR ATIVO\nPasta de saida: ${config.pasta_saida}\nAguardando novas fotos...\n`);
         }
-        if (connection === "close" && !reconectando) {
+        // Evento de um socket antigo (ja substituido) nao deve mexer no estado.
+        if (connection === "close" && socket !== socketAtual) return;
+        if (connection === "close") {
             socketAtual = null;
             const codigo = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
             if (deslogando || codigo === DisconnectReason.loggedOut) {
                 if (fs.existsSync(PASTA_SESSAO)) fs.rmSync(PASTA_SESSAO, { recursive: true, force: true });
                 atualizarEstado({ status: "desconectado", qr: null, conectado_desde: null });
                 console.error("Sessao desconectada pelo WhatsApp. Clique em Conectar para gerar um novo QR Code.");
-            } else {
+            } else if (!reconectando) {
+                // Se a propria tentativa de reconexao cair, este bloco roda de
+                // novo e agenda outra tentativa (antes o status travava em
+                // "reconectando" para sempre). Espera cresce ate 60 s.
                 reconectando = true;
+                tentativasReconexao += 1;
+                const espera = Math.min(60, 3 * 2 ** Math.min(tentativasReconexao - 1, 5));
                 atualizarEstado({ status: "reconectando", qr: null });
-                console.log("Conexao perdida. Reconectando em 3 segundos...");
-                setTimeout(() => iniciar().catch(console.error), 3000);
+                console.log(`Conexao perdida. Reconectando em ${espera} segundos (tentativa ${tentativasReconexao})...`);
+                setTimeout(() => {
+                    reconectando = false;
+                    iniciar().catch((erro) => {
+                        console.error("Reconexao falhou:", erro?.message || erro);
+                        atualizarEstado({ status: "erro", erro: erro?.message || String(erro) });
+                    });
+                }, espera * 1000);
             }
         }
     });

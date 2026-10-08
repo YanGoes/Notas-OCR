@@ -17,11 +17,12 @@ const ROTULO_PAGAMENTO_CURTO = {
     PIX: "pix", BOLETO: "boleto", TRANSFERENCIA: "transferencia",
 };
 
-function validar({ operador, ocr, classificacao, regras, duplicado, pagamento = null }) {
+function validar({ operador, ocr, classificacao, regras, duplicado, suspeitaDuplicidade = false, pagamento = null }) {
     const motivos = [];
     let bloqueado = false;
     if (classificacao.escopo_proibido) { motivos.push("Despesa fora do escopo permitido."); bloqueado = true; }
-    if (duplicado) { motivos.push("Possivel documento duplicado."); bloqueado = true; }
+    if (duplicado) { motivos.push("Documento duplicado (mesma foto ou mesma mensagem)."); bloqueado = true; }
+    else if (suspeitaDuplicidade) motivos.push("Possivel duplicidade: ja existe nota com mesmo CNPJ, data e valor. Confirme se sao compras diferentes.");
     if (!operador.tipo_despesa && !classificacao.tipo_reconhecido) motivos.push("Tipo da despesa ausente e nao identificado no comprovante.");
     if (!operador.centro_custo_informado) motivos.push("Centro de custo nao informado na legenda nem configurado como padrao do grupo.");
     if (!classificacao.tipo_reconhecido && !classificacao.escopo_proibido) motivos.push("Tipo de despesa nao reconhecido.");

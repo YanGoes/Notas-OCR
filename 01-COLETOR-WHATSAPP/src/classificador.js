@@ -7,6 +7,13 @@ const { normalizar } = require("./legenda");
 const RAIZ = path.resolve(__dirname, "..");
 function ler(nome) { return JSON.parse(fs.readFileSync(path.join(RAIZ, "configuracao", nome), "utf8")); }
 
+/** A expressao aparece como palavra(s) inteira(s) no texto? */
+function contemPalavras(texto, expressao) {
+    const limpar = (valor) => normalizar(valor).replace(/[^a-z0-9]+/g, " ").trim();
+    const alvo = limpar(expressao);
+    return Boolean(alvo) && ` ${limpar(texto)} `.includes(` ${alvo} `);
+}
+
 function localizar(lista, informado, campos = ["nome", "apelidos"]) {
     const alvo = normalizar(informado);
     if (!alvo) return null;
@@ -55,8 +62,7 @@ function classificar(operador, ocr = {}) {
     const centros = ler("centros_custo.json");
     const veiculos = ler("veiculos.json");
     const tipo = normalizar(operador.tipo_despesa);
-    const proibido = regras.tipos_proibidos.some((x) => tipo.includes(normalizar(x)));
-    const permitidoLegenda = regras.tipos_permitidos.find((x) => x.apelidos.some((a) => normalizar(a) === tipo));
+    const proibido = regras.tipos_proibidos.some((x) => contemPalavras(tipo, x));
 
     // O operador quase nunca escreve "Tipo: Abastecimento" — escreve
     // "Abastecimento CONSOL MG-050" ou so "Janta". Procura o tipo dentro da
@@ -70,10 +76,14 @@ function classificar(operador, ocr = {}) {
         "combustivel", "hospedagem", "farmacia", "manutencao", "pedagio", "estacionamento",
         "almoco", "jantar", "cafe", "alimentacao", "deslocamento", "material",
     ];
-    const porOrdem = (busca) => ordemTipos
-        .map((nome) => regras.tipos_permitidos.find((x) => x.nome === nome))
-        .filter(Boolean)
-        .find((regra) => regra.apelidos.some((apelido) => busca.includes(normalizar(apelido))));
+    // Compara PALAVRAS inteiras: "imposto" nao contem o tipo "posto" e "CPF" nao contem "pf".
+    const regrasEmOrdem = [
+        ...ordemTipos.map((nome) => regras.tipos_permitidos.find((x) => x.nome === nome)).filter(Boolean),
+        ...regras.tipos_permitidos.filter((x) => !ordemTipos.includes(x.nome)),
+    ];
+    const porOrdem = (busca) => regrasEmOrdem.find((regra) => regra.apelidos.some((apelido) => contemPalavras(busca, apelido)));
+    // Tipo escrito exatamente: segue a mesma ordem (pedagio -> PEDAGIO, nao DESLOCAMENTO).
+    const permitidoLegenda = tipo ? regrasEmOrdem.find((x) => x.apelidos.some((a) => normalizar(a) === tipo)) : null;
     const permitidoLegendaTexto = !permitidoLegenda && textoLegenda ? porOrdem(textoLegenda) : null;
 
     // O NOME DO ESTABELECIMENTO e a pista mais forte depois da legenda: "HOTEL

@@ -135,13 +135,23 @@ function moverConjunto(imagem, destino) {
     }
 }
 
+/**
+ * Duplicidade:
+ * - mesma mensagem do WhatsApp ou mesma imagem (hash) = duplicado certo (bloqueia);
+ * - mesmo CNPJ + data + valor = apenas SUSPEITA (vai para revisao): dois
+ *   colegas podem almocar no mesmo lugar pelo mesmo valor.
+ * Arquivo sem id de mensagem (upload manual) nao entra no indice de mensagens.
+ */
 function registrarDuplicidade(indicePath, mensagemId, hash, fiscal) {
     const indice = lerJson(indicePath, { mensagens: {}, hashes: {}, fiscais: {} });
-    const duplicado = Boolean(indice.mensagens[mensagemId] || indice.hashes[hash] || (fiscal !== "||0.00" && indice.fiscais[fiscal]));
-    return { indice, duplicado, confirmar() {
-        indice.mensagens[mensagemId] = new Date().toISOString();
+    const temMensagem = Boolean(mensagemId);
+    const fiscalUtil = Boolean(fiscal) && !fiscal.endsWith("|0.00") && !fiscal.startsWith("|");
+    const duplicado = Boolean((temMensagem && indice.mensagens[mensagemId]) || indice.hashes[hash]);
+    const suspeito = !duplicado && fiscalUtil && Boolean(indice.fiscais[fiscal]);
+    return { indice, duplicado, suspeito, confirmar() {
+        if (temMensagem) indice.mensagens[mensagemId] = new Date().toISOString();
         indice.hashes[hash] = new Date().toISOString();
-        if (fiscal !== "||0.00") indice.fiscais[fiscal] = new Date().toISOString();
+        if (fiscalUtil) indice.fiscais[fiscal] = new Date().toISOString();
         gravarAtomico(indicePath, indice);
     } };
 }
@@ -157,7 +167,7 @@ async function processar(imagem, opcoes, aoProcessar) {
     try {
         ocrCompleto = await analisarDocumento(imagem, Number(opcoes.timeout_azure_segundos || 180));
     } catch (erro) {
-        if (/nao configurado|Azure 401|Azure 403|429|temporariamente|Tempo limite/i.test(erro.message)) throw erro;
+        if (/nao configurado|Azure 401|Azure 403|429|temporariamente|Tempo limite|timeout|aborted|fetch failed|ECONN|ENOTFOUND/i.test(erro.message)) throw erro;
         ocrCompleto = {
             fornecedor: null, cnpj: null, data: null, hora: null, valor: null,
             valor_origem: null, data_origem: null, confianca: 0, texto_bruto: "",
@@ -176,9 +186,9 @@ async function processar(imagem, opcoes, aoProcessar) {
     const regras = lerJson(path.join(RAIZ, "configuracao", "regras.json"));
     const hash = hashArquivo(imagem);
     const fiscal = chaveFiscal(ocr);
-    const duplicidade = registrarDuplicidade(path.join(RAIZ, "dados", "auditoria", "indice-duplicidade.json"), String(meta.id_mensagem || "sem-id"), hash, fiscal);
+    const duplicidade = registrarDuplicidade(path.join(RAIZ, "dados", "auditoria", "indice-duplicidade.json"), meta.id_mensagem ? String(meta.id_mensagem) : null, hash, fiscal);
     const pagamento = resolverFormaPagamento(operador, ocr);
-    const validacoes = validar({ operador, ocr, classificacao, regras, duplicado: duplicidade.duplicado, pagamento });
+    const validacoes = validar({ operador, ocr, classificacao, regras, duplicado: duplicidade.duplicado, suspeitaDuplicidade: duplicidade.suspeito, pagamento });
     const abastecimento = dadosAbastecimento(ocr, classificacao);
     const final = {
         versao: 1, processado_em: new Date().toISOString(), modo: opcoes.modo || "simulacao",
@@ -259,7 +269,7 @@ async function processarPendentes(pastaEntrada, opcoes, aoProcessar) {
             try { await processar(imagem, opcoes, aoProcessar); }
             catch (erro) {
                 console.error(`Pipeline: erro em ${nome}: ${erro.message}`);
-                const temporario = /429|temporariamente|Tempo limite|nao configurado/i.test(erro.message);
+                const temporario = /429|temporariamente|Tempo limite|nao configurado|timeout|aborted|fetch failed|ECONN|ENOTFOUND/i.test(erro.message);
                 if (!temporario) {
                     gravarAtomico(path.join(RAIZ, "dados", "auditoria", `${path.parse(nome).name}_erro.json`), {
                         arquivo: nome, ocorrido_em: new Date().toISOString(), erro: erro.message,
@@ -274,7 +284,7 @@ async function processarPendentes(pastaEntrada, opcoes, aoProcessar) {
 function iniciarPipeline(pastaEntrada, opcoes, aoProcessar) {
     if (!opcoes?.habilitado) return;
     garantirPastas();
-    console.log(`Pipeline Azure ativo em modo ${String(opcoes.modo || "simulacao").toUpperCase()}. Nenhum lancamento financeiro sera criado.`);
+    console.log(`Pipeline Azure ativo em modo ${String(opcoes.modo || "simulacao").toUpperCase()}. As despesas sao preparadas como PREVIA na Central; o lancamento real depende do config.`);
     const rodar = () => processarPendentes(pastaEntrada, opcoes, aoProcessar).catch((erro) => console.error("Pipeline:", erro.message));
     setTimeout(rodar, 1500);
     setInterval(rodar, Math.max(2, Number(opcoes.intervalo_segundos || 5)) * 1000);
