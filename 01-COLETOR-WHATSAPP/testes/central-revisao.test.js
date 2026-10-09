@@ -214,3 +214,45 @@ test("descricao refeita por causa de outro campo nao conta como erro da descrica
     assert.equal(m.por_campo.odometro.erros_leitura, 1);
     assert.equal(m.por_campo.descricao, undefined);
 });
+
+// --- Sugestao de categoria pelo modelo da planilha ----------------------------
+
+const { criarModelo } = require("../src/aprendizado");
+const regrasVmac = require("../src/central/regras-vmac");
+
+function modeloPequeno() {
+    const exemplos = [
+        ...Array.from({ length: 6 }, () => ({ categoria: "Farmácia", texto: "DROGARIA SAO PAULO dipirona" })),
+        ...Array.from({ length: 6 }, () => ({ categoria: "MATERIAL DE CAMPO", texto: "FERRAGENS CENTRAL pilhas capacete" })),
+    ];
+    return { treinado_em: "2026-10-09", texto_categoria: criarModelo(exemplos, "categoria", "texto", 3) };
+}
+
+test("sem regra para a categoria, o modelo so sugere e a despesa continua em revisao", () => {
+    const previa = regrasVmac.montarPrevia({
+        ocr: { data: "2026-09-30", valor: 20, fornecedor: "DROGARIA SAO PAULO", itens: [{ descricao: "DIPIRONA" }], confianca: 0.99 },
+        legenda: { tipos: ["OUTROS"], projeto_texto: "BR020" }, identificacao: { pessoa: { id: "almir", nome: "Almir", pasta_drive: "Almir" }, origem: "telefone" },
+        cad: cadastros(), hoje: new Date("2026-10-02T12:00:00Z"), modelo: modeloPequeno(),
+    });
+    assert.equal(previa.campos.categoria.nome, null, "a sugestao nao vira a categoria sozinha");
+    assert.equal(previa.campos.categoria.sugestao.nome, "Farmácia");
+    assert.equal(previa.estado, "AGUARDANDO_REVISAO");
+    assert.ok(previa.pendencias.some((p) => p.includes('Sugestão: "Farmácia"')));
+});
+
+test("sem modelo treinado, nao ha sugestao e nada quebra", () => {
+    const previa = regrasVmac.montarPrevia({
+        ocr: { data: "2026-09-30", valor: 20, fornecedor: "DROGARIA SAO PAULO", confianca: 0.99 },
+        legenda: { tipos: ["OUTROS"] }, identificacao: {}, cad: cadastros(), hoje: new Date("2026-10-02T12:00:00Z"), modelo: null,
+    });
+    assert.equal(previa.campos.categoria.sugestao, undefined);
+});
+
+test("placa fora da frota sugere VEICULO - ALUGADO", () => {
+    const previa = regrasVmac.montarPrevia({
+        ocr: { data: "2026-09-30", valor: 200, fornecedor: "AUTO POSTO", placa: "ABC1D23", litragem: 30, odometro: 17153, confianca: 0.99 },
+        legenda: { tipos: ["ABASTECIMENTO"] }, identificacao: {}, cad: cadastros(), hoje: new Date("2026-10-02T12:00:00Z"), modelo: null,
+    });
+    assert.equal(previa.campos.categoria.sugestao.nome, "VEICULO - ALUGADO");
+    assert.equal(previa.campos.categoria.nome, null);
+});

@@ -183,6 +183,17 @@ function linhaCampo(campo, detalhe) {
                     el("input", { type: "radio", name: `erro-${campo.chave}`, value: tipo, checked: tipo === campo.erro_sugerido }),
                     tipo === "LEITURA" ? "leitura (OCR leu errado)" : "classificação (interpretou errado)")))));
     entrada.id = `c-${campo.chave}`;
+    const sugestao = campo.chave === "categoria" && !valor ? detalhe.campos.categoria?.sugestao : null;
+    if (sugestao && detalhe.editavel) {
+        const confianca = sugestao.confianca ? ` · ${Math.round(sugestao.confianca * 100)}% de confiança` : "";
+        const origemSugestao = sugestao.origem === "placa_fora_da_frota" ? "placa fora da frota" : "aprendido da planilha";
+        linha.querySelector(".entrada").insertBefore(el("div", { class: "sugestao" },
+            `Sugestão (${origemSugestao}${confianca}): `, el("b", {}, sugestao.nome), " ",
+            el("button", { type: "button", class: "secondary", onclick: () => {
+                entrada.value = sugestao.nome;
+                entrada.dispatchEvent(new Event("input"));
+            } }, "Usar sugestão")), linha.querySelector(".origem"));
+    }
     entrada.addEventListener("input", () => linha.classList.toggle("mudou", valorDoControle(entrada, campo) !== linha.dataset.inicial));
     entrada.addEventListener("change", () => linha.classList.toggle("mudou", valorDoControle(entrada, campo) !== linha.dataset.inicial));
     return linha;
@@ -386,7 +397,23 @@ async function carregarTreino() {
                     el("td", {}, pct(item.acuracia), el("span", { class: "barra" }, el("i", { style: `width:${Math.round((item.acuracia || 0) * 100)}%` }))),
                     el("td", {}, item.erros_leitura), el("td", {}, item.erros_classificacao), el("td", {}, item.ia_vazia))))))
             : el("div", { class: "vazio" }, "Ainda não há despesas aprovadas. As métricas aparecem conforme você aprova as prévias."),
-        el("p", { class: "origem" }, "Só entram nas métricas e no treino as despesas que uma pessoa aprovou. Uma despesa reaberta ou descartada sai do treino."));
+        el("p", { class: "origem" }, "Só entram nas métricas e no treino as despesas que uma pessoa aprovou. Uma despesa reaberta ou descartada sai do treino."),
+        blocoPlanilha(m.planilha, pct));
+}
+
+function blocoPlanilha(planilha, pct) {
+    if (!planilha) return el("div", { class: "vazio" }, "Modelo da planilha ainda não treinado (ferramentas/treinar-central.js).");
+    const d = planilha.divisao;
+    return el("div", { class: "bloco" },
+        el("h3", {}, "Categoria: teste com a planilha do Conta Azul"),
+        el("p", { class: "origem" }, `Treinado em ${dataHora(planilha.gerado_em)}. Teste com ${d.despesas_de_campo_no_teste} despesas de campo de ${dataBr(d.teste_de)} a ${dataBr(d.teste_ate)}, que o modelo não viu no treino. `,
+            `${d.abastecimentos_sem_placa_na_descricao} abastecimentos ficaram de fora: o veículo deles vem da placa lida na nota.`),
+        el("div", { class: "rolagem" }, el("table", { class: "tabela-metricas" },
+            el("thead", {}, el("tr", {}, ["Abordagem", "Acerto geral", "Quando decide, acerta", "Decide em"].map((t) => el("th", {}, t)))),
+            el("tbody", {}, planilha.resultados.map((r) => el("tr", {}, el("td", {}, r.abordagem), el("td", {}, pct(r.acerto_geral)),
+                el("td", {}, pct(r.precisao), el("span", { class: "barra" }, el("i", { style: `width:${Math.round(r.precisao * 100)}%` }))), el("td", {}, pct(r.cobertura))))))),
+        el("p", { class: "origem" }, "Diferenças entre o cadastro e a prática recente: ",
+            planilha.recomendacoes.filter((r) => r.divergente).map((r) => `${r.tipo}: cadastro "${r.cadastro_atual}" × prática "${r.pratica_atual}" (${pct(r.participacao)})`).join(" · ") || "nenhuma."));
 }
 
 // ---------------------------------------------------------------------------

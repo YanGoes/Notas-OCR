@@ -15,6 +15,7 @@ dados/
 coletor-whatsapp-*.zip
 config.json
 configuracao/modelo-historico.json
+configuracao/modelo-central.json
 fornecedores.json
 *.csv
 *.xls

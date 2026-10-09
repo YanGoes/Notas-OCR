@@ -59,6 +59,8 @@ main.central { max-width: 1440px; padding: 22px 20px 60px; }
 .campo.mudou input, .campo.mudou select { border-color: var(--brand); background: var(--brand-soft); }
 .origem { font-size: 11px; color: var(--muted); }
 .origem.humana { color: var(--success); font-weight: 700; }
+.sugestao { font-size: 12px; color: var(--success); background: var(--success-soft); border-radius: 8px; padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sugestao button { padding: 3px 9px; font-size: 12px; }
 .tipo-erro { display: none; gap: 10px; font-size: 12px; color: var(--ink); }
 .campo.mudou .tipo-erro { display: flex; flex-wrap: wrap; }
 .tipo-erro label { display: flex; gap: 4px; align-items: center; cursor: pointer; }

@@ -18,6 +18,7 @@
 // =============================================================================
 
 const { normalizar, contemTermo, centavos } = require("./texto");
+const modeloCentral = require("./modelo");
 const cadastros = require("./cadastros");
 
 const TIPOS = Object.freeze({
@@ -194,7 +195,7 @@ function decidirPessoas({ tipo, legenda, lote }) {
  * @param {object} [entrada.regras] — regras.json (confianca_minima)
  * @param {Date} [entrada.hoje]
  */
-function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date() }) {
+function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo }) {
     const pendencias = [];
     const avisos = [];
     const campos = {};
@@ -263,6 +264,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     let descricao = null;
     let descricaoAnexo = null;
     let centroDaRegra = null;
+    let sugestaoCategoria = null;
     if (tipo === "ABASTECIMENTO") {
         // A nota e a fonte principal; o que o operador digitou so completa o que faltou.
         const daNotaOuMensagem = (daNota, daMensagem) => (daNota ? { valor: daNota, origem: "nota" }
@@ -300,6 +302,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             if (!veiculo.categoria_nome_conta_azul) pendencias.push(`Veículo ${veiculo.placa} sem categoria definida no Conta Azul.`);
         } else if (placaLida) {
             pendencias.push(`Placa ${cadastros.placaCanonica(placaLida)} não está na frota cadastrada (alugado? particular?).`);
+            sugestaoCategoria = { nome: "VEICULO - ALUGADO", origem: "placa_fora_da_frota" };
         }
         campos.placa_veiculo = { valor: veiculo?.nome || null };
         descricao = { valor: descricaoAbastecimento({ litros, odometro, placa: campos.abastecimento.placa.valor }), origem: "template_abastecimento" };
@@ -321,7 +324,14 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     }
     campos.categoria = categoria || { nome: null, id: null, origem: null };
     if (!categoria?.nome) {
-        if (tipo !== "MERCADO") pendencias.push("Categoria não definida para esta despesa.");
+        // Sem regra: o modelo da planilha so SUGERE; a pessoa decide na revisao.
+        const textoSugestao = [ocr?.fornecedor, ...(ocr?.itens || []).map((item) => item.descricao), ...(legenda?.observacoes || []), legenda?.texto]
+            .filter(Boolean).join(" ");
+        const sugestao = sugestaoCategoria || modeloCentral.sugerirCategoria(textoSugestao, modelo === undefined ? {} : { modelo });
+        if (sugestao) campos.categoria.sugestao = sugestao;
+        const dica = sugestao ? ` Sugestão: "${sugestao.nome}"${sugestao.confianca ? ` (${Math.round(sugestao.confianca * 100)}% de confiança)` : ""}.` : "";
+        if (tipo !== "MERCADO") pendencias.push(`Categoria não definida para esta despesa.${dica}`);
+        else if (dica) avisos.push(`Categoria do mercado:${dica}`);
     } else if (!categoria.id) {
         pendencias.push(`Categoria "${categoria.nome}" sem ID do Conta Azul; sincronize as categorias.`);
     }

@@ -72,3 +72,20 @@ Tudo fica em `dados/central.db` (SQLite, fora do Git). As fotos importadas ficam
 | `despesas.campos` | A versão atual, com as correções |
 | `correcoes` | Cada campo corrigido: antes, depois, tipo de erro, autor e data |
 | `exemplos_treino` | Só despesas aprovadas: entrada (leitura do OCR, mensagem, prévia da IA) e rótulos (valores finais aprovados) |
+
+## Treino com a planilha do Conta Azul
+
+`ATALHOS/14_TREINAR_CENTRAL.bat` (ou `npm run central:treinar`) lê a planilha `visao_contas_a_pagar` e mede como a categoria seria decidida.
+
+**Como o teste é feito:**
+- só despesas de campo (as que chegam por foto) e só lançamentos já ocorridos;
+- o teste usa os **últimos 3 meses** com volume normal, que o modelo não vê no treino;
+- abastecimentos sem placa na descrição ficam de fora da conta, porque na Central o veículo vem da placa lida na nota.
+
+**O que ele produz:**
+- `configuracao/modelo-central.json` (fora do Git): a categoria que a VMac usa hoje para cada tipo e um modelo de texto;
+- o resultado do teste, que aparece na aba **Treino**.
+
+O modelo **só sugere** a categoria quando nenhuma regra decide. A sugestão aparece ao lado do campo, com o botão "Usar sugestão", e a despesa continua em revisão até alguém aprovar.
+
+Rode o treino de novo sempre que exportar uma planilha mais recente: a VMac muda de categoria de tempos em tempos (por exemplo, o café da manhã passou para "Café da Manhã" em abril de 2026).

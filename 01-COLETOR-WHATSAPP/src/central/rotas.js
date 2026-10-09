@@ -20,6 +20,21 @@ function regras() {
     try { return fs.existsSync(arquivo) ? JSON.parse(fs.readFileSync(arquivo, "utf8")) : {}; } catch (_) { return {}; }
 }
 
+/** Resultado do ultimo treino com a planilha (ferramentas/treinar-central.js), se houver. */
+function resumoPlanilha() {
+    const arquivo = path.join(RAIZ, "dados", "aprendizado", "relatorio-central.json");
+    try {
+        if (!fs.existsSync(arquivo)) return null;
+        const relatorio = JSON.parse(fs.readFileSync(arquivo, "utf8"));
+        return {
+            gerado_em: relatorio.gerado_em, divisao: relatorio.divisao,
+            resultados: relatorio.resultados.map((r) => ({ abordagem: r.abordagem, acerto_geral: r.acerto_geral, precisao: r.precisao, cobertura: r.cobertura,
+                por_tipo: r.por_tipo })),
+            recomendacoes: relatorio.recomendacoes,
+        };
+    } catch (_) { return null; }
+}
+
 function localizarArquivo(nome) {
     if (!nome || path.basename(nome) !== nome) return null;
     for (const pasta of PASTAS_IMAGEM) {
@@ -57,7 +72,7 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
     rotas.post("/despesas/:id/descartar", responder((req) => revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));
-    rotas.get("/metricas", responder(() => revisao.metricas(db())));
+    rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db()), planilha: resumoPlanilha() })));
     rotas.get("/remetentes", responder(() => revisao.remetentesNaoVinculados(db())));
     rotas.post("/remetentes", responder((req) => revisao.vincularRemetente(db(), cad(), String(req.body?.whatsapp_id || ""),
         String(req.body?.pessoa_id || ""), { regras: regras() })));

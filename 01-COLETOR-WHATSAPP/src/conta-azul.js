@@ -6,7 +6,14 @@ const path = require("path");
 const RAIZ = path.resolve(__dirname, "..");
 const TOKEN_URL = "https://auth.contaazul.com/oauth2/token";
 const API_URL = "https://api-v2.contaazul.com";
-const TOKENS_PATH = path.join(RAIZ, "tokens_conta_azul.json");
+// CONTA_AZUL_TOKENS_PATH permite que duas copias do programa usem o MESMO
+// arquivo de tokens. Cada renovacao troca o refresh_token e invalida o
+// anterior: copiar o arquivo faria uma das copias perder a conexao.
+const TOKENS_PATH_PADRAO = path.join(RAIZ, "tokens_conta_azul.json");
+function caminhoTokens() {
+    const env = { ...carregarEnv(), ...process.env };
+    return env.CONTA_AZUL_TOKENS_PATH ? path.resolve(RAIZ, env.CONTA_AZUL_TOKENS_PATH) : TOKENS_PATH_PADRAO;
+}
 const extensoes = new Set([".jpg", ".jpeg", ".png", ".bmp", ".pdf"]);
 let emExecucao = false;
 let renovacaoEmCurso = null;
@@ -31,11 +38,13 @@ function credenciais() {
 }
 
 function lerTokens() {
+    const TOKENS_PATH = caminhoTokens();
     if (!fs.existsSync(TOKENS_PATH)) throw new Error("Conta Azul ainda nao conectada. Execute npm run conta-azul:conectar.");
     return JSON.parse(fs.readFileSync(TOKENS_PATH, "utf8"));
 }
 
 function salvarTokens(resposta) {
+    const TOKENS_PATH = caminhoTokens();
     const anterior = fs.existsSync(TOKENS_PATH) ? JSON.parse(fs.readFileSync(TOKENS_PATH, "utf8")) : {};
     const tokens = {
         access_token: resposta.access_token,

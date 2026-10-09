@@ -66,9 +66,10 @@
   },
   {
     "nome": "CAFE DA MANHA",
-    "nome_conta_azul": "Refeição - Café da Manhã",
-    "id": "8e1e121c-8f29-4c82-9895-a1b84f75e324",
-    "apelidos": []
+    "nome_conta_azul": "Café da Manhã",
+    "id": null,
+    "apelidos": [],
+    "_nota": "Desde 04/2026 a VMac lanca cafe da manha em 'Café da Manhã' (planilha). Antes era 'Lanches e Refeições'; a categoria antiga ' Refeição - Café da Manhã ' (id 8e1e121c) nao e mais usada. O ID da nova sai da sincronizacao com o Conta Azul."
   },
   {
     "nome": "PEDAGIO",

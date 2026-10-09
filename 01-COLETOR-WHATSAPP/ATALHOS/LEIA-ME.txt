@@ -42,6 +42,8 @@ OUTROS
   13_ABRIR_CENTRAL_REVISAO.bat    Abre a Central de revisao (modo treino) na
                                   porta 3211, sem WhatsApp e sem lancar nada.
                                   Veja ..docsCENTRAL-DE-REVISAO.md.
+  14_TREINAR_CENTRAL.bat          Treina e mede a categoria com a planilha do
+                                  Conta Azul. Resultado na aba Treino da Central.
 
 
 ONDE ESTA O RESTO
