@@ -83,7 +83,7 @@ function pagamentoDaLinha(cad, linha) {
  * Le cada linha da mensagem e extrai o que ela diz.
  * @returns {object} dados extraidos, com `linhas_nao_entendidas` para auditoria
  */
-function extrair(cad, texto, { nomeRemetente = "" } = {}) {
+function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
     const dados = {
         data_declarada: null, projeto_texto: null, pagamento: null, valor_declarado: null,
         tipos: [], quantidades: [], pessoas: null, observacoes: [], itens_citados: [],
@@ -131,7 +131,7 @@ function extrair(cad, texto, { nomeRemetente = "" } = {}) {
         const odometro = linha.match(/\b(?:od|km|h?od[oô]metro)\s*:?\s*(\d{1,3}(?:\.\d{3})+|\d{4,7})\b/i);
         if (odometro && !dados.odometro) dados.odometro = Number(odometro[1].replace(/\D/g, ""));
         if ((placa || litros || odometro) && normalizar(linha).split(" ").length <= 6
-            && !tipoDoTexto(linha) && !cadastros.pareceProjeto(cad, linha)) continue;
+            && !tipoDoTexto(linha) && !cadastros.pareceProjeto(cad, linha, pessoa)) continue;
 
         const obs = linha.match(RE_OBS);
         if (obs) {
@@ -193,7 +193,7 @@ function extrair(cad, texto, { nomeRemetente = "" } = {}) {
         }
 
         // Linha solta que corresponde a um projeto do cadastro ("Goinfra G.O").
-        if (!dados.projeto_texto && cadastros.pareceProjeto(cad, linha)) {
+        if (!dados.projeto_texto && cadastros.pareceProjeto(cad, linha, pessoa)) {
             dados.projeto_texto = linha;
             continue;
         }
@@ -233,7 +233,7 @@ const RE_CORRECAO = /\b(era|e)\s+(.+?)\s+e\s+n[aã]o\s+(.+)|\bn[aã]o\s+(era|e)\
  */
 function interpretar(cad, { texto = "", temMidia = false, pessoa = null, nomeRemetente = "" } = {}) {
     const bruto = String(texto || "").trim();
-    const dados = extrair(cad, bruto, { nomeRemetente: pessoa?.nome || nomeRemetente });
+    const dados = extrair(cad, bruto, { nomeRemetente: pessoa?.nome || nomeRemetente, pessoa });
     const normal = normalizar(bruto);
     const autoridade = Boolean(pessoa?.autoridade_financeira);
     const resultado = (intencao, extra = {}) => ({ intencao, dados, autoridade_financeira: autoridade, ...extra });

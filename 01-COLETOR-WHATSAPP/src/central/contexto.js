@@ -23,10 +23,10 @@ const cadastros = require("./cadastros");
 const { interpretar, INTENCOES } = require("./interpretador");
 
 /** Chave estavel do projeto: nome oficial quando resolvido, senao o texto normalizado. */
-function chaveProjeto(cad, texto) {
-    const resolucao = cadastros.resolverProjeto(cad, texto);
+function chaveProjeto(cad, texto, pessoa = null) {
+    const resolucao = cadastros.resolverProjeto(cad, texto, pessoa);
     return {
-        chave: resolucao.status === "RESOLVIDO" ? normalizar(resolucao.projeto.nome_oficial) : normalizar(texto),
+        chave: resolucao.projeto ? normalizar(resolucao.projeto.nome_oficial) : normalizar(texto),
         resolucao,
     };
 }
@@ -85,7 +85,7 @@ function registrarMensagem(db, cad, msg) {
 
         let loteId = null;
         if (interpretacao.intencao === INTENCOES.INICIO_LOTE_DIARIO) {
-            const projeto = dados.projeto_texto ? chaveProjeto(cad, dados.projeto_texto) : null;
+            const projeto = dados.projeto_texto ? chaveProjeto(cad, dados.projeto_texto, identificacao.pessoa) : null;
             ({ lastInsertRowid: loteId } = db.prepare(`
                 INSERT INTO lotes (grupo_id, remetente_id, data_declarada, projeto_texto, projeto_chave, cartao,
                     quantidades, observacoes, mensagem_ref, criado_em)
@@ -97,10 +97,10 @@ function registrarMensagem(db, cad, msg) {
             loteId = Number(loteId);
             if (projeto) evento("DEFINICAO_PROJETO", { projetoTexto: dados.projeto_texto, projetoChave: projeto.chave });
         } else if (interpretacao.intencao === INTENCOES.DEFINICAO_PROJETO) {
-            const projeto = chaveProjeto(cad, dados.projeto_texto);
+            const projeto = chaveProjeto(cad, dados.projeto_texto, identificacao.pessoa);
             evento("DEFINICAO_PROJETO", { projetoTexto: dados.projeto_texto, projetoChave: projeto.chave });
         } else if (interpretacao.intencao === INTENCOES.DEFINICAO_CARTAO_POR_PROJETO) {
-            const projeto = chaveProjeto(cad, dados.projeto_texto);
+            const projeto = chaveProjeto(cad, dados.projeto_texto, identificacao.pessoa);
             evento("DEFINICAO_CARTAO_POR_PROJETO", {
                 projetoTexto: dados.projeto_texto, projetoChave: projeto.chave, cartao: dados.pagamento.cartao,
                 // Instrucao de cartao de quem nao tem autoridade fica registrada, mas nao vale.
@@ -109,7 +109,7 @@ function registrarMensagem(db, cad, msg) {
             });
         } else if (msg.temMidia && dados.projeto_texto) {
             // Projeto escrito na legenda de uma foto tambem passa a ser o projeto atual do operador.
-            const projeto = chaveProjeto(cad, dados.projeto_texto);
+            const projeto = chaveProjeto(cad, dados.projeto_texto, identificacao.pessoa);
             evento("DEFINICAO_PROJETO", { projetoTexto: dados.projeto_texto, projetoChave: projeto.chave });
         }
         return { mensagemRef: Number(mensagemRef), interpretacao, pessoa: identificacao, loteId, nova: true };
@@ -152,7 +152,7 @@ function contextoPara(db, cad, { grupoId, remetenteId, momento }, { horasLote = 
         texto: projetoEvento.projeto_texto,
         chave: projetoEvento.projeto_chave,
         desde: projetoEvento.valido_desde,
-        resolucao: cadastros.resolverProjeto(cad, projetoEvento.projeto_texto),
+        resolucao: cadastros.resolverProjeto(cad, projetoEvento.projeto_texto, identificar(db, cad, remetenteId).pessoa),
         origem: lote && lote.projeto_texto === projetoEvento.projeto_texto ? "cabecalho_do_lote" : "mensagem_anterior_do_operador",
     } : null;
 

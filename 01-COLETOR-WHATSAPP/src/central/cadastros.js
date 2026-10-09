@@ -86,25 +86,31 @@ function identificarPessoa(cad, whatsappId, { vinculos = new Map(), nomeExibido 
 // ---------------------------------------------------------------------------
 
 function nomesDoProjeto(projeto) {
-    return [projeto.nome_oficial, ...(projeto.apelidos || [])].map(normalizar).filter(Boolean);
+    return [projeto.nome_oficial, projeto.centro_conta_azul, ...(projeto.apelidos || [])].map(normalizar).filter(Boolean);
+}
+
+/** Nome do centro de custo no Conta Azul (pode diferir do nome no sistema de projetos). */
+function nomeCentro(projeto) {
+    return projeto?.centro_conta_azul || projeto?.nome_oficial || null;
 }
 
 /**
  * Junta projetos.json com os centros sincronizados do Conta Azul
- * (centros_custo.json), pelo nome. Centro sincronizado que ainda nao esta em
- * projetos.json tambem entra, com `ativo: null` (precisa ser confirmado).
+ * (centros_custo.json), pelo nome do centro. Centro sincronizado que ainda nao
+ * esta em projetos.json tambem entra, com `ativo: null` (precisa ser confirmado).
  */
 function projetosComId(cad) {
     const porNome = new Map(cad.centros.map((centro) => [normalizar(centro.nome), centro]));
     const projetos = cad.projetos.map((projeto) => {
-        const centro = porNome.get(normalizar(projeto.nome_oficial));
+        const centro = porNome.get(normalizar(nomeCentro(projeto)));
         return {
             ...projeto,
             id_conta_azul: projeto.id_conta_azul || centro?.id || null,
             apelidos: [...new Set([...(projeto.apelidos || []), ...(centro?.apelidos || [])])],
         };
     });
-    const conhecidos = new Set(cad.projetos.map((projeto) => normalizar(projeto.nome_oficial)));
+    const conhecidos = new Set(cad.projetos.flatMap((projeto) => [projeto.nome_oficial, projeto.centro_conta_azul])
+        .filter(Boolean).map(normalizar));
     for (const centro of cad.centros) {
         if (!centro?.nome || conhecidos.has(normalizar(centro.nome))) continue;
         projetos.push({ nome_oficial: centro.nome, id_conta_azul: centro.id || null, ativo: null, servico: null, apelidos: centro.apelidos || [], origem: "centros_custo_sincronizados" });
@@ -120,30 +126,44 @@ function projetosComId(cad) {
  * - AMBIGUO: mais de um projeto casa, ou so ha semelhanca parcial.
  * - INATIVO: casou exatamente com um projeto marcado como inativo.
  * - DESCONHECIDO: nada parecido.
+ *
+ * `pessoa.apelidos_projeto` traduz o jeito como AQUELA pessoa escreve
+ * ("Goinfra G.O" do Almir = GOINFRA FWD). Tambem e correspondencia exata.
  */
-function resolverProjeto(cad, texto) {
+function resolverProjeto(cad, texto, pessoa = null) {
     const alvo = normalizar(texto);
     if (!alvo) return { status: "DESCONHECIDO", projeto: null, candidatos: [] };
     const projetos = projetosComId(cad);
-    const exatos = projetos.filter((projeto) => nomesDoProjeto(projeto).includes(alvo));
+    const daPessoa = Object.entries(pessoa?.apelidos_projeto || {}).find(([apelido]) => normalizar(apelido) === alvo);
+    const exatos = daPessoa
+        ? projetos.filter((projeto) => nomesDoProjeto(projeto).includes(normalizar(daPessoa[1])))
+        : projetos.filter((projeto) => nomesDoProjeto(projeto).includes(alvo));
     const exatosValidos = exatos.filter((projeto) => projeto.ativo !== false);
     if (exatosValidos.length === 1) return { status: "RESOLVIDO", projeto: exatosValidos[0], candidatos: [] };
     if (exatosValidos.length > 1) return { status: "AMBIGUO", projeto: null, candidatos: exatosValidos };
-    if (exatos.length) return { status: "INATIVO", projeto: null, candidatos: exatos };
+    if (exatos.length) return { status: "INATIVO", projeto: exatos.length === 1 ? exatos[0] : null, candidatos: exatos };
 
     // Semelhanca parcial (todas as palavras do texto aparecem no nome) so gera
     // SUGESTAO. "Goinfra" nao pode escolher sozinho entre FWD e VDROD.
-    const palavras = alvo.split(" ").filter((palavra) => palavra.length >= 3);
-    const parecidos = palavras.length ? projetos.filter((projeto) => projeto.ativo !== false
-        && nomesDoProjeto(projeto).some((nome) => palavras.every((palavra) => contemTermo(nome, palavra)))) : [];
+    const parecidos = parecidosCom(projetos, alvo).filter((projeto) => projeto.ativo !== false);
     return { status: parecidos.length ? "AMBIGUO" : "DESCONHECIDO", projeto: null, candidatos: parecidos };
 }
 
-/** Diz se o texto inteiro parece ser so o nome de um projeto (linha solta no WhatsApp). */
-function pareceProjeto(cad, texto) {
-    const resultado = resolverProjeto(cad, texto);
-    return resultado.status === "RESOLVIDO" || resultado.status === "INATIVO"
-        || (resultado.status === "AMBIGUO" && resultado.candidatos.length > 0);
+function parecidosCom(projetos, alvo) {
+    const palavras = alvo.split(" ").filter((palavra) => palavra.length >= 3);
+    return palavras.length ? projetos.filter((projeto) => nomesDoProjeto(projeto)
+        .some((nome) => palavras.every((palavra) => contemTermo(nome, palavra)))) : [];
+}
+
+/**
+ * Diz se o texto inteiro parece ser so o nome de um projeto (linha solta no
+ * WhatsApp). Projetos inativos contam: a linha continua sendo o projeto do
+ * operador, e a previa avisa que ele esta inativo.
+ */
+function pareceProjeto(cad, texto, pessoa = null) {
+    const resultado = resolverProjeto(cad, texto, pessoa);
+    if (resultado.status !== "DESCONHECIDO") return true;
+    return parecidosCom(projetosComId(cad), normalizar(texto)).length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +258,7 @@ function categoriaPorNome(cad, nomeInterno) {
 
 module.exports = {
     carregar, identificarPessoa, variantesTelefone,
-    resolverProjeto, pareceProjeto, projetosComId,
+    resolverProjeto, pareceProjeto, projetosComId, nomeCentro,
     resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, placaCanonica, placaComparavel,
     resolverFornecedor, categoriaPorNome, PASTA_PADRAO,
 };

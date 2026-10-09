@@ -316,3 +316,74 @@ test("mercado recorrente usa o nome oficial; nao recorrente usa MERCADO; outros 
     assert.equal(cadastros.resolverFornecedor(cad, "SUPERMERCADO DO ZE").nome, "MERCADO");
     assert.equal(cadastros.resolverFornecedor(cad, "Churrascaria Gaucha").nome, "CHURRASCARIA GAUCHA");
 });
+
+// --- Projetos x centros de custo do Conta Azul (respostas de 08/10/2026) -------
+
+function cadComProjetosReais() {
+    return {
+        ...cadastrosDeTeste(),
+        projetos: [
+            { nome_oficial: "CTVM-VDRod. DYNA BR020 e 242", centro_conta_azul: "DYNA BR 020 e BR 242", ativo: true, apelidos: [] },
+            { nome_oficial: "DESPESAS ADMINISTRATIVAS", centro_conta_azul: "DESPESAS ADMINISTRATIVAS", ativo: true, apelidos: ["Escritório Santa Branca"] },
+            { nome_oficial: "DYNA GOINFRA CICLO III - FWD", centro_conta_azul: "DYNA GOINFRA CICLO III - FWD", ativo: false, apelidos: ["GOINFRA FWD"] },
+            { nome_oficial: "DYNA GOINFRA CICLO III - VDROD", centro_conta_azul: "DYNA GOINFRA CICLO III - VDROD", ativo: false, apelidos: ["GOINFRA VDROD"] },
+        ],
+        centros: [
+            { nome: "DYNA BR 020 e BR 242", id: "77777777-7777-4777-8777-777777777777" },
+            { nome: "DESPESAS ADMINISTRATIVAS", id: "88888888-8888-4888-8888-888888888888" },
+        ],
+    };
+}
+
+test("projeto do sistema acha o ID pelo nome do centro de custo no Conta Azul", () => {
+    const c = cadComProjetosReais();
+    const porProjeto = cadastros.resolverProjeto(c, "CTVM-VDRod. DYNA BR020 e 242");
+    assert.equal(porProjeto.status, "RESOLVIDO");
+    assert.equal(porProjeto.projeto.id_conta_azul, "77777777-7777-4777-8777-777777777777");
+    assert.equal(cadastros.resolverProjeto(c, "DYNA BR 020 e BR 242").status, "RESOLVIDO");
+    // O centro sincronizado nao aparece duplicado como projeto "nao confirmado".
+    assert.equal(cadastros.projetosComId(c).filter((p) => p.id_conta_azul === "77777777-7777-4777-8777-777777777777").length, 1);
+    assert.equal(cadastros.resolverProjeto(c, "Escritório Santa Branca").projeto.nome_oficial, "DESPESAS ADMINISTRATIVAS");
+});
+
+test("'Goinfra G.O' do Almir e o GOINFRA FWD; de outra pessoa nao decide sozinho", () => {
+    const c = cadComProjetosReais();
+    const almir = { ...pessoa("almir"), apelidos_projeto: { "Goinfra G.O": "DYNA GOINFRA CICLO III - FWD" } };
+    const doAlmir = cadastros.resolverProjeto(c, "Goinfra G.O", almir);
+    assert.equal(doAlmir.status, "INATIVO");
+    assert.equal(doAlmir.projeto.nome_oficial, "DYNA GOINFRA CICLO III - FWD");
+    assert.equal(cadastros.resolverProjeto(c, "Goinfra G.O", pessoa("vitor")).projeto, null);
+    // Linha solta com projeto inativo continua sendo reconhecida como projeto.
+    assert.equal(cadastros.pareceProjeto(c, "Goinfra G.O", pessoa("vitor")), true);
+    assert.equal(cadastros.pareceProjeto(c, "Goinfra G.O", almir), true);
+});
+
+test("projeto inativo nunca vira centro de custo com ID: vai para revisao", () => {
+    const c = cadComProjetosReais();
+    const almir = { ...pessoa("almir"), apelidos_projeto: { "Goinfra G.O": "DYNA GOINFRA CICLO III - FWD" } };
+    const previa = regras.montarPrevia({
+        ocr: { data: "2026-09-30", valor: 85.5, fornecedor: "RESTAURANTE SABOR LTDA", hora: "20:15", confianca: 0.99 },
+        legenda: { projeto_texto: "Goinfra G.O", tipos: ["JANTAR"] }, identificacao: { pessoa: almir, origem: "telefone" },
+        cad: c, hoje: new Date("2026-10-02T12:00:00Z"),
+    });
+    assert.equal(previa.campos.centro_custo.nome, "DYNA GOINFRA CICLO III - FWD");
+    assert.equal(previa.campos.centro_custo.id, null);
+    assert.equal(previa.estado, "AGUARDANDO_REVISAO");
+    assert.ok(previa.pendencias.some((p) => p.includes("projeto inativo")));
+});
+
+test("abastecimento da moto do Lorran vai para Combustiveis em DESPESAS ADMINISTRATIVAS", () => {
+    const c = cadComProjetosReais();
+    const lorran = { ...pessoa("lorran"), regras_especiais: [{ tipo: "ABASTECIMENTO_MOTO_PARTICULAR", categoria_nome: "Combustíveis",
+        categoria_id: "b2e64f41-0b9c-4608-8e3e-0e0a0080e0a0", centro_custo: "DESPESAS ADMINISTRATIVAS", descricao_anexo: "Abastecimento moto Lorran" }] };
+    const previa = regras.montarPrevia({
+        ocr: { data: "2026-09-30", valor: 50, fornecedor: "AUTO POSTO BOA VIAGEM", litragem: 8.2, confianca: 0.99, produto_principal: "GASOLINA" },
+        legenda: { tipos: ["ABASTECIMENTO"], observacoes: ["moto"], projeto_texto: "CTVM-VDRod. DYNA BR020 e 242" },
+        identificacao: { pessoa: lorran, origem: "telefone" }, cad: c, hoje: new Date("2026-10-02T12:00:00Z"),
+    });
+    assert.equal(previa.campos.categoria.nome, "Combustíveis");
+    assert.equal(previa.campos.categoria.id, "b2e64f41-0b9c-4608-8e3e-0e0a0080e0a0");
+    assert.equal(previa.campos.centro_custo.nome, "DESPESAS ADMINISTRATIVAS");
+    assert.equal(previa.campos.centro_custo.origem, "regra_especial");
+    assert.ok(previa.avisos.some((a) => a.includes("prevaleceu sobre o projeto do operador")));
+});

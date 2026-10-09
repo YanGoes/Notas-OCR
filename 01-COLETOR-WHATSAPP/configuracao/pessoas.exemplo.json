@@ -1,9 +1,42 @@
 {
-  "_leia_me": "Copie para pessoas.json (que NAO vai para o Git) e preencha os telefones. papel: OPERADOR, ADMINISTRATIVO ou GESTOR. autoridade_financeira=true permite que a mensagem da pessoa defina cartao/projeto. pasta_drive=null significa que a pessoa nao tem pasta individual de despesas.",
+  "_leia_me": "Copie para pessoas.json (que NAO vai para o Git) e preencha os telefones. papel: OPERADOR, ADMINISTRATIVO ou GESTOR. autoridade_financeira=true permite que a mensagem da pessoa defina cartao/projeto. pasta_drive=null significa que a pessoa nao tem pasta individual de despesas. apelidos_projeto: como a pessoa escreve o projeto -> nome oficial (correspondencia exata).",
   "pessoas": [
-    { "id": "vanessa", "nome": "Vanessa", "telefone": "55DDDNUMERO", "papel": "ADMINISTRATIVO", "autoridade_financeira": true, "pasta_drive": null },
-    { "id": "almir", "nome": "Almir", "telefone": "55DDDNUMERO", "papel": "OPERADOR", "autoridade_financeira": false, "pasta_drive": "Almir" },
-    { "id": "lorran", "nome": "Lorran", "telefone": "55DDDNUMERO", "papel": "OPERADOR", "autoridade_financeira": false, "pasta_drive": "Lorran",
-      "regras_especiais": [ { "tipo": "ABASTECIMENTO_MOTO_PARTICULAR", "categoria_nome": "PREENCHER_CATEGORIA_ADMINISTRATIVA", "descricao_anexo": "Abastecimento moto Lorran" } ] }
+    {
+      "id": "vanessa",
+      "nome": "Vanessa",
+      "telefone": "55DDDNUMERO",
+      "papel": "ADMINISTRATIVO",
+      "autoridade_financeira": true,
+      "pasta_drive": null
+    },
+    {
+      "id": "almir",
+      "nome": "Almir",
+      "telefone": "55DDDNUMERO",
+      "papel": "OPERADOR",
+      "autoridade_financeira": false,
+      "pasta_drive": "Almir",
+      "apelidos_projeto": {
+        "Goinfra G.O": "DYNA GOINFRA CICLO III - FWD",
+        "Goinfra GO": "DYNA GOINFRA CICLO III - FWD"
+      }
+    },
+    {
+      "id": "lorran",
+      "nome": "Lorran",
+      "telefone": "55DDDNUMERO",
+      "papel": "OPERADOR",
+      "autoridade_financeira": false,
+      "pasta_drive": "Lorran",
+      "regras_especiais": [
+        {
+          "tipo": "ABASTECIMENTO_MOTO_PARTICULAR",
+          "categoria_nome": "Combustíveis",
+          "descricao_anexo": "Abastecimento moto Lorran",
+          "categoria_id": "b2e64f41-0b9c-4608-8e3e-0e0a0080e0a0",
+          "centro_custo": "DESPESAS ADMINISTRATIVAS"
+        }
+      ]
+    }
   ]
 }

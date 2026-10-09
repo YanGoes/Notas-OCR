@@ -262,6 +262,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     let categoria = null;
     let descricao = null;
     let descricaoAnexo = null;
+    let centroDaRegra = null;
     if (tipo === "ABASTECIMENTO") {
         // A nota e a fonte principal; o que o operador digitou so completa o que faltou.
         const daNotaOuMensagem = (daNota, daMensagem) => (daNota ? { valor: daNota, origem: "nota" }
@@ -289,8 +290,9 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         const motoParticular = regrasPessoa.find((regra) => regra.tipo === "ABASTECIMENTO_MOTO_PARTICULAR");
         const mencionaMoto = contemTermo([legenda?.observacoes, legenda?.texto].flat().join(" "), "moto");
         if (motoParticular && mencionaMoto) {
-            categoria = categoriaLivre(cad, motoParticular.categoria_nome);
+            categoria = categoriaLivre(cad, motoParticular.categoria_nome, motoParticular.categoria_id);
             descricaoAnexo = motoParticular.descricao_anexo;
+            if (motoParticular.centro_custo) centroDaRegra = motoParticular.centro_custo;
             avisos.push("Regra especial: abastecimento de moto particular (despesa administrativa).");
         } else if (veiculo) {
             const idValido = veiculo.categoria_id && !String(veiculo.categoria_id).startsWith("PREENCHER_");
@@ -334,14 +336,20 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     }
     campos.descricao = descricao;
 
-    // Projeto / centro de custo: legenda da foto > contexto do operador
-    const projetoTexto = legenda?.projeto_texto || contexto.projeto?.texto || null;
-    const resolucao = projetoTexto ? cadastros.resolverProjeto(cad, projetoTexto) : null;
+    // Projeto / centro de custo: regra especial > legenda da foto > contexto do operador
+    const projetoInformado = legenda?.projeto_texto || contexto.projeto?.texto || null;
+    const projetoTexto = centroDaRegra || projetoInformado;
+    if (centroDaRegra && projetoInformado && normalizar(projetoInformado) !== normalizar(centroDaRegra)) {
+        avisos.push(`Centro de custo da regra especial (${centroDaRegra}) prevaleceu sobre o projeto do operador (${projetoInformado}).`);
+    }
+    const resolucao = projetoTexto ? cadastros.resolverProjeto(cad, projetoTexto, pessoa) : null;
+    const projetoAchado = resolucao?.projeto || null;
     campos.centro_custo = {
         texto_informado: projetoTexto,
-        origem: legenda?.projeto_texto ? "mensagem_da_foto" : contexto.projeto?.origem || null,
-        nome: resolucao?.projeto?.nome_oficial || null,
-        id: resolucao?.projeto?.id_conta_azul || null,
+        origem: centroDaRegra ? "regra_especial" : legenda?.projeto_texto ? "mensagem_da_foto" : contexto.projeto?.origem || null,
+        nome: projetoAchado ? cadastros.nomeCentro(projetoAchado) : null,
+        projeto: projetoAchado?.nome_oficial || null,
+        id: resolucao?.status === "RESOLVIDO" ? projetoAchado.id_conta_azul || null : null,
         status: resolucao?.status || "NAO_INFORMADO",
         candidatos: (resolucao?.candidatos || []).map((projeto) => projeto.nome_oficial),
     };
@@ -350,7 +358,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         if (!resolucao.projeto.id_conta_azul) pendencias.push(`Projeto "${resolucao.projeto.nome_oficial}" sem ID do Conta Azul; sincronize os centros de custo.`);
         if (resolucao.projeto.ativo !== true) pendencias.push(`Projeto "${resolucao.projeto.nome_oficial}" ainda não confirmado como ativo.`);
     } else if (resolucao.status === "INATIVO") {
-        pendencias.push(`"${projetoTexto}" corresponde a um projeto inativo.`);
+        pendencias.push(`"${projetoTexto}" corresponde a projeto inativo${projetoAchado ? ` (${projetoAchado.nome_oficial})` : ""}; confirme o centro de custo.`);
     } else {
         const opcoes = campos.centro_custo.candidatos.length ? ` Possíveis: ${campos.centro_custo.candidatos.join(" | ")}.` : "";
         pendencias.push(`Projeto "${projetoTexto}" não corresponde exatamente a um projeto cadastrado.${opcoes}`);
@@ -398,12 +406,13 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
 }
 
 /** Categoria indicada por nome livre (regra especial), resolvida no cadastro se possivel. */
-function categoriaLivre(cad, nome) {
+function categoriaLivre(cad, nome, idInformado = null) {
     if (!nome || String(nome).startsWith("PREENCHER_")) return { nome: null, id: null, origem: "regra_especial_sem_categoria" };
     const alvo = normalizar(nome);
     const achada = cad.categorias.find((item) => normalizar(item.nome) === alvo || normalizar(item.nome_conta_azul) === alvo);
-    const idValido = achada?.id && !String(achada.id).startsWith("PREENCHER_");
-    return { nome: achada?.nome_conta_azul || nome, id: idValido ? achada.id : null, origem: "regra_especial" };
+    const id = idInformado || achada?.id;
+    const idValido = id && !String(id).startsWith("PREENCHER_");
+    return { nome: achada?.nome_conta_azul || nome, id: idValido ? id : null, origem: "regra_especial" };
 }
 
 module.exports = {

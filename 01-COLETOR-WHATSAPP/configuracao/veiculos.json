@@ -15,16 +15,16 @@
     "ativo": true
   },
   {
-    "nome": "ETIOS - JKM0196",
+    "nome": "ETIOS - JKM0I96",
     "modelo": "ETIOS",
-    "placa": "JKM0196",
+    "placa": "JKM0I96",
     "apelidos": [],
     "categoria_id": null,
     "categoria_nome_conta_azul": "ETIOS - JKM0I96",
     "manutencao_categoria_id": null,
     "manutencao_categoria_nome": "MANUTENÇÃO ETIOS JKM0196",
     "ativo": true,
-    "_atencao": "Historico usa JKM0I96 (letra I) na categoria de combustivel e JKM0196 na de manutencao. Confirmar a placa real."
+    "_nota": "Placa confirmada com a letra I (06/10/2026). A categoria de manutencao no Conta Azul foi criada como JKM0196; o nome abaixo e o que existe la."
   },
   {
     "nome": "ETIOS - OVN1505",
@@ -43,11 +43,11 @@
     "placa": "FHH3G21",
     "apelidos": [],
     "categoria_id": null,
-    "categoria_nome_conta_azul": null,
+    "categoria_nome_conta_azul": "SAVEIRO - FHH3G21",
     "manutencao_categoria_id": null,
-    "manutencao_categoria_nome": null,
+    "manutencao_categoria_nome": "MANUTENÇÃO SAVEIRO - FHH3G21",
     "ativo": true,
-    "_atencao": "Placa nova informada em 06/10/2026; categoria no Conta Azul ainda nao identificada."
+    "_atencao": "Mesmo padrao dos outros veiculos (combustivel e manutencao). Ainda nao ha lancamento no historico: confirmar que as categorias existem no Conta Azul antes do primeiro lancamento real."
   },
   {
     "nome": "SAVEIRO - RBT2E25",
@@ -61,16 +61,20 @@
     "ativo": true
   },
   {
-    "nome": "CAMINHAO F14K - CQA6B42",
-    "modelo": "CAMINHAO F14K",
+    "nome": "CAMINHÃO F14K - CQA6B42",
+    "modelo": "CAMINHÃO F14K",
     "placa": "CQA6B42",
-    "apelidos": [],
+    "apelidos": [
+      "caminhao",
+      "caminhão",
+      "f14k",
+      "f 14k"
+    ],
     "categoria_id": null,
-    "categoria_nome_conta_azul": null,
+    "categoria_nome_conta_azul": "CAMINHÃO F14K - CQA6B42",
     "manutencao_categoria_id": null,
-    "manutencao_categoria_nome": null,
-    "ativo": true,
-    "_atencao": "Placa nova informada em 06/10/2026; categoria no Conta Azul ainda nao identificada."
+    "manutencao_categoria_nome": "MANUTENÇÃO CAMINHÃO F14K - CQA6B42",
+    "ativo": true
   },
   {
     "nome": "HILUX - OVN5J98",
@@ -104,7 +108,7 @@
     "manutencao_categoria_id": null,
     "manutencao_categoria_nome": "Manutenção S10 PRE - 3B59",
     "ativo": true,
-    "_atencao": "Informada como PRE3B59; o historico tem categoria S10 - PRE5B39. Confirmar a placa real."
+    "_nota": "Placa confirmada PRE3B59. A categoria de combustivel no Conta Azul foi criada com o nome S10 - PRE5B39; o nome abaixo e o que existe la."
   },
   {
     "nome": "S10 - REP7B39",
