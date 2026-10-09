@@ -387,3 +387,17 @@ test("abastecimento da moto do Lorran vai para Combustiveis em DESPESAS ADMINIST
     assert.equal(previa.campos.centro_custo.origem, "regra_especial");
     assert.ok(previa.avisos.some((a) => a.includes("prevaleceu sobre o projeto do operador")));
 });
+
+test("projeto sem nome exato no Conta Azul acha o unico centro que contenha o trecho", () => {
+    const base = { ...cadComProjetosReais(), projetos: [
+        { nome_oficial: "CTVM-IRI-ATR-IGG HOUER MT - ROTA DO PEQUI", centro_conta_azul: null, busca_centro_conta_azul: "rota do pequi", ativo: true, apelidos: ["Rota do Pequi"] },
+    ] };
+    const um = { ...base, centros: [{ nome: "HOUER MT - ROTA DO PEQUI", id: "99999999-9999-4999-8999-999999999999" }] };
+    const achado = cadastros.resolverProjeto(um, "Rota do Pequi");
+    assert.equal(achado.projeto.id_conta_azul, "99999999-9999-4999-8999-999999999999");
+    assert.equal(cadastros.nomeCentro(achado.projeto), "HOUER MT - ROTA DO PEQUI");
+    assert.equal(cadastros.projetosComId(um).length, 1, "o centro achado nao vira um projeto duplicado");
+    // Dois centros parecidos: nao escolhe sozinho.
+    const dois = { ...base, centros: [{ nome: "ROTA DO PEQUI IRI", id: "a" }, { nome: "ROTA DO PEQUI FWD", id: "b" }] };
+    assert.equal(cadastros.resolverProjeto(dois, "Rota do Pequi").projeto.id_conta_azul, null);
+});

@@ -102,14 +102,20 @@ function nomeCentro(projeto) {
 function projetosComId(cad) {
     const porNome = new Map(cad.centros.map((centro) => [normalizar(centro.nome), centro]));
     const projetos = cad.projetos.map((projeto) => {
-        const centro = porNome.get(normalizar(nomeCentro(projeto)));
+        let centro = porNome.get(normalizar(nomeCentro(projeto)));
+        // Nome exato ainda desconhecido: aceita o UNICO centro sincronizado que contenha o trecho.
+        if (!centro && !projeto.centro_conta_azul && projeto.busca_centro_conta_azul) {
+            const achados = cad.centros.filter((item) => item?.nome && contemTermo(item.nome, projeto.busca_centro_conta_azul));
+            if (achados.length === 1) centro = achados[0];
+        }
         return {
             ...projeto,
+            centro_conta_azul: projeto.centro_conta_azul || (centro && centro.nome !== projeto.nome_oficial ? centro.nome : null),
             id_conta_azul: projeto.id_conta_azul || centro?.id || null,
             apelidos: [...new Set([...(projeto.apelidos || []), ...(centro?.apelidos || [])])],
         };
     });
-    const conhecidos = new Set(cad.projetos.flatMap((projeto) => [projeto.nome_oficial, projeto.centro_conta_azul])
+    const conhecidos = new Set(projetos.flatMap((projeto) => [projeto.nome_oficial, projeto.centro_conta_azul])
         .filter(Boolean).map(normalizar));
     for (const centro of cad.centros) {
         if (!centro?.nome || conhecidos.has(normalizar(centro.nome))) continue;

@@ -218,8 +218,9 @@
       "id_conta_azul": null,
       "ativo": true,
       "servico": "IRI",
-      "apelidos": [],
-      "_atencao": "Projeto novo: o historico do Conta Azul ainda nao tem centro de custo para ele. Preencher centro_conta_azul com o nome exato quando existir."
+      "busca_centro_conta_azul": "rota do pequi",
+      "apelidos": ["Rota do Pequi"],
+      "_atencao": "Nome exato do centro no Conta Azul ainda nao informado. Enquanto centro_conta_azul for null, a sincronizacao usa o UNICO centro cujo nome contenha 'rota do pequi'."
     },
     {
       "nome_oficial": "TESTE",
