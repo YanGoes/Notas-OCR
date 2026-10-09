@@ -372,6 +372,22 @@ function vincularRemetente(db, cad, whatsappId, pessoaId, { regras = {}, hoje = 
     return { regeradas: pendentes.length };
 }
 
+/**
+ * Refaz, com os cadastros atuais, todas as previas em revisao que ninguem
+ * corrigiu ainda (ex.: depois de cadastrar um projeto ou um apelido novo).
+ */
+function regenerarPendentes(db, cad, { regras = {}, hoje = new Date() } = {}) {
+    const linhas = db.prepare(`
+        SELECT d.id FROM despesas d
+        WHERE d.estado IN (${ESTADOS_REGERAVEIS.map(() => "?").join(",")}) AND d.mensagem_ref IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM correcoes c WHERE c.despesa_id = d.id)`).all(...ESTADOS_REGERAVEIS);
+    const falhas = [];
+    for (const { id } of linhas) {
+        try { regenerarPrevia(db, cad, id, { regras, hoje }); } catch (erro) { falhas.push({ id, erro: erro.message }); }
+    }
+    return { regeradas: linhas.length - falhas.length, falhas };
+}
+
 // ---------------------------------------------------------------------------
 // Consultas para o painel
 // ---------------------------------------------------------------------------
@@ -498,5 +514,5 @@ function remetentesNaoVinculados(db) {
 module.exports = {
     CAMPOS, ESTADOS, ABAS, TIPOS_ERRO,
     opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados,
-    regenerar: regenerarPrevia,
+    regenerar: regenerarPrevia, regenerarPendentes,
 };

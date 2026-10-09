@@ -88,6 +88,18 @@ details.leitura pre { max-height: 280px; overflow: auto; font-size: 12px; white-
 
 .revisao > *, .corpo > *, .campo > *, .campo .entrada > * { min-width: 0; }
 .mensagem, .lista-pend, .historico, .remetentes, .tabela-leitura td { overflow-wrap: anywhere; }
+.centros { display: grid; gap: 12px; }
+.bloco-centro { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.bloco-centro summary { cursor: pointer; font-weight: 700; color: var(--brand); }
+.form-centro { margin-top: 10px; }
+.grade-centro { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 14px; }
+.campo-centro { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.campo-centro input, .campo-centro select, .campo-centro textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; }
+.tabela-centros td { white-space: normal; vertical-align: top; text-align: left; }
+.tabela-centros th { text-align: left; }
+.tabela-centros td:last-child { text-align: right; }
+.tabela-centros .etiqueta { white-space: nowrap; }
+.linha-edicao td { background: var(--surface-soft); }
 @media (max-width: 1100px) { .corpo { grid-template-columns: minmax(0, 1fr); } .foto { position: static; max-height: 60vh; } }
 @media (max-width: 760px) {
   header { flex-wrap: wrap; height: auto; gap: 8px; padding-top: 10px; padding-bottom: 10px; }

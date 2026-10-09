@@ -174,6 +174,20 @@ const MIGRACOES = [
     UPDATE despesas SET campos_originais = campos WHERE campos_originais IS NULL
         AND id NOT IN (SELECT despesa_id FROM correcoes);
     `,
+    // 3 — Auditoria das alteracoes de cadastro feitas pela Central
+    // (ex.: projeto/centro de custo criado, ativado ou com apelido novo).
+    `
+    CREATE TABLE alteracoes_cadastro (
+        id INTEGER PRIMARY KEY,
+        cadastro TEXT NOT NULL,
+        chave TEXT NOT NULL,
+        acao TEXT NOT NULL,
+        antes TEXT,
+        depois TEXT,
+        autor TEXT NOT NULL,
+        em TEXT NOT NULL
+    );
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

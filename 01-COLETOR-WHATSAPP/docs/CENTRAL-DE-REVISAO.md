@@ -38,6 +38,26 @@ O atalho usa a porta 3211 e não conecta o WhatsApp, então pode ficar aberto ju
 
 A descrição de abastecimento (`35,43L od 145.225 - JKN2876`) e de refeição (`JANTAR - 3 PESSOAS`) se refaz sozinha quando você corrige placa, litros, hodômetro ou pessoas. Isso só não acontece se você mesmo tiver escrito a descrição.
 
+## Centros de custo (cadastro de projetos)
+
+A aba **Centros de custo** mantém o `configuracao/projetos.json` sem ninguém editar o arquivo à mão. Para cada projeto você define:
+
+- a **situação**: só projetos ativos são escolhidos automaticamente; inativos e não confirmados vão para revisão;
+- o **centro no Conta Azul**: o nome exato, ou um trecho que ache um único centro (como "rota do pequi");
+- os **apelidos**: como os operadores escrevem o projeto. Só um texto igual a um apelido resolve.
+
+Regras de segurança:
+
+- Toda alteração exige o nome do revisor e fica registrada (aba → "Últimas alterações").
+- Um nome ou apelido não pode apontar para dois projetos. O sistema recusa.
+- Ao renomear um projeto, o nome antigo vira apelido, para não perder mensagens e orientações de cartão já registradas.
+
+Esta aba **não cria nada no Conta Azul**. O fluxo para um projeto novo é:
+
+1. Crie o centro no Conta Azul pelo painel principal (Gerenciar centros de custo) e sincronize.
+2. O centro aparece aqui como **Não confirmado**. Clique em **Confirmar**, marque como ativo e coloque os apelidos.
+3. Clique em **Refazer prévias pendentes** para aplicar às despesas que ainda estão em revisão.
+
 ## Remetentes não reconhecidos
 
 Quando uma foto chega de um número que não está em `configuracao/pessoas.json`, aparece uma faixa amarela. Escolha quem é a pessoa e clique em **Vincular**. As prévias dela que ainda não têm correção são refeitas, e as próximas já chegam com o nome certo.

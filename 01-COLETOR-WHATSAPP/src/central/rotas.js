@@ -9,6 +9,7 @@ const path = require("path");
 const { banco, lerJson } = require("./banco");
 const cadastros = require("./cadastros");
 const revisao = require("./revisao");
+const projetosAdmin = require("./projetos-admin");
 
 const RAIZ = path.resolve(__dirname, "..", "..");
 // "importados" recebe as fotos trazidas por ferramentas/importar-para-central.js.
@@ -60,6 +61,13 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
     rotas.get("/remetentes", responder(() => revisao.remetentesNaoVinculados(db())));
     rotas.post("/remetentes", responder((req) => revisao.vincularRemetente(db(), cad(), String(req.body?.whatsapp_id || ""),
         String(req.body?.pessoa_id || ""), { regras: regras() })));
+    rotas.post("/regerar-pendentes", responder(() => revisao.regenerarPendentes(db(), cad(), { regras: regras() })));
+
+    // Cadastro de projetos / centros de custo (configuracao/projetos.json)
+    rotas.get("/projetos", responder(() => ({ ...projetosAdmin.listar(), historico: projetosAdmin.historico(db(), 30) })));
+    rotas.post("/projetos", responder((req) => projetosAdmin.criar(db(), req.body?.projeto, req.body?.autor)));
+    rotas.post("/projetos/editar", responder((req) => projetosAdmin.editar(db(), String(req.body?.nome_atual || ""), req.body?.alteracoes, req.body?.autor)));
+
     rotas.get("/midias/:id/imagem", (req, res, next) => {
         try {
             const midia = db().prepare("SELECT arquivo FROM midias WHERE id = ?").get(idDe(req));

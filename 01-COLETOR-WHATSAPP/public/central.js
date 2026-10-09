@@ -398,10 +398,116 @@ async function trocarAba(aba) {
     estado.selecionada = null;
     history.replaceState(null, "", `#${aba}`);
     for (const botao of document.querySelectorAll(".abas button")) botao.setAttribute("aria-selected", botao.dataset.aba === aba ? "true" : "false");
-    const treino = aba === "treino";
-    $("#areaRevisao").classList.toggle("oculto", treino);
-    $("#areaTreino").classList.toggle("oculto", !treino);
-    await executar(treino ? carregarTreino : carregarLista);
+    const area = aba === "treino" ? "#areaTreino" : aba === "centros" ? "#areaCentros" : "#areaRevisao";
+    for (const id of ["#areaRevisao", "#areaTreino", "#areaCentros"]) $(id).classList.toggle("oculto", id !== area);
+    await executar(aba === "treino" ? carregarTreino : aba === "centros" ? carregarCentros : carregarLista);
+}
+
+// ---------------------------------------------------------------------------
+// Centros de custo (cadastro de projetos)
+// ---------------------------------------------------------------------------
+
+const SITUACOES = [["true", "Ativo"], ["false", "Inativo"], ["null", "Não confirmado"]];
+const situacaoTexto = (ativo) => (ativo === true ? "Ativo" : ativo === false ? "Inativo" : "Não confirmado");
+const situacaoClasse = (ativo) => (ativo === true ? "okk" : ativo === false ? "" : "pend");
+estado.filtroCentros = "ativos";
+
+/** Formulario usado para criar e para editar. `projeto` vazio = novo. */
+function formularioProjeto(projeto, servicos, aoSalvar, aoCancelar) {
+    const campo = (rotulo, entrada, ajuda) => el("label", { class: "campo-centro" }, el("span", {}, rotulo), entrada, ajuda ? el("small", { class: "origem" }, ajuda) : null);
+    const nome = el("input", { value: projeto?.nome_oficial || "", maxlength: 160, placeholder: "Ex.: CTVM-IRI-ATR-IGG HOUER MT - ROTA DO PEQUI", required: true });
+    const idSistema = el("input", { value: projeto?.id_sistema_projetos ?? "", inputmode: "numeric", maxlength: 6, placeholder: "Ex.: 43" });
+    const centro = el("input", { value: projeto?.centro_conta_azul || "", maxlength: 160, placeholder: "Nome exato no Conta Azul" });
+    const busca = el("input", { value: projeto?.busca_centro_conta_azul || "", maxlength: 160, placeholder: "Ex.: rota do pequi" });
+    const situacao = el("select", {}, SITUACOES.map(([valor, rotulo]) => el("option", { value: valor, selected: String(projeto?.ativo ?? (projeto ? null : true)) === valor }, rotulo)));
+    const servico = el("input", { value: projeto?.servico || "", list: "listaServicos", maxlength: 40, placeholder: "FWD, VDROD, IRI…" });
+    const apelidos = el("textarea", { rows: 3, placeholder: "Um por linha. Ex.: Goinfra FWD" });
+    apelidos.value = (projeto?.apelidos || []).join("\n");
+    const formulario = el("form", { class: "form-centro" },
+        el("datalist", { id: "listaServicos" }, servicos.map((s) => el("option", { value: s }))),
+        el("div", { class: "grade-centro" },
+            campo("Nome do projeto *", nome, "Como está no sistema de projetos."),
+            campo("ID no sistema de projetos", idSistema),
+            campo("Situação", situacao, "Só projetos ativos são escolhidos automaticamente."),
+            campo("Serviço", servico),
+            campo("Centro de custo no Conta Azul", centro, "Nome exato. Deixe vazio se for igual ao nome do projeto."),
+            campo("…ou trecho do nome para achar", busca, "Usado só enquanto o nome exato estiver vazio; precisa achar um único centro."),
+            campo("Como os operadores escrevem", apelidos, "Só um texto IGUAL a um destes resolve o projeto.")),
+        el("div", { class: "acoes" },
+            el("button", { type: "submit", class: "primary" }, projeto ? "Salvar alterações" : "Cadastrar"),
+            aoCancelar ? el("button", { type: "button", class: "ghost", onclick: aoCancelar }, "Cancelar") : null));
+    formulario.addEventListener("submit", (evento) => {
+        evento.preventDefault();
+        const dados = {
+            nome_oficial: nome.value, id_sistema_projetos: idSistema.value, centro_conta_azul: centro.value,
+            busca_centro_conta_azul: busca.value, ativo: JSON.parse(situacao.value), servico: servico.value,
+            apelidos: apelidos.value.split("\n"),
+        };
+        executar(() => aoSalvar(dados));
+    });
+    return formulario;
+}
+
+async function depoisDeMudarCadastro(mensagem) {
+    estado.opcoes = await api("/opcoes");
+    await carregarCentros();
+    avisar(`${mensagem} Use "Refazer prévias pendentes" para aplicar às despesas em revisão.`, "ok");
+}
+
+async function carregarCentros() {
+    const dados = await api("/projetos");
+    const { contagem } = await api("/despesas?aba=revisar");
+    mostrarContagem(contagem);
+    const area = $("#areaCentros");
+    const visiveis = dados.projetos.filter((p) => estado.filtroCentros === "todos" || p.ativo !== false);
+
+    const novo = el("details", { class: "bloco-centro" }, el("summary", {}, "+ Cadastrar novo projeto / centro de custo"),
+        formularioProjeto(null, dados.servicos, async (projeto) => {
+            await api("/projetos", { projeto, autor: revisor() });
+            await depoisDeMudarCadastro("Projeto cadastrado.");
+        }));
+
+    const linhas = visiveis.map((projeto) => {
+        const linha = el("tr", {},
+            el("td", {}, el("strong", {}, projeto.nome_oficial), projeto.id_sistema_projetos != null ? el("small", { class: "origem" }, ` · nº ${projeto.id_sistema_projetos}`) : null,
+                projeto.no_cadastro ? null : el("div", { class: "origem" }, "veio da sincronização com o Conta Azul")),
+            el("td", {}, el("span", { class: `etiqueta ${situacaoClasse(projeto.ativo)}` }, situacaoTexto(projeto.ativo))),
+            el("td", {}, !projeto.centro_conta_azul && projeto.busca_centro_conta_azul && !projeto.id_conta_azul
+                ? `procurando "${projeto.busca_centro_conta_azul}"` : projeto.centro_usado || "—",
+            el("div", { class: "origem" }, projeto.id_conta_azul ? "ID do Conta Azul encontrado" : "sem ID (sincronize os centros)")),
+            el("td", {}, projeto.servico || "—"),
+            el("td", {}, projeto.apelidos.length ? projeto.apelidos.join(" · ") : "—"),
+            el("td", {}, el("button", { type: "button", class: "secondary", onclick: () => abrirEdicao(linha, projeto, dados.servicos) }, projeto.no_cadastro ? "Editar" : "Confirmar")));
+        return linha;
+    });
+
+    area.replaceChildren(
+        el("p", { class: "origem" }, "Este cadastro diz ao sistema quais projetos estão ativos, qual centro do Conta Azul corresponde a cada um e como os operadores os escrevem. ",
+            "Ele não cria nada no Conta Azul: para criar o centro lá, use o painel principal (Gerenciar centros de custo) e depois sincronize. O centro novo aparece aqui como \"não confirmado\" para você confirmar."),
+        novo,
+        el("div", { class: "acoes" },
+            el("button", { type: "button", class: estado.filtroCentros === "ativos" ? "primary" : "secondary", onclick: () => { estado.filtroCentros = "ativos"; executar(carregarCentros); } }, "Ativos e não confirmados"),
+            el("button", { type: "button", class: estado.filtroCentros === "todos" ? "primary" : "secondary", onclick: () => { estado.filtroCentros = "todos"; executar(carregarCentros); } }, `Todos (${dados.projetos.length})`),
+            el("button", { type: "button", class: "ghost", title: "Gera de novo as prévias em revisão que ninguém corrigiu, com o cadastro atual", onclick: () => executar(async () => {
+                const { regeradas, falhas } = await api("/regerar-pendentes", {});
+                avisar(`${regeradas} prévia(s) refeita(s)${falhas.length ? `; ${falhas.length} não puderam ser refeitas` : ""}.`, "ok");
+            }) }, "Refazer prévias pendentes")),
+        el("div", { class: "rolagem" }, el("table", { class: "tabela-metricas tabela-centros" },
+            el("thead", {}, el("tr", {}, ["Projeto", "Situação", "Centro no Conta Azul", "Serviço", "Apelidos", ""].map((t) => el("th", {}, t)))),
+            el("tbody", {}, linhas))),
+        dados.historico.length ? el("details", { class: "leitura" }, el("summary", {}, `Últimas alterações (${dados.historico.length})`),
+            el("ul", { class: "historico" }, dados.historico.map((h) => el("li", {}, `${dataHora(h.em)} · ${h.autor} · ${h.acao.toLowerCase().replaceAll("_", " ")} · ${h.chave}`)))) : null);
+}
+
+function abrirEdicao(linha, projeto, servicos) {
+    const proxima = linha.nextElementSibling;
+    if (proxima?.classList.contains("linha-edicao")) { proxima.remove(); return; }
+    const edicao = el("tr", { class: "linha-edicao" }, el("td", { colspan: 6 },
+        formularioProjeto(projeto, servicos, async (alteracoes) => {
+            await api("/projetos/editar", { nome_atual: projeto.nome_oficial, alteracoes, autor: revisor() });
+            await depoisDeMudarCadastro("Projeto atualizado.");
+        }, () => edicao.remove())));
+    linha.after(edicao);
 }
 
 async function iniciar() {
