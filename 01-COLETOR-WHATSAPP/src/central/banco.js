@@ -165,6 +165,15 @@ const MIGRACOES = [
         vinculado_em TEXT NOT NULL
     );
     `,
+    // 2 — Revisao na Central: a previa como a IA gerou (para medir acerto por
+    // campo depois das correcoes) e quem revisou por ultimo.
+    `
+    ALTER TABLE despesas ADD COLUMN campos_originais TEXT;
+    ALTER TABLE despesas ADD COLUMN revisado_por TEXT;
+    ALTER TABLE despesas ADD COLUMN revisado_em TEXT;
+    UPDATE despesas SET campos_originais = campos WHERE campos_originais IS NULL
+        AND id NOT IN (SELECT despesa_id FROM correcoes);
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }
@@ -219,4 +228,4 @@ const lerJson = (texto, padrao = null) => {
     try { return JSON.parse(texto); } catch (_) { return padrao; }
 };
 
-module.exports = { abrir, banco, transacao, agora, json, lerJson, CAMINHO_PADRAO };
+module.exports = { abrir, banco, transacao, agora, json, lerJson, CAMINHO_PADRAO, MIGRACOES };

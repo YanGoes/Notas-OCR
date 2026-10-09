@@ -9,6 +9,7 @@ const whatsapp = require("./coletor");
 const notificacoes = require("./notificacoes");
 const { lancarDespesa } = require("./lancamento-direto");
 const { configuracaoAzure } = require("./azure-ocr");
+const { criarRotas: criarRotasCentral } = require("./central/rotas");
 const {
     obterEstadoContaAzul,
     confirmarEmpresa,
@@ -349,6 +350,9 @@ app.post("/api/conta-azul/despesas/:base/validar-no-erp", async (req, res, next)
         }) });
     } catch (erro) { next(erro); }
 });
+
+// Central de revisao (previas, correcoes e treino). Painel em /central.html.
+app.use("/api/central", criarRotasCentral());
 
 app.use((erro, _req, res, _next) => res.status(400).json({ erro: erro.message || "Erro inesperado." }));
 app.get("*splat", (_req, res) => res.sendFile(path.join(RAIZ, "public", "index.html")));

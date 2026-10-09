@@ -16,7 +16,7 @@ const { agora, json, lerJson, transacao } = require("./banco");
 const contexto = require("./contexto");
 const { dividirDocumentos, chaveNfce, impressaoDigital } = require("./documentos");
 const { montarPrevia } = require("./regras-vmac");
-const { INTENCOES } = require("./interpretador");
+const { INTENCOES, interpretar } = require("./interpretador");
 
 function momentoDaMeta(meta = {}) {
     if (Number(meta.recebido_em_ms)) return new Date(Number(meta.recebido_em_ms)).toISOString();
@@ -32,10 +32,10 @@ function registrarHistorico(db, despesaId, de, para, motivo) {
 function inserirDespesa(db, { documentoId = null, midiaId = null, mensagemRef = null, loteId = null, previa, duplicadaDe = null, estado = null }) {
     const estadoFinal = estado || previa.estado;
     const { lastInsertRowid } = db.prepare(`
-        INSERT INTO despesas (documento_id, midia_id, mensagem_ref, lote_id, estado, campos, pendencias, avisos,
+        INSERT INTO despesas (documento_id, midia_id, mensagem_ref, lote_id, estado, campos, campos_originais, pendencias, avisos,
             duplicada_de, criado_em, atualizado_em)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        documentoId, midiaId, mensagemRef, loteId, estadoFinal, json(previa.campos), json(previa.pendencias),
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        documentoId, midiaId, mensagemRef, loteId, estadoFinal, json(previa.campos), json(previa.campos), json(previa.pendencias),
         json(previa.avisos), duplicadaDe, agora(), agora());
     const id = Number(lastInsertRowid);
     registrarHistorico(db, id, null, estadoFinal, "previa_gerada");
@@ -170,9 +170,53 @@ function lerDespesa(db, id) {
     return {
         ...linha,
         campos: lerJson(linha.campos, {}),
+        campos_originais: lerJson(linha.campos_originais, null),
         pendencias: lerJson(linha.pendencias, []),
         avisos: lerJson(linha.avisos, []),
     };
 }
 
-module.exports = { processarFoto, processarMensagemTexto, lerDespesa, momentoDaMeta };
+const ESTADOS_REGERAVEIS = ["AGUARDANDO_REVISAO", "CLASSIFICADO"];
+
+/**
+ * Gera de novo a previa de uma despesa com os cadastros ATUAIS (ex.: depois de
+ * vincular o remetente ou confirmar um projeto). Usa a leitura ja guardada:
+ * nao chama o Azure de novo. Despesa com correcao humana nao e regerada, para
+ * nao apagar o trabalho de quem revisou.
+ */
+function regenerarPrevia(db, cad, despesaId, { regras = {}, hoje = new Date() } = {}) {
+    const despesa = lerDespesa(db, despesaId);
+    if (!despesa) throw new Error(`Despesa #${despesaId} não encontrada.`);
+    if (!ESTADOS_REGERAVEIS.includes(despesa.estado)) throw new Error(`Despesa #${despesaId} está ${despesa.estado}; só prévias em revisão podem ser regeradas.`);
+    if (db.prepare("SELECT 1 FROM correcoes WHERE despesa_id = ? LIMIT 1").get(despesaId)) {
+        throw new Error(`Despesa #${despesaId} já tem correções humanas; não será regerada.`);
+    }
+    const mensagem = despesa.mensagem_ref ? db.prepare("SELECT * FROM mensagens WHERE id = ?").get(despesa.mensagem_ref) : null;
+    if (!mensagem) throw new Error(`Despesa #${despesaId} sem mensagem de origem.`);
+    const midia = despesa.midia_id ? db.prepare("SELECT * FROM midias WHERE id = ?").get(despesa.midia_id) : null;
+    const documento = despesa.documento_id ? db.prepare("SELECT * FROM documentos WHERE id = ?").get(despesa.documento_id) : null;
+    const momento = midia?.recebida_em || mensagem.enviada_em;
+
+    const identificacao = contexto.identificar(db, cad, mensagem.remetente_id, mensagem.remetente_nome);
+    const interpretacao = interpretar(cad, { texto: mensagem.texto || "", temMidia: Boolean(midia), pessoa: identificacao.pessoa, nomeRemetente: mensagem.remetente_nome });
+    const legenda = { ...(interpretacao.dados || {}), texto: mensagem.texto || "" };
+    const ctx = contexto.contextoPara(db, cad, { grupoId: mensagem.grupo_id, remetenteId: mensagem.remetente_id, momento });
+    const projetoTexto = legenda.projeto_texto || ctx.projeto?.texto;
+    const politica = contexto.politicaCartao(db, projetoTexto ? contexto.chaveProjeto(cad, projetoTexto, identificacao.pessoa).chave : null, momento);
+    const leituraFalhou = Boolean(midia) && !documento;
+    const ocr = documento ? lerJson(documento.ocr, {}) : leituraFalhou ? { erro_leitura: true } : null;
+
+    const previa = montarPrevia({ ocr, legenda, contexto: ctx, politica, identificacao, cad, regras, hoje });
+    if (leituraFalhou) previa.pendencias.unshift("Leitura automática falhou. Leia a imagem manualmente.");
+    if (despesa.duplicada_de) previa.pendencias.push(`Possível duplicidade com a despesa #${despesa.duplicada_de} (mesmo emissor, data, valor e hora). Confirme se são compras diferentes.`);
+    const estado = previa.pendencias.length ? "AGUARDANDO_REVISAO" : "CLASSIFICADO";
+
+    transacao(db, () => {
+        db.prepare(`UPDATE despesas SET campos = ?, campos_originais = ?, pendencias = ?, avisos = ?, estado = ?, atualizado_em = ?
+            WHERE id = ?`).run(json(previa.campos), json(previa.campos), json(previa.pendencias), json(previa.avisos), estado, agora(), despesaId);
+        registrarHistorico(db, despesaId, despesa.estado, estado, "previa_regerada_com_cadastros_atuais");
+    });
+    return lerDespesa(db, despesaId);
+}
+
+module.exports = { processarFoto, processarMensagemTexto, lerDespesa, regenerarPrevia, registrarHistorico, momentoDaMeta, ESTADOS_REGERAVEIS };

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VMac · Central de Revisão</title>
+  <meta name="theme-color" content="#8f171a"><meta name="color-scheme" content="light dark">
+  <script>document.documentElement.dataset.theme=localStorage.getItem("vmac-tema")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");</script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/central.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><img class="brand-logo" src="/assets/vmac-logo-oficial.jpg" width="1335" height="542" alt="VMac Engenharia" decoding="async"><div class="brand-context"><strong>Central de Revisão</strong><small>Prévias · correções · treino</small></div></div>
+    <div class="header-actions">
+      <label class="revisor"><span>Revisor</span><input id="revisor" maxlength="60" placeholder="Seu nome" autocomplete="name"></label>
+      <a class="voltar" href="/">Painel principal</a>
+      <button id="temaToggle" class="theme-toggle" type="button" aria-label="Alternar tema"><span aria-hidden="true">◐</span></button>
+    </div>
+  </header>
+  <main class="central">
+    <p class="faixa-segura"><b>Modo treino.</b> Aprovar aqui só valida a prévia e gera exemplo para a IA. Nada é lançado no Conta Azul nem copiado para o Drive.</p>
+    <div id="aviso" class="aviso oculto" role="status"></div>
+    <section id="remetentes" class="remetentes oculto"></section>
+    <nav class="abas" role="tablist">
+      <button role="tab" data-aba="revisar" aria-selected="true">Para revisar <span class="n" data-n="revisar">0</span></button>
+      <button role="tab" data-aba="classificadas" aria-selected="false">Classificadas <span class="n" data-n="classificadas">0</span></button>
+      <button role="tab" data-aba="aprovadas" aria-selected="false">Aprovadas <span class="n" data-n="aprovadas">0</span></button>
+      <button role="tab" data-aba="fora" aria-selected="false">Duplicadas / descartadas <span class="n" data-n="fora">0</span></button>
+      <button role="tab" data-aba="treino" aria-selected="false">Treino</button>
+    </nav>
+    <section id="areaRevisao" class="revisao">
+      <aside id="lista" class="lista" aria-label="Despesas"></aside>
+      <article id="detalhe" class="detalhe"><div class="vazio">Escolha uma despesa na lista.</div></article>
+    </section>
+    <section id="areaTreino" class="treino oculto"></section>
+  </main>
+  <script src="/central.js"></script>
+</body></html>

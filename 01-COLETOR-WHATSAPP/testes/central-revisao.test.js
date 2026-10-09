@@ -1,0 +1,216 @@
+"use strict";
+
+// Central de revisao: correcao humana, aprovacao, treino e metricas.
+// Banco sempre em memoria e telefones ficticios.
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+
+const banco = require("../src/central/banco");
+const orquestrador = require("../src/central/orquestrador");
+const revisao = require("../src/central/revisao");
+
+const GRUPO = "grupo-teste@g.us";
+const ALMIR = "5511900000001@s.whatsapp.net";
+const DESCONHECIDO = "99999@lid";
+const ID_CENTRO = "11111111-1111-4111-8111-111111111111";
+
+function cadastros() {
+    return {
+        pessoas: [
+            { id: "almir", nome: "Almir", telefone: "5511900000001", papel: "OPERADOR", pasta_drive: "Almir" },
+            { id: "vitor", nome: "Vitor", telefone: "5512900000002", papel: "OPERADOR", pasta_drive: "Vitor" },
+        ],
+        projetos: [
+            { nome_oficial: "CTVM-VDRod. DYNA BR020 e 242", centro_conta_azul: "DYNA BR 020 e BR 242", id_conta_azul: ID_CENTRO, ativo: true, apelidos: ["BR020"] },
+            { nome_oficial: "PROJETO ANTIGO", ativo: false, apelidos: [] },
+        ],
+        centros: [],
+        veiculos: [{ nome: "FIAT SCUDO - SGR4B54", placa: "SGR4B54", categoria_id: "33333333-3333-4333-8333-333333333333", categoria_nome_conta_azul: "FIAT SCUDO - SGR4B54" }],
+        cartoes: [{ codigo: "INTER", rotulo: "CRÉDITO INTER", forma_pagamento: "CARTAO_CREDITO", apelidos: ["inter"] }],
+        categorias: [{ nome: "JANTAR", nome_conta_azul: "Refeição - Jantar", id: "44444444-4444-4444-8444-444444444444" }],
+        fornecedores: { recorrentes: [] },
+    };
+}
+
+function azure({ texto, fornecedor, total, data, hora }) {
+    return { analyzeResult: { content: `${texto}\n`, documents: [{ docType: "receipt", confidence: 0.99, spans: [{ offset: 0, length: texto.length + 1 }],
+        fields: { MerchantName: { valueString: fornecedor, confidence: 0.99 }, Total: { type: "currency", valueCurrency: { amount: total }, confidence: 0.99 },
+            TransactionDate: { type: "date", valueDate: data, confidence: 0.99 }, TransactionTime: { type: "time", valueTime: hora } } }] } };
+}
+
+const JANTAR = azure({ texto: "RESTAURANTE SABOR LTDA\n30/09/2026 20:15\nTOTAL R$ 85,50", fornecedor: "RESTAURANTE SABOR LTDA", total: 85.5, data: "2026-09-30", hora: "20:15:00" });
+const POSTO = azure({ texto: "AUTO POSTO BOA VIAGEM\n30/09/2026 07:10\nGASOLINA COMUM 35,43 L\nPLACA: SGR4B54\nKM: 145225", fornecedor: "AUTO POSTO BOA VIAGEM", total: 210, data: "2026-09-30", hora: "07:10:00" });
+
+function cenario({ remetente = ALMIR, legenda = "Jantar 2 pessoas\nBR020\nCrédito Inter", bruto = JANTAR } = {}) {
+    const db = banco.abrir(":memory:");
+    const cad = cadastros();
+    const { despesas } = orquestrador.processarFoto(db, cad, {
+        arquivo: `f-${Math.random()}.jpg`, sha256: `h-${Math.random()}`, brutoAzure: bruto, hoje: new Date("2026-10-02T12:00:00Z"),
+        meta: { id_mensagem: `m-${Math.random()}`, id_grupo: GRUPO, remetente, legenda, recebido_em_ms: Date.parse("2026-10-01T08:00:00-03:00") },
+    });
+    return { db, cad, id: despesas[0] };
+}
+
+test("previa nasce com a copia original da IA guardada", () => {
+    const { db, id } = cenario();
+    const despesa = orquestrador.lerDespesa(db, id);
+    assert.deepEqual(despesa.campos_originais, despesa.campos);
+});
+
+test("correcao exige autor, registra o tipo de erro e marca a origem como humana", () => {
+    const { db, cad, id } = cenario();
+    assert.throws(() => revisao.corrigir(db, cad, id, [{ campo: "valor", valor: "85,00" }], ""), /quem está revisando/);
+    const { despesa, alteradas } = revisao.corrigir(db, cad, id, [{ campo: "valor", valor: "85,00" }], "Yan");
+    assert.equal(alteradas, 1);
+    assert.equal(despesa.campos.valor.valor, 85);
+    assert.equal(despesa.campos.valor.origem, "correcao_humana");
+    const [correcao] = db.prepare("SELECT * FROM correcoes WHERE despesa_id = ?").all(id);
+    assert.equal(correcao.tipo_erro, "LEITURA");
+    assert.equal(correcao.autor, "Yan");
+    assert.equal(JSON.parse(correcao.valor_anterior), 85.5);
+    // A previa original continua intacta para medir o acerto.
+    assert.equal(despesa.campos_originais.valor.valor, 85.5);
+});
+
+test("valor igual ao atual nao gera correcao; valor invalido e recusado", () => {
+    const { db, cad, id } = cenario();
+    assert.equal(revisao.corrigir(db, cad, id, [{ campo: "valor", valor: "85,50" }], "Yan").alteradas, 0);
+    assert.throws(() => revisao.corrigir(db, cad, id, [{ campo: "data_competencia", valor: "31/02/20x6" }], "Yan"), /data inválida/);
+    assert.throws(() => revisao.corrigir(db, cad, id, [{ campo: "campo_inventado", valor: 1 }], "Yan"), /não editável/);
+});
+
+test("corrigir pessoas confirma a quantidade e refaz a descricao do template", () => {
+    const { db, cad, id } = cenario();
+    const { despesa } = revisao.corrigir(db, cad, id, [{ campo: "pessoas", valor: "3" }], "Yan");
+    assert.equal(despesa.campos.pessoas.valor, 3);
+    assert.equal(despesa.campos.pessoas.confirmado, true);
+    assert.equal(despesa.campos.descricao.valor, "JANTAR - 3 PESSOAS");
+});
+
+test("placa corrigida refaz a descricao do abastecimento", () => {
+    const { db, cad, id } = cenario({ bruto: POSTO, legenda: "Abastecimento\nBR020\nCrédito Inter" });
+    const { despesa } = revisao.corrigir(db, cad, id, [{ campo: "placa", valor: "sgr-4b54" }, { campo: "odometro", valor: "145.230" }], "Yan");
+    assert.equal(despesa.campos.abastecimento.placa.valor, "SGR4B54");
+    assert.match(despesa.campos.descricao.valor, /od 145\.230 - SGR4B54$/);
+});
+
+test("categoria e centro escolhidos na revisao trazem o ID do cadastro", () => {
+    const { db, cad, id } = cenario({ legenda: "Jantar 2 pessoas" });
+    const { despesa } = revisao.corrigir(db, cad, id, [
+        { campo: "centro_custo", valor: "DYNA BR 020 e BR 242" }, { campo: "categoria", valor: "Refeição - Jantar" },
+    ], "Yan");
+    assert.equal(despesa.campos.centro_custo.id, ID_CENTRO);
+    assert.equal(despesa.campos.centro_custo.projeto, "CTVM-VDRod. DYNA BR020 e 242");
+    assert.equal(despesa.campos.categoria.id, "44444444-4444-4444-8444-444444444444");
+});
+
+test("aprovar cria exemplo de treino validado e nao deixa editar depois", () => {
+    const { db, cad, id } = cenario();
+    revisao.corrigir(db, cad, id, [{ campo: "pessoas", valor: "2" }], "Yan");
+    const aprovada = revisao.aprovar(db, id, "Yan");
+    assert.equal(aprovada.estado, "APROVADO");
+    const exemplo = db.prepare("SELECT * FROM exemplos_treino WHERE despesa_id = ?").get(id);
+    assert.equal(exemplo.aprovado_por, "Yan");
+    const rotulos = JSON.parse(exemplo.rotulos);
+    assert.equal(rotulos.valor, 85.5);
+    assert.equal(rotulos.centro_custo, "DYNA BR 020 e BR 242");
+    const entrada = JSON.parse(exemplo.entrada);
+    assert.equal(entrada.ocr.fornecedor, "RESTAURANTE SABOR LTDA");
+    assert.ok(entrada.previa_da_ia, "entrada guarda a previa da IA, nao so a resposta");
+    assert.throws(() => revisao.corrigir(db, cad, id, [{ campo: "valor", valor: "1" }], "Yan"), /reabra/);
+});
+
+test("nao aprova sem centro de custo nem categoria", () => {
+    const { db, id } = cenario({ legenda: "" });
+    assert.throws(() => revisao.aprovar(db, id, "Yan"), /Preencha antes de aprovar: .*Centro de custo/);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM exemplos_treino").get().n, 0);
+});
+
+test("reabrir ou descartar tira o exemplo do treino", () => {
+    const { db, id } = cenario();
+    revisao.aprovar(db, id, "Yan");
+    revisao.reabrir(db, id, "faltou conferir", "Yan");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM exemplos_treino").get().n, 0);
+    revisao.aprovar(db, id, "Yan");
+    assert.throws(() => revisao.descartar(db, id, "", "Yan"), /motivo/);
+    assert.equal(revisao.descartar(db, id, "não é despesa", "Yan").estado, "DESCARTADO");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM exemplos_treino").get().n, 0);
+    const historico = db.prepare("SELECT para FROM historico_estados WHERE despesa_id = ? ORDER BY id").all(id).map((linha) => linha.para);
+    assert.deepEqual(historico.slice(-4), ["APROVADO", "AGUARDANDO_REVISAO", "APROVADO", "DESCARTADO"]);
+});
+
+test("metricas por campo separam acerto, erro de leitura e de classificacao", () => {
+    const { db, cad, id } = cenario();
+    revisao.corrigir(db, cad, id, [{ campo: "valor", valor: "80" }, { campo: "fornecedor", valor: "Sabor", tipo_erro: "CLASSIFICACAO" }], "Yan");
+    revisao.aprovar(db, id, "Yan");
+    const m = revisao.metricas(db);
+    assert.equal(m.aprovadas, 1);
+    assert.equal(m.aprovadas_sem_correcao, 0);
+    assert.equal(m.por_campo.valor.erros_leitura, 1);
+    assert.equal(m.por_campo.fornecedor.erros_classificacao, 1);
+    assert.equal(m.por_campo.data_competencia.acertos, 1);
+    assert.equal(m.por_campo.data_competencia.acuracia, 1);
+});
+
+test("vincular remetente desconhecido regera so as previas sem correcao", () => {
+    const { db, cad, id } = cenario({ remetente: DESCONHECIDO });
+    assert.ok(orquestrador.lerDespesa(db, id).pendencias.some((p) => p.includes("não vinculado")));
+    assert.equal(revisao.remetentesNaoVinculados(db).length, 1);
+    const { regeradas } = revisao.vincularRemetente(db, cad, DESCONHECIDO, "almir");
+    assert.equal(regeradas, 1);
+    const depois = orquestrador.lerDespesa(db, id);
+    assert.equal(depois.campos.remetente.pessoa_id, "almir");
+    assert.ok(!depois.pendencias.some((p) => p.includes("não vinculado")));
+    assert.equal(revisao.remetentesNaoVinculados(db).length, 0);
+    assert.throws(() => revisao.vincularRemetente(db, cad, DESCONHECIDO, "inventada"), /não cadastrada/);
+});
+
+test("previa com correcao humana nao e regerada", () => {
+    const { db, cad, id } = cenario();
+    revisao.corrigir(db, cad, id, [{ campo: "valor", valor: "80" }], "Yan");
+    assert.throws(() => revisao.regenerar(db, cad, id), /correções humanas/);
+});
+
+test("listar separa as abas e conta cada uma", () => {
+    const { db, id } = cenario();
+    // Legenda completa: a previa nasce sem pendencia, na aba "classificadas".
+    assert.equal(revisao.listar(db, { aba: "classificadas" }).itens[0].id, id);
+    assert.equal(revisao.listar(db, { aba: "revisar" }).itens.length, 0);
+    revisao.aprovar(db, id, "Yan");
+    const lista = revisao.listar(db, { aba: "aprovadas" });
+    assert.equal(lista.itens.length, 1);
+    assert.equal(lista.contagem.aprovadas, 1);
+    assert.equal(lista.contagem.revisar, 0);
+});
+
+test("banco antigo (so migracao 1) ganha as colunas novas sem perder dados", () => {
+    const fsTeste = require("fs");
+    const os = require("os");
+    const path = require("path");
+    const { DatabaseSync } = require("node:sqlite");
+    const arquivo = path.join(os.tmpdir(), `central-migracao-${process.pid}-${Date.now()}.db`);
+    try {
+        const antigo = new DatabaseSync(arquivo);
+        antigo.exec("CREATE TABLE schema_versao (versao INTEGER NOT NULL); INSERT INTO schema_versao VALUES (1);");
+        antigo.exec(banco.MIGRACOES[0]);
+        antigo.prepare(`INSERT INTO despesas (estado, campos, pendencias, avisos, criado_em, atualizado_em)
+            VALUES ('AGUARDANDO_REVISAO', '{"valor":{"valor":10}}', '[]', '[]', 'x', 'x')`).run();
+        antigo.close();
+        const db = banco.abrir(arquivo);
+        assert.equal(db.prepare("SELECT versao FROM schema_versao").get().versao, banco.MIGRACOES.length);
+        assert.equal(orquestrador.lerDespesa(db, 1).campos_originais.valor.valor, 10);
+        db.close();
+    } finally {
+        for (const sufixo of ["", "-wal", "-shm"]) fsTeste.rmSync(arquivo + sufixo, { force: true });
+    }
+});
+
+test("descricao refeita por causa de outro campo nao conta como erro da descricao", () => {
+    const { db, cad, id } = cenario({ bruto: POSTO, legenda: "Abastecimento\nBR020\nCrédito Inter" });
+    revisao.corrigir(db, cad, id, [{ campo: "odometro", valor: "145.230" }], "Yan");
+    revisao.aprovar(db, id, "Yan");
+    const m = revisao.metricas(db);
+    assert.equal(m.por_campo.odometro.erros_leitura, 1);
+    assert.equal(m.por_campo.descricao, undefined);
+});

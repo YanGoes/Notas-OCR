@@ -39,6 +39,9 @@ OUTROS
   12_TREINAR_IA.bat               Treina o apoio historico com a planilha de
                                   lancamentos. Para usar outra planilha,
                                   arraste o .xls ou .xlsx sobre o arquivo.
+  13_ABRIR_CENTRAL_REVISAO.bat    Abre a Central de revisao (modo treino) na
+                                  porta 3211, sem WhatsApp e sem lancar nada.
+                                  Veja ..docsCENTRAL-DE-REVISAO.md.
 
 
 ONDE ESTA O RESTO
