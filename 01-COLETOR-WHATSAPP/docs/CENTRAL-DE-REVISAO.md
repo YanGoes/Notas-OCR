@@ -89,3 +89,15 @@ Tudo fica em `dados/central.db` (SQLite, fora do Git). As fotos importadas ficam
 O modelo **só sugere** a categoria quando nenhuma regra decide. A sugestão aparece ao lado do campo, com o botão "Usar sugestão", e a despesa continua em revisão até alguém aprovar.
 
 Rode o treino de novo sempre que exportar uma planilha mais recente: a VMac muda de categoria de tempos em tempos (por exemplo, o café da manhã passou para "Café da Manhã" em abril de 2026).
+
+## Leitura e regras (revisão de 10/10/2026)
+
+- **Fornecedor padrão por tipo**, configurado em `configuracao/fornecedores_recorrentes.json`: posto → "POSTOS DE COMBUSTÍVEL", restaurante → "RESTAURANTES", hotel → "HOTÉIS". O nome impresso na nota fica guardado como "nome lido", para auditoria.
+- **A VMac nunca é fornecedor.** Ela aparece como tomadora da NFS-e ou como "EMPRESA:" no recibo. Na NFS-e, o fornecedor é a razão social do prestador.
+- **Placa:** aceita o rótulo lido torto ("FLACA") e corrige trocas do OCR nas posições numéricas ("RBTZE25" → RBT2E25). Placa ilegível é comparada com a frota e vira **sugestão**.
+- **Hodômetro:** aceita os rótulos "HM" e "KM" e números com centavos. Um número sem rótulo colado à placa é usado, mas vai como pendência para confirmar.
+- **Data no futuro** (erro de leitura) é trocada pela outra data que aparece na nota.
+- **Duas notas lado a lado na mesma foto** viram duas despesas. A separação usa a posição de cada linha na foto, e cada uma vai para revisão.
+- **Pessoas:** a mensagem do operador vale sempre. Sem ela, a estimativa é a maior quantidade de um mesmo item da nota ("QTD_HOSPEDE" na hospedagem), sempre a confirmar.
+- **"Não usar no treino":** ao aprovar, marque quando o centro de custo e o pagamento não forem reais (notas antigas ou de teste). Esses dois campos ficam fora do treino e das métricas.
+- `node ferramentas/medir-contra-aprovadas.js` reprocessa as fotos aprovadas com a versão atual, sem custo de Azure, e mostra o acerto de cada campo antes e depois.

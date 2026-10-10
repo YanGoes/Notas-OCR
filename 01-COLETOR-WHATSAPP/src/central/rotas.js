@@ -68,7 +68,8 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
         } catch (erro) { return next(erro); }
     });
     rotas.post("/despesas/:id/corrigir", responder((req) => revisao.corrigir(db(), cad(), idDe(req), req.body?.alteracoes, req.body?.autor)));
-    rotas.post("/despesas/:id/aprovar", responder((req) => revisao.aprovar(db(), idDe(req), req.body?.autor)));
+    rotas.post("/despesas/:id/aprovar", responder((req) => revisao.aprovar(db(), idDe(req), req.body?.autor,
+        { naoUsarNoTreino: Array.isArray(req.body?.nao_usar_no_treino) ? req.body.nao_usar_no_treino.map(String) : [] })));
     rotas.post("/despesas/:id/descartar", responder((req) => revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));

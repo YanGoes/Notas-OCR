@@ -157,6 +157,22 @@ function praticaPorTipo(linhas, minimo = 5) {
 
 const textoDoModelo = (linha) => `${linha.fornecedor} ${linha.descricao}`;
 
+/** Exemplos aprovados na Central (dados/central.db), no formato do treino de categoria. */
+function exemplosDaCentral() {
+    const banco = require("../src/central/banco");
+    if (!fs.existsSync(banco.CAMINHO_PADRAO)) return [];
+    const db = banco.abrir();
+    try {
+        return db.prepare("SELECT rotulos, entrada FROM exemplos_treino").all().map((linha) => {
+            const rotulos = JSON.parse(linha.rotulos);
+            const entrada = JSON.parse(linha.entrada);
+            const ocr = entrada.ocr || {};
+            const texto = [ocr.fornecedor, ocr.nome_fantasia, ...(ocr.itens || []).map((item) => item.descricao), entrada.mensagem?.texto].filter(Boolean).join(" ");
+            return rotulos.categoria && texto ? { categoria: rotulos.categoria, texto } : null;
+        }).filter(Boolean);
+    } finally { db.close(); }
+}
+
 async function executar() {
     const planilha = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : PLANILHA_PADRAO;
     const mesesTeste = Number(argumento("--meses-teste", 3));
@@ -230,14 +246,22 @@ async function executar() {
         return { tipo, cadastro_atual: atual, pratica_atual: info.categoria, participacao: Number(info.participacao.toFixed(3)), amostras: info.amostras, divergente: !iguais(atual, info.categoria) };
     });
 
+    // Notas aprovadas na Central: conferidas por uma pessoa, valem mais (peso 3).
+    // Usa so o que a IA tinha (fornecedor lido + itens) e a categoria aprovada;
+    // campos marcados "nao usar no treino" ficam de fora.
+    const aprovadas = exemplosDaCentral();
+    const textoAprovadas = aprovadas.flatMap((exemplo) => Array.from({ length: 3 }, () => exemplo));
+
     // Treino final (para usar a partir de agora): tudo, inclusive o periodo de teste.
     const finalPratica = praticaPorTipo(campo(passadas.filter((linha) => linha.data >= somarMeses(ultimaData, -(mesesPratica - 1)))));
-    const finalTexto = criarModelo(campo(passadas.filter((linha) => linha.data >= somarMeses(ultimaData, -12)))
-        .map((l) => ({ ...l, texto: textoDoModelo(l) })), "categoria", "texto", 3);
+    const finalTexto = criarModelo([
+        ...campo(passadas.filter((linha) => linha.data >= somarMeses(ultimaData, -12))).map((l) => ({ ...l, texto: textoDoModelo(l) })),
+        ...textoAprovadas,
+    ], "categoria", "texto", 3);
     const modelo = {
         versao: 1, treinado_em: new Date().toISOString(), origem: path.basename(planilha),
         periodo: { primeira_data: passadas.map((l) => l.data).sort()[0], ultima_data: ultimaData },
-        pratica_por_tipo: finalPratica, texto_categoria: finalTexto,
+        pratica_por_tipo: finalPratica, texto_categoria: finalTexto, exemplos_da_central: aprovadas.length,
     };
     fs.writeFileSync(MODELO_PATH, JSON.stringify(modelo), "utf8");
 
@@ -260,6 +284,7 @@ async function executar() {
     }
     console.log("\nCadastro x prática atual:");
     for (const r of recomendacoes) console.log(`   ${r.divergente ? "≠" : "="} ${r.tipo}: cadastro "${r.cadastro_atual}" | prática "${r.pratica_atual}" (${pct(r.participacao)} de ${r.amostras})`);
+    console.log(`\nNotas aprovadas na Central usadas no treino: ${aprovadas.length} (peso 3).`);
     console.log(`\nModelo: ${MODELO_PATH}\nRelatório: ${RELATORIO_PATH}`);
 }
 

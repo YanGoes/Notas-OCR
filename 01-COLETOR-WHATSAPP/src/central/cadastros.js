@@ -213,6 +213,21 @@ function resolverVeiculo(cad, placa) {
 }
 
 /**
+ * Placa ilegivel ("JKMOISE") comparada com a frota. So SUGERE: as 3 letras
+ * iniciais tem que bater com um UNICO veiculo e o resto pode diferir em ate 2
+ * caracteres (depois de corrigir as trocas tipicas do OCR). Nunca decide sozinho.
+ */
+function veiculoAproximado(cad, placaBruta) {
+    const lida = placaComparavel(placaBruta);
+    if (lida.length !== 7) return null;
+    const mesmoPrefixo = cad.veiculos.filter((veiculo) => placaComparavel(veiculo.placa).slice(0, 3) === lida.slice(0, 3));
+    if (mesmoPrefixo.length !== 1) return null;
+    const alvo = placaComparavel(mesmoPrefixo[0].placa);
+    const diferencas = [...lida.slice(3)].filter((caractere, i) => caractere !== alvo[3 + i]).length;
+    return diferencas <= 2 ? { veiculo: mesmoPrefixo[0], diferencas } : null;
+}
+
+/**
  * Veiculo citado pelo nome na mensagem ("Fiat Scudo", "Hilux").
  * So resolve quando o modelo e unico na frota; com duas Hilux devolve AMBIGUO.
  */
@@ -237,8 +252,12 @@ const PALAVRAS_MERCADO = ["supermercado", "supermercados", "mercado", "mercearia
  * Fornecedor final a partir do nome lido na nota.
  * Recorrente -> nome oficial; mercado nao recorrente -> generico; resto -> nome lido.
  */
-function resolverFornecedor(cad, nomeLido) {
+function resolverFornecedor(cad, nomeLido, tipo = null) {
     const lido = String(nomeLido || "").replace(/\s+/g, " ").trim();
+    // Padrao da VMac: posto, restaurante e hotel vao com o fornecedor GENERICO,
+    // seja qual for o nome impresso na nota (que fica guardado em nome_lido).
+    const generico = tipo ? cad.fornecedores.genericos_por_tipo?.[tipo] : null;
+    if (generico) return { nome: generico, origem: "fornecedor_generico_do_tipo", nome_lido: lido || null };
     if (!lido) return { nome: null, origem: null };
     const recorrente = (cad.fornecedores.recorrentes || []).find((item) => [item.nome, ...(item.apelidos || [])]
         .some((nome) => contemTermo(lido, nome)));
@@ -265,6 +284,6 @@ function categoriaPorNome(cad, nomeInterno) {
 module.exports = {
     carregar, identificarPessoa, variantesTelefone,
     resolverProjeto, pareceProjeto, projetosComId, nomeCentro,
-    resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, placaCanonica, placaComparavel,
+    resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, veiculoAproximado, placaCanonica, placaComparavel,
     resolverFornecedor, categoriaPorNome, PASTA_PADRAO,
 };

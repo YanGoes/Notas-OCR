@@ -74,7 +74,7 @@ function descricaoRefeicao(tipo, pessoas) {
 const COMBUSTIVEIS = ["gasolina", "etanol", "alcool", "diesel", "gnv", "arla"];
 const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "padaria", "panificadora", "confeitaria",
     "cafeteria", "bar", "self service", "marmitaria", "pastelaria", "hamburgueria", "lanches", "grill", "buffet"];
-const HOTEIS = ["hotel", "pousada", "hostel", "motel", "hospedagem", "flat", "apart hotel"];
+const HOTEIS = ["hotel", "hoteis", "pousada", "hostel", "motel", "hospedagem", "flat", "apart hotel"];
 const MERCADOS = ["supermercado", "supermercados", "mercado", "mercearia", "atacadao", "atacadista", "hipermercado", "minimercado"];
 
 function textoDoEstabelecimento(ocr) {
@@ -101,12 +101,22 @@ function tipoPelaNota(ocr) {
     const estabelecimento = textoDoEstabelecimento(ocr);
     const itens = [(ocr?.itens || []).map((item) => item.descricao).join(" "), ocr?.produto_principal].join(" ");
     const temLitros = Number(ocr?.litragem) > 0;
+    // Sem itens estruturados (ex.: nota separada de uma foto com duas), o texto
+    // tambem vale: combustivel citado + sinal de posto (nome, bico, bomba, litros).
+    const texto = String(ocr?.texto_bruto || "");
+    const combustivelNoTexto = COMBUSTIVEIS.some((termo) => contemTermo(texto, termo))
+        && (contemTermo(estabelecimento, "posto") || contemTermo(texto, "posto") || /\b(bico|bomba|abastec\w*)\b/i.test(texto) || temLitros);
     if (COMBUSTIVEIS.some((termo) => contemTermo(itens, termo)) || (temLitros && contemTermo(estabelecimento, "posto"))
-        || ocr?.tipo_despesa_sugerido === "combustivel") {
+        || ocr?.tipo_despesa_sugerido === "combustivel" || combustivelNoTexto) {
         return { tipo: "ABASTECIMENTO", origem: "itens_da_nota" };
     }
     if (HOTEIS.some((termo) => contemTermo(estabelecimento, termo)) || contemTermo(itens, "diaria")) {
         return { tipo: "HOSPEDAGEM", origem: "estabelecimento_da_nota" };
+    }
+    // NFS-e/recibo de hotel: o servico prestado diz que e hospedagem, mesmo que
+    // o Azure tenha classificado como refeicao.
+    if (/hospedagem\s+de\s+qualquer|\bdi[aá]rias?\b|qtd[_ .]*h[oó]spede|h[oó]spede\s+principal|\bcheck[\s-]?in\b/i.test(String(ocr?.texto_bruto || ""))) {
+        return { tipo: "HOSPEDAGEM", origem: "texto_da_nota" };
     }
     if (contemTermo(estabelecimento, "pedagio") || contemTermo(ocr?.texto_bruto, "praca de pedagio")) {
         return { tipo: "PEDAGIO", origem: "estabelecimento_da_nota" };
@@ -166,7 +176,33 @@ function decidirTipo({ ocr, legenda, lote }) {
 // Pessoas nas refeicoes
 // ---------------------------------------------------------------------------
 
-function decidirPessoas({ tipo, legenda, lote }) {
+// Itens que nao dizem nada sobre quantas pessoas comeram.
+const NAO_E_PRATO = /\b(taxa|servico|gorjeta|couvert|embalagem|sacola|gelo|desconto|acrescimo)\b/i;
+
+/**
+ * Pessoas estimadas pela NOTA (so pista, nunca confirma sozinho):
+ *   - hospedagem: "QTD_HOSPEDE: 2", "hospedes: 2";
+ *   - refeicao: a MAIOR quantidade de um mesmo item (3 hamburgueres = 3
+ *     pessoas; 4 coxinhas + 4 cafes = 4 pessoas). Somar os itens
+ *     superestima: cada pessoa costuma pedir comida E bebida.
+ */
+function pessoasPelaNota(ocr, tipo) {
+    const texto = String(ocr?.texto_bruto || "");
+    if (tipo === "HOSPEDAGEM") {
+        const achado = texto.match(/\b(?:qtd[_ .]*h[oó]spedes?|h[oó]spedes?|n[ºo°]?\s*de\s*h[oó]spedes)\s*[:\-]?\s*(\d{1,2})\b/i);
+        return achado && Number(achado[1]) > 0 ? { valor: Number(achado[1]), origem: "hospedes_na_nota" } : null;
+    }
+    const pratos = (ocr?.itens || []).filter((item) => item.descricao && !NAO_E_PRATO.test(normalizar(item.descricao)));
+    if (!pratos.length) return null;
+    const maior = Math.max(...pratos.map((item) => {
+        const quantidade = Number(item.quantidade);
+        // Quantidade fracionada (kg de self-service) nao conta pessoa: vale 1.
+        return Number.isInteger(quantidade) && quantidade > 0 && quantidade <= 20 ? quantidade : 1;
+    }));
+    return maior >= 1 ? { valor: maior, origem: "itens_da_nota" } : null;
+}
+
+function decidirPessoas({ tipo, legenda, lote, ocr = null }) {
     if (legenda?.pessoas?.quantidade) return { valor: legenda.pessoas.quantidade, origem: "mensagem_da_foto", confirmado: true };
     const declarado = lote?.quantidades?.pessoas;
     if (declarado?.quantidade && (!declarado.tipo || declarado.tipo === tipo)) {
@@ -177,6 +213,8 @@ function decidirPessoas({ tipo, legenda, lote }) {
         // "Qtd 3 almoço": pode ser 3 pessoas ou 3 notas. Vira estimativa a confirmar.
         return { valor: qtdLote.quantidade, origem: "quantidade_do_lote_semantica_indeterminada", confirmado: false };
     }
+    const pelaNota = pessoasPelaNota(ocr, tipo);
+    if (pelaNota) return { ...pelaNota, confirmado: false };
     return { valor: null, origem: null, confirmado: false };
 }
 
@@ -254,9 +292,15 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     if (ocr?.hora) campos.hora_da_nota = { valor: ocr.hora, origem: "nota", uso: "somente_pista" };
 
     // Fornecedor
-    const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia);
-    campos.fornecedor = { valor: fornecedor.nome, origem: fornecedor.origem, nome_lido: fornecedor.nome_lido || ocr?.fornecedor || null };
+    const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, tipo);
+    campos.fornecedor = { valor: fornecedor.nome, origem: fornecedor.origem, nome_lido: fornecedor.nome_lido || ocr?.fornecedor || null, cnpj_lido: ocr?.cnpj || null };
     if (ocr && !fornecedor.nome) pendencias.push("Fornecedor não foi lido na nota.");
+
+    // Avisos da leitura que a pessoa precisa conferir.
+    if (ocr?.separada_da_foto) {
+        pendencias.push(`Foto com ${ocr.separada_da_foto.total} notas lado a lado: esta é a da ${ocr.separada_da_foto.coluna}. Confira os campos com a imagem.`);
+    }
+    if (ocr?.data_lida_descartada) avisos.push(`Data ${ocr.data_lida_descartada} lida no futuro foi descartada; usada ${ocr.data}, que também aparece na nota.`);
 
     // Abastecimento
     const regrasPessoa = pessoa?.regras_especiais || [];
@@ -281,12 +325,29 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         const odometro = odometroInfo.valor;
         campos.abastecimento = {
             litros: litrosInfo,
-            odometro: odometroInfo,
+            odometro: { ...odometroInfo, leitura: ocr?.odometro_origem || null },
             placa: { valor: veiculo ? cadastros.placaCanonica(veiculo.placa) : (placaLida ? cadastros.placaCanonica(placaLida) : null), origem: placaInfo.origem },
             combustivel: ocr?.produto_principal || null,
             preco_litro: (ocr?.itens || []).find((item) => Number(item.valor_unitario) > 0)?.valor_unitario ?? null,
         };
-        const faltando = [!litros && "litros", !odometro && "hodômetro", !placaLida && "placa"].filter(Boolean);
+        if (placaInfo.origem === "nota" && ocr?.placa_corrigida) {
+            avisos.push(`Placa impressa lida como "${ocr.placa_bruta}" e corrigida para ${cadastros.placaCanonica(placaLida)} (troca comum do OCR).`);
+        }
+        if (odometroInfo.origem === "nota" && ocr?.odometro_origem === "numero_ao_lado_da_placa") {
+            pendencias.push(`Hodômetro ${milharBr(odometro)} lido sem rótulo, no número ao lado da placa; confirme.`);
+        }
+        // Placa ilegivel: compara com a frota e SUGERE (nunca decide sozinho).
+        if (!placaLida && ocr?.placa_bruta) {
+            const parecido = cadastros.veiculoAproximado(cad, ocr.placa_bruta);
+            if (parecido) {
+                campos.abastecimento.placa.sugestao = { valor: cadastros.placaCanonica(parecido.veiculo.placa), origem: "frota_por_semelhanca" };
+                sugestaoCategoria = { nome: parecido.veiculo.categoria_nome_conta_azul, origem: "frota_por_semelhanca" };
+                pendencias.push(`Placa ilegível ("${ocr.placa_bruta}"); parece ${cadastros.placaCanonica(parecido.veiculo.placa)} (${parecido.veiculo.nome}). Confirme.`);
+            } else {
+                pendencias.push(`Placa ilegível na nota ("${ocr.placa_bruta}").`);
+            }
+        }
+        const faltando = [!litros && "litros", !odometro && "hodômetro", !placaLida && !ocr?.placa_bruta && "placa"].filter(Boolean);
         if (faltando.length) pendencias.push(`Abastecimento sem ${faltando.join(", ")} legível na nota; fica pendente até conferência.`);
 
         const motoParticular = regrasPessoa.find((regra) => regra.tipo === "ABASTECIMENTO_MOTO_PARTICULAR");
@@ -306,11 +367,16 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         }
         campos.placa_veiculo = { valor: veiculo?.nome || null };
         descricao = { valor: descricaoAbastecimento({ litros, odometro, placa: campos.abastecimento.placa.valor }), origem: "template_abastecimento" };
-    } else if (TIPOS[tipo]?.refeicao) {
-        const pessoas = decidirPessoas({ tipo, legenda, lote });
+    } else if (TIPOS[tipo]?.refeicao || tipo === "HOSPEDAGEM") {
+        // Refeicao e hospedagem: descricao "JANTAR - 3 PESSOAS" / "HOSPEDAGEM - 1 PESSOA".
+        const pessoas = decidirPessoas({ tipo, legenda, lote, ocr });
         campos.pessoas = pessoas;
-        if (!pessoas.valor) pendencias.push("Quantidade de pessoas da refeição não informada.");
-        else if (!pessoas.confirmado) {
+        if (!pessoas.valor) pendencias.push(`Quantidade de pessoas ${tipo === "HOSPEDAGEM" ? "hospedadas" : "da refeição"} não informada.`);
+        else if (pessoas.origem === "itens_da_nota") {
+            pendencias.push(`${pessoas.valor} ${pessoas.valor === 1 ? "pessoa estimada" : "pessoas estimadas"} pelos itens da nota; confirme.`);
+        } else if (pessoas.origem === "hospedes_na_nota") {
+            pendencias.push(`${pessoas.valor} hóspede(s) segundo a nota; confirme.`);
+        } else if (!pessoas.confirmado) {
             pendencias.push(`"Qtd ${pessoas.valor}" no lote pode ser pessoas ou notas; confirme quantas pessoas.`);
         }
         descricao = { valor: descricaoRefeicao(tipo, pessoas.valor), origem: "template_refeicao", estimada: !pessoas.confirmado };

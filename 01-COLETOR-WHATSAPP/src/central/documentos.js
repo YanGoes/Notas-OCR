@@ -38,6 +38,66 @@ function pesoFiscal(ocr) {
     return (ocr.chave_fiscal ? 4 : 0) + (ocr.cnpj ? 2 : 0) + Math.min((ocr.itens || []).length, 3) + (ocr.fornecedor ? 1 : 0);
 }
 
+// ---------------------------------------------------------------------------
+// Duas notas LADO A LADO na mesma foto
+// ---------------------------------------------------------------------------
+//
+// O Azure as vezes devolve um unico documento com o texto das duas notas
+// intercalado (uma linha de cada coluna). Usando a POSICAO de cada linha na
+// foto, separa em colunas quando:
+//   - existe uma faixa vertical no meio da foto que quase nenhuma linha cruza;
+//   - cada lado tem um pedaco grande do texto;
+//   - o texto tem sinais de DUAS notas (dois "documento auxiliar"/DANFE/NFC-e
+//     ou duas chaves de acesso diferentes).
+
+const RE_CABECALHO_NOTA = /documento\s+aux|danfe|nfc-?e\b|cupom\s+fiscal|nota\s+fiscal/gi;
+
+function centroELimites(poligono) {
+    const xs = [poligono[0], poligono[2], poligono[4], poligono[6]];
+    const ys = [poligono[1], poligono[3], poligono[5], poligono[7]];
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y: ys.reduce((a, b) => a + b, 0) / 4 };
+}
+
+function quantasNotasNoTexto(texto) {
+    const cabecalhos = (String(texto).match(RE_CABECALHO_NOTA) || []).length;
+    const chaves = new Set();
+    for (const achado of String(texto).matchAll(/\b(?:\d{4}[\t ]*){10}\d{4}\b|\b\d{44}\b/g)) {
+        const digitos = somenteDigitos(achado[0]);
+        if (digitos.length === 44 && chaveNfeValida(digitos)) chaves.add(digitos);
+    }
+    return { cabecalhos, chaves: chaves.size };
+}
+
+/**
+ * Texto de cada coluna, ou null quando a foto nao tem notas lado a lado.
+ * @returns {null | string[]}
+ */
+function colunasDaFoto(analise) {
+    const pagina = analise?.pages?.[0];
+    const linhas = (pagina?.lines || []).filter((linha) => Array.isArray(linha.polygon) && linha.polygon.length >= 8 && linha.content);
+    if (!pagina?.width || linhas.length < 20) return null;
+    const sinais = quantasNotasNoTexto(analise.content || "");
+    if (sinais.chaves < 2 && sinais.cabecalhos < 2) return null;
+
+    const caixas = linhas.map((linha) => ({ ...centroELimites(linha.polygon), texto: linha.content }));
+    const largura = pagina.width;
+    let melhor = null;
+    for (let corte = largura * 0.3; corte <= largura * 0.7; corte += largura / 100) {
+        const cruzam = caixas.filter((c) => c.x0 < corte && c.x1 > corte).length;
+        const esquerda = caixas.filter((c) => c.x1 <= corte).length;
+        const direita = caixas.filter((c) => c.x0 >= corte).length;
+        if (!melhor || cruzam < melhor.cruzam) melhor = { corte, cruzam, esquerda, direita };
+    }
+    const total = caixas.length;
+    if (!melhor || melhor.cruzam > total * 0.06 || melhor.esquerda < total * 0.25 || melhor.direita < total * 0.25) return null;
+
+    const lado = (filtro) => caixas.filter(filtro).sort((a, b) => a.y - b.y).map((c) => c.texto).join("\n");
+    const colunas = [lado((c) => (c.x0 + c.x1) / 2 < melhor.corte), lado((c) => (c.x0 + c.x1) / 2 >= melhor.corte)];
+    // Cada coluna precisa parecer uma nota sozinha.
+    if (colunas.some((texto) => quantasNotasNoTexto(texto).cabecalhos < 1 && quantasNotasNoTexto(texto).chaves < 1)) return null;
+    return colunas;
+}
+
 /**
  * Normaliza a resposta bruta do Azure em 1..N documentos.
  * @returns {Array<{indice:number, ocr:object, papel:'PRINCIPAL'|'COMPLEMENTAR', principal_indice:number|null}>}
@@ -47,12 +107,20 @@ function dividirDocumentos(bruto, modelId = "prebuilt-receipt") {
     const documentos = Array.isArray(analise.documents) ? analise.documents : [];
     const conteudo = String(analise.content || "");
 
-    const lidos = documentos.length <= 1
-        ? [normalizarResultadoAzure(bruto, modelId)]
-        : documentos.map((documento) => normalizarResultadoAzure({
-            ...bruto,
-            analyzeResult: { ...analise, content: textoDoDocumento(conteudo, documento), documents: [documento] },
-        }, modelId));
+    const colunas = documentos.length <= 1 ? colunasDaFoto(analise) : null;
+    const lidos = colunas
+        // Lado a lado: cada coluna e lida pelo texto (os campos estruturados do
+        // Azure misturavam as duas notas e nao servem).
+        ? colunas.map((texto, i) => ({
+            ...normalizarResultadoAzure({ analyzeResult: { content: texto, documents: [{ docType: documentos[0]?.docType, fields: {} }] } }, modelId),
+            separada_da_foto: { metodo: "colunas_lado_a_lado", coluna: i === 0 ? "esquerda" : "direita", total: colunas.length },
+        }))
+        : documentos.length <= 1
+            ? [normalizarResultadoAzure(bruto, modelId)]
+            : documentos.map((documento) => normalizarResultadoAzure({
+                ...bruto,
+                analyzeResult: { ...analise, content: textoDoDocumento(conteudo, documento), documents: [documento] },
+            }, modelId));
 
     const resultado = lidos.map(({ resposta_bruta: _bruta, ...ocr }, indice) => ({
         indice, ocr, papel: "PRINCIPAL", principal_indice: null,
@@ -93,4 +161,4 @@ function impressaoDigital(ocr) {
     return [emissor, ocr.data, valor, ocr.hora || "sem-hora"].join("|");
 }
 
-module.exports = { dividirDocumentos, pareceViaDePagamento, chaveNfce, impressaoDigital, textoDoDocumento };
+module.exports = { dividirDocumentos, colunasDaFoto, pareceViaDePagamento, chaveNfce, impressaoDigital, textoDoDocumento };

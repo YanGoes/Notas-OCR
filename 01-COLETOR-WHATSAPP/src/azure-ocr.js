@@ -134,7 +134,8 @@ function candidatosCnpj(texto) {
 }
 
 function cnpjDoTexto(texto, fornecedor = "") {
-    const candidatos = candidatosCnpj(texto);
+    // O CNPJ da propria VMac (cliente) nunca e o do fornecedor.
+    const candidatos = candidatosCnpj(texto).filter((item) => !EMPRESA_PROPRIA_CNPJS.has(item.valor));
     if (!candidatos.length) return null;
     const validos = candidatos.some((item) => item.valido) ? candidatos.filter((item) => item.valido) : candidatos;
     const referencia = String(fornecedor || "").trim();
@@ -232,7 +233,7 @@ function nomeEmpresaDoTexto(texto, cnpjReferencia = "") {
         const nome = limparNomeEmpresa(linha);
         const possuiFormaSocietaria = /\b(?:LTDA|EIRELI|EPP|ME|S\/?A)\b/i.test(nome);
         const possuiRamo = /\b(?:panificadora|confeitaria|restaurante|lanchonete|hotel|pousada|drogaria|farmacia|posto)\b/i.test(nome);
-        const boilerplate = /documento\s+emitido|simples\s+nacional|consumidor|nota\s+fiscal|forma\s+de\s+pagamento/i.test(nome);
+        const boilerplate = /documento\s+emitido|simples\s+nacional|consumidor|nota\s+fiscal|forma\s+de\s+pagamento/i.test(nome) || ehEmpresaPropria(nome);
         if (nome.length >= 4 && nome.length <= 100 && !boilerplate && (possuiFormaSocietaria || possuiRamo)) {
             let score = (possuiFormaSocietaria ? 5 : 0) + (possuiRamo ? 3 : 0) + (/CNPJ/i.test(linha) ? 4 : 0);
             const cnpjsProximos = candidatosCnpj(String(texto || "").slice(deslocamento, deslocamento + linha.length + 180));
@@ -245,10 +246,31 @@ function nomeEmpresaDoTexto(texto, cnpjReferencia = "") {
     return candidatos.sort((a, b) => b.score - a.score || a.indice - b.indice)[0]?.nome || null;
 }
 
+// A propria VMac aparece nas notas como CLIENTE (tomador da NFS-e, "EMPRESA:"
+// no recibo do hotel). Nunca e o fornecedor.
+const EMPRESA_PROPRIA_CNPJS = new Set(["33229221000195"]);
+const RE_EMPRESA_PROPRIA = /\bv\s*\.?\s*mac\b|\bvm\s+engenharia\b/i;
+const ehEmpresaPropria = (nome) => RE_EMPRESA_PROPRIA.test(normalizarBusca(nome));
+
+/** NFS-e: o fornecedor e o PRESTADOR ("Razao Social" logo depois de "PRESTADOR DE SERVICOS"). */
+function prestadorNfse(texto) {
+    const linhas = String(texto || "").split(/\r?\n/).map((linha) => linha.trim());
+    const inicio = linhas.findIndex((linha) => /prestador\s+de\s+servi/i.test(linha));
+    if (inicio < 0) return null;
+    const fim = linhas.findIndex((linha, i) => i > inicio && /tomador\s+de\s+servi/i.test(linha));
+    const trecho = linhas.slice(inicio + 1, fim > inicio ? fim : inicio + 15);
+    const rotulo = trecho.findIndex((linha) => /^(?:nome\s*\/\s*)?raz[aã]o\s+social$/i.test(linha));
+    const nome = rotulo >= 0 ? trecho[rotulo + 1] : null;
+    return nome && !ehEmpresaPropria(nome) ? limparNomeEmpresa(nome) : null;
+}
+
 function fornecedorDoTexto(texto, fornecedorEstruturado = "", cnpjFiscal = "") {
+    const prestador = prestadorNfse(texto);
+    if (prestador) return prestador;
     const estruturado = String(fornecedorEstruturado || "").replace(/\s+/g, " ").trim();
-    if (estruturado && !INTERMEDIARIOS_PAGAMENTO.test(normalizarBusca(estruturado))) return estruturado;
-    return nomeEmpresaDoTexto(texto, cnpjFiscal) || estruturado || null;
+    const estruturadoValido = estruturado && !ehEmpresaPropria(estruturado);
+    if (estruturadoValido && !INTERMEDIARIOS_PAGAMENTO.test(normalizarBusca(estruturado))) return estruturado;
+    return nomeEmpresaDoTexto(texto, cnpjFiscal) || (estruturadoValido ? estruturado : null);
 }
 
 function numeroMonetario(texto) {
@@ -299,13 +321,13 @@ function valorDoTexto(texto) {
     return detalhesValorDoTexto(texto).valor;
 }
 
-function dataDoTexto(texto) {
+function dataDoTexto(texto, { ate = null } = {}) {
     const conteudo = String(texto || "");
     const candidatos = [];
     const regex = /\b\d{1,2}[\/-](?:\d{1,2}|[A-Z]{3})[\/-](?:\d{2}|\d{4})\b/gi;
     for (const achado of conteudo.matchAll(regex)) {
         const data = normalizarData(achado[0]);
-        if (!data) continue;
+        if (!data || (ate && data > ate)) continue;
         const contexto = conteudo.slice(Math.max(0, achado.index - 60), achado.index + achado[0].length + 60);
         let score = achado[0].match(/\d{4}\b/) ? 3 : 1;
         if (/emiss[aã]o|autoriza[cç][aã]o|nf-?c?e|pedido|compra/i.test(contexto)) score += 3;
@@ -339,10 +361,53 @@ function nomeFantasiaDoTexto(texto, fornecedor = "") {
     return nome;
 }
 
+// Trocas tipicas do OCR em placa: nas posicoes que so podem ser NUMERO
+// (4a, 6a e 7a) letra parecida vira digito; nas 3 primeiras, o contrario.
+const LETRA_PARA_DIGITO = { O: "0", Q: "0", D: "0", I: "1", L: "1", Z: "2", S: "5", B: "8", G: "6", T: "7" };
+const DIGITO_PARA_LETRA = { 0: "O", 1: "I", 2: "Z", 5: "S", 8: "B", 6: "G" };
+// Rotulo "PLACA" lido torto: FLACA, PIACA, PLAGA, P1ACA...
+const RE_PLACA_ROTULADA = /\b[PF][LI1|][AÁ4][CGÇ][AÁ4]\s*[:.\-]?\s*([A-Z0-9]{3})[ \t-]?([A-Z0-9]{4})(?![A-Z0-9])/gi;
+
+/** Corrige trocas de OCR numa placa de 7 caracteres. Devolve null se nao virar placa valida. */
+function corrigirPlaca(bruta) {
+    const s = String(bruta || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (s.length !== 7) return null;
+    const c = [...s];
+    for (const i of [0, 1, 2]) c[i] = DIGITO_PARA_LETRA[c[i]] || c[i];
+    for (const i of [3, 5, 6]) c[i] = LETRA_PARA_DIGITO[c[i]] || c[i];
+    const placa = c.join("");
+    return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(placa) ? placa : null;
+}
+
+/**
+ * Placa lida, com o texto original. `corrigida` diz se houve troca de OCR;
+ * `bruta` sobra mesmo quando nao deu para corrigir (a Central compara com a frota).
+ */
+function placaDetalhada(texto) {
+    const rotuladas = new Map();
+    for (const achado of String(texto || "").matchAll(RE_PLACA_ROTULADA)) {
+        const bruta = `${achado[1]}${achado[2]}`.toUpperCase();
+        rotuladas.set(bruta, corrigirPlaca(bruta));
+    }
+    const corrigidas = new Set([...rotuladas.values()].filter(Boolean));
+    if (corrigidas.size === 1) {
+        const placa = [...corrigidas][0];
+        const bruta = [...rotuladas.entries()].find(([, valor]) => valor === placa)[0];
+        return { placa: `${placa.slice(0, 3)}-${placa.slice(3)}`, bruta, corrigida: bruta !== placa, origem: "rotulo_placa" };
+    }
+    if (corrigidas.size > 1) return { placa: null, bruta: null, corrigida: false, origem: "varias_placas", candidatas: [...corrigidas] };
+    const semCorrecao = placaDoTextoSemRotulo(texto);
+    if (semCorrecao) return { placa: semCorrecao, bruta: semCorrecao.replace("-", ""), corrigida: false, origem: "sequencia_com_cara_de_placa" };
+    const ilegivel = [...rotuladas.keys()][0] || null;
+    return { placa: null, bruta: ilegivel, corrigida: false, origem: ilegivel ? "rotulo_placa_ilegivel" : null };
+}
+
 function placaDoTexto(texto) {
+    return placaDetalhada(texto).placa;
+}
+
+function placaDoTextoSemRotulo(texto) {
     const bruto = String(texto || "");
-    const rotulada = bruto.match(/\bplaca\s*:?\s*([A-Z]{3})[-\s]?([0-9][A-Z0-9][0-9]{2})\b/i);
-    if (rotulada) return `${rotulada[1].toUpperCase()}-${rotulada[2].toUpperCase()}`;
 
     // Sem o rotulo "Placa:", so aceita quando o comprovante tem exatamente uma
     // sequencia com cara de placa (antiga ABC1234 ou Mercosul ABC1D23), em
@@ -375,17 +440,46 @@ function litragemDoTexto(texto) {
  * o hodometro. Por isso linhas de endereco sao ignoradas, valores abaixo de
  * 1.000 sao descartados e, havendo dois hodometros diferentes, nao escolhe.
  */
-function odometroDoTexto(texto) {
+const RE_LINHA_ENDERECO = /\b(rod(ovia)?\.?|br\s*-?\s*\d{3}|av(enida)?\.?|rua|estrada|anel\s+vi[aá]rio|end(ere[cç]o)?)\b/i;
+
+/**
+ * Hodometro com a origem. Rotulos aceitos: hodometro, odometro, odom, od, km,
+ * km atual, quilometragem, HM. Aceita centavos impressos ("191 482,00").
+ * Sem rotulo, so aceita um numero SOZINHO na linha colada a linha da placa
+ * (o posto imprime "166759" e embaixo "JKM0196") — marcado para conferencia.
+ */
+function odometroDetalhado(texto) {
+    const linhas = String(texto || "").split(/\r?\n/);
     const candidatos = new Set();
-    const rotulo = /\b(?:h?od[oô]metro|odom\.?|km\s*(?:atual|veic(?:ulo)?|rodados?)?|quilometragem|od)\s*[:.\-]?\s*(\d{1,3}(?:[.\s]\d{3})+|\d{4,7})(?![\d,])/gi;
-    for (const linha of String(texto || "").split(/\r?\n/)) {
-        if (/\b(rod(ovia)?\.?|br\s*-?\s*\d{3}|av(enida)?\.?|rua|estrada|anel\s+vi[aá]rio|end(ere[cç]o)?)\b/i.test(linha)) continue;
+    const rotulo = /\b(?:h?od[oô]metro|odom\.?|km\s*(?:atual|veic(?:ulo)?|rodados?)?|quilometragem|od|h\.?m\.?)\s*[:.\-]?\s*(\d{1,3}(?:[.\s]\d{3})+|\d{4,7})(?:[.,]\d{1,2})?(?!\d)/gi;
+    for (const linha of linhas) {
+        if (RE_LINHA_ENDERECO.test(linha)) continue;
         for (const achado of linha.matchAll(rotulo)) {
             const numero = Number(achado[1].replace(/\D/g, ""));
             if (numero >= 1000 && numero <= 9999999) candidatos.add(numero);
         }
     }
-    return candidatos.size === 1 ? [...candidatos][0] : null;
+    if (candidatos.size === 1) return { valor: [...candidatos][0], origem: "rotulo_hodometro" };
+    if (candidatos.size > 1) return { valor: null, origem: "varios_hodometros", candidatos: [...candidatos] };
+
+    const rotuloPlaca = new RegExp(RE_PLACA_ROTULADA.source, "i"); // sem /g: nao guarda estado entre linhas
+    const ehLinhaDePlaca = (linha) => rotuloPlaca.test(linha) || /^\s*[A-Z]{3}[-\s]?[0-9][A-Z0-9][0-9]{2}\s*$/.test(linha);
+    const soltos = new Set();
+    linhas.forEach((linha, i) => {
+        if (!ehLinhaDePlaca(linha)) return;
+        for (const vizinha of [linhas[i - 1], linhas[i + 1], linhas[i - 2], linhas[i + 2]]) {
+            const achado = String(vizinha || "").trim().match(/^(\d{1,3}(?:\.\d{3})+|\d{4,7})$/);
+            if (!achado) continue;
+            const numero = Number(achado[1].replace(/\D/g, ""));
+            if (numero >= 1000 && numero <= 2000000) soltos.add(numero);
+        }
+    });
+    if (soltos.size === 1) return { valor: [...soltos][0], origem: "numero_ao_lado_da_placa" };
+    return { valor: null, origem: null };
+}
+
+function odometroDoTexto(texto) {
+    return odometroDetalhado(texto).valor;
 }
 
 /**
@@ -593,14 +687,20 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
     const valorFinal = valorEstruturado ?? detalhesValor.valor;
     const dataEstruturada = valorCampo(campos.TransactionDate) || valorCampo(campos.InvoiceDate);
     const dataTexto = dataDoTexto(texto);
-    const dataFinal = dataEstruturada || dataTexto;
+    // Data no futuro e erro de leitura ("15/09/2035" com "15/09/25" duas linhas
+    // acima). Se a nota tiver outra data possivel, fica com a melhor delas.
+    const limiteFuturo = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+    const dataBruta = dataEstruturada || dataTexto;
+    const dataPlausivel = dataBruta && dataBruta > limiteFuturo ? dataDoTexto(texto, { ate: limiteFuturo }) : null;
+    const dataFinal = dataPlausivel || dataBruta;
     const chaveFiscal = dadosChaveFiscalDoTexto(texto);
     const cnpjChave = cnpjReconciliadoComChave(texto, chaveFiscal);
     const fornecedorEstruturado = valorCampo(campos.MerchantName) || valorCampo(campos.VendorName);
     const fornecedor = fornecedorDoTexto(texto, fornecedorEstruturado, cnpjChave);
     const fornecedorHeuristico = Boolean(fornecedor && normalizarBusca(fornecedor) !== normalizarBusca(fornecedorEstruturado));
     const cnpjEstruturado = String(valorCampo(campos.MerchantTaxId) || "").replace(/\D/g, "");
-    const cnpj = cnpjChave || (cnpjValido(cnpjEstruturado) ? cnpjEstruturado : cnpjDoTexto(texto, fornecedor));
+    const estruturadoUtil = cnpjValido(cnpjEstruturado) && !EMPRESA_PROPRIA_CNPJS.has(cnpjEstruturado);
+    const cnpj = cnpjChave || (estruturadoUtil ? cnpjEstruturado : cnpjDoTexto(texto, fornecedor));
     const fornecedorAssociadoAoCnpj = Boolean(
         fornecedor && cnpj && String(texto).toLocaleLowerCase("pt-BR").includes(String(fornecedor).toLocaleLowerCase("pt-BR"))
         && cnpjDoTexto(texto, fornecedor) === cnpj
@@ -617,12 +717,14 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
     const itemLitros = itens.find((item) => /^(l|lt|litro|litros)$/i.test(String(item.unidade || "").trim()) && Number(item.quantidade) > 0);
     const endereco = enderecoDoCampo(campos.MerchantAddress, texto, chaveFiscal?.estado);
     const formaPagamento = formaPagamentoDoTexto(texto);
+    const placaInfo = placaDetalhada(texto);
+    const odometroInfo = odometroDetalhado(texto);
     return {
         fornecedor,
         fornecedor_origem: fornecedorHeuristico ? "heuristica_texto_azure" : fornecedor ? "campo_estruturado_azure" : null,
         nome_fantasia: nomeFantasiaDoTexto(texto, fornecedor),
         cnpj,
-        cnpj_origem: chaveFiscal?.cnpj ? "chave_fiscal_nfce" : cnpjChave ? "chave_fiscal_nfce_reconciliada" : cnpjValido(cnpjEstruturado) ? "campo_estruturado_azure" : cnpj ? "heuristica_texto_azure" : null,
+        cnpj_origem: chaveFiscal?.cnpj ? "chave_fiscal_nfce" : cnpjChave ? "chave_fiscal_nfce_reconciliada" : estruturadoUtil ? "campo_estruturado_azure" : cnpj ? "heuristica_texto_azure" : null,
         chave_fiscal: chaveFiscal?.chave,
         chave_fiscal_prefixo: chaveFiscal?.chave_prefixo || null,
         endereco,
@@ -635,9 +737,13 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
             : litragemDoTexto(texto) ? "heuristica_texto_azure"
                 : litragemQtdeVezesUnitario(texto) ? "heuristica_qtde_x_unitario" : null,
         produto_principal: itens[0]?.descricao || null,
-        placa: placaDoTexto(texto),
-        quilometragem: kmDoTexto(texto),
-        odometro: odometroDoTexto(texto),
+        placa: placaInfo.placa,
+        placa_bruta: placaInfo.bruta,
+        placa_corrigida: placaInfo.corrigida,
+        placa_origem: placaInfo.origem,
+        quilometragem: odometroInfo.valor,
+        odometro: odometroInfo.valor,
+        odometro_origem: odometroInfo.origem,
         forma_pagamento: formaPagamento.codigo,
         forma_pagamento_texto: formaPagamento.texto,
         forma_pagamento_origem: formaPagamento.evidencia,
@@ -648,7 +754,8 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
         tipo_despesa_sugerido: tipoSugeridoAzure(documento, campos),
         valor_origem: valorEstruturado !== null && valorEstruturado !== undefined ? "campo_estruturado_azure" : detalhesValor.valor !== null ? "heuristica_texto_azure" : null,
         valor_evidencia: valorEstruturado !== null && valorEstruturado !== undefined ? "campo_estruturado" : detalhesValor.origem,
-        data_origem: dataEstruturada ? "campo_estruturado_azure" : dataTexto ? "heuristica_texto_azure" : null,
+        data_origem: dataPlausivel ? "texto_corrigida_data_futura" : dataEstruturada ? "campo_estruturado_azure" : dataTexto ? "heuristica_texto_azure" : null,
+        data_lida_descartada: dataPlausivel ? dataBruta : null,
         confianca_documento: Number(documento.confidence ?? confiancaMinima(campos)),
         confianca: confiancaLeitura(documento, campos, valorEstruturado, valorFinal, {
             fornecedorHeuristico,
@@ -693,6 +800,6 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
 module.exports = {
     analisarDocumento, configuracaoAzure, valorCampo, cnpjDoTexto, cnpjValido, chaveNfeValida, dadosChaveFiscalDoTexto, fornecedorDoTexto,
     valorDoTexto, detalhesValorDoTexto, normalizarData, dataDoTexto, nomeFantasiaDoTexto,
-    placaDoTexto, litragemDoTexto, litragemQtdeVezesUnitario, kmDoTexto, odometroDoTexto, formaPagamentoDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
+    placaDoTexto, placaDetalhada, corrigirPlaca, litragemDoTexto, litragemQtdeVezesUnitario, kmDoTexto, odometroDoTexto, odometroDetalhado, prestadorNfse, formaPagamentoDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
     confiancaLeitura, normalizarResultadoAzure,
 };

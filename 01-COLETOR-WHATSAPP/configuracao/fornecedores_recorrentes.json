@@ -1,6 +1,15 @@
 {
-  "_leia_me": "Estabelecimentos recorrentes: quando o OCR ler um destes, o fornecedor usa o nome oficial. Loja fora desta lista NAO e descartada: usa o nome lido; mercado nao recorrente usa o fornecedor generico.",
-  "fornecedor_generico_mercado": "MERCADO",
+  "_leia_me": "Fornecedor que vai para o Conta Azul. 1) Tipos em genericos_por_tipo usam SEMPRE o fornecedor generico (padrao da VMac: posto, restaurante, hotel); o nome lido na nota fica guardado para auditoria. 2) Estabelecimentos recorrentes usam o nome oficial. 3) Mercado nao recorrente usa o fornecedor generico de mercado. 4) O resto usa o nome lido. Os nomes abaixo sao os que ja existem no Conta Azul (planilha de 04 a 07/2026).",
+  "genericos_por_tipo": {
+    "ABASTECIMENTO": "POSTOS DE COMBUSTÍVEL",
+    "ALMOCO": "RESTAURANTES",
+    "JANTAR": "RESTAURANTES",
+    "CAFE_DA_MANHA": "RESTAURANTES",
+    "LANCHE": "RESTAURANTES",
+    "REFEICAO": "RESTAURANTES",
+    "HOSPEDAGEM": "HOTÉIS"
+  },
+  "fornecedor_generico_mercado": "SUPERMERCADO",
   "recorrentes": [
     { "nome": "BELLAVIA SUPERMERCADO", "apelidos": ["bellavia", "bella via"] },
     { "nome": "BOM DIA SUPERMERCADOS", "apelidos": ["bom dia supermercado", "bom dia supermercados", "supermercado bom dia"] }

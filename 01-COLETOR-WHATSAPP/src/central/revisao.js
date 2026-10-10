@@ -217,7 +217,7 @@ function atualizarDescricao(campos) {
     if (tipo === "ABASTECIMENTO") {
         const ab = campos.abastecimento || {};
         campos.descricao = { valor: descricaoAbastecimento({ litros: ab.litros?.valor, odometro: ab.odometro?.valor, placa: ab.placa?.valor }), origem: "template_abastecimento" };
-    } else if (TIPOS[tipo]?.refeicao) {
+    } else if (TIPOS[tipo]?.refeicao || tipo === "HOSPEDAGEM") {
         campos.descricao = { valor: descricaoRefeicao(tipo, campos.pessoas?.valor), origem: "template_refeicao", estimada: !campos.pessoas?.confirmado };
     }
 }
@@ -287,12 +287,18 @@ function entradaDoExemplo(db, despesa) {
     };
 }
 
-function rotulosDoExemplo(campos) {
+// Campos que a pessoa pode marcar como "nao vale para treino" ao aprovar (ex.:
+// nota antiga lancada sem saber o centro de custo e o cartao reais).
+const CAMPOS_EXCLUIVEIS_DO_TREINO = ["centro_custo", "pagamento"];
+
+function rotulosDoExemplo(campos, naoUsar = []) {
     const rotulos = {};
     for (const chave of Object.keys(CAMPOS)) rotulos[chave] = valorDe(campos, chave);
     rotulos.categoria_id = campos.categoria?.id || null;
     rotulos.centro_custo_id = campos.centro_custo?.id || null;
     rotulos.sem_comprovante = Boolean(campos.sem_comprovante?.valor);
+    const ignorados = [...new Set(naoUsar)].filter((chave) => CAMPOS_EXCLUIVEIS_DO_TREINO.includes(chave));
+    if (ignorados.length) rotulos._nao_usar_no_treino = ignorados;
     return rotulos;
 }
 
@@ -306,7 +312,7 @@ function mudarEstado(db, despesa, para, motivo, autor) {
  * Aprovacao humana. A despesa vira exemplo de treino validado.
  * NAO lanca no Conta Azul: o lancamento real e outra etapa, ainda desligada.
  */
-function aprovar(db, despesaId, autor) {
+function aprovar(db, despesaId, autor, { naoUsarNoTreino = [] } = {}) {
     const quem = String(autor || "").trim();
     if (!quem) throw new Error("Informe quem está aprovando.");
     const despesa = lerDespesa(db, despesaId);
@@ -319,7 +325,7 @@ function aprovar(db, despesaId, autor) {
         db.prepare(`INSERT INTO exemplos_treino (despesa_id, rotulos, entrada, aprovado_por, aprovado_em) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(despesa_id) DO UPDATE SET rotulos = excluded.rotulos, entrada = excluded.entrada,
                 aprovado_por = excluded.aprovado_por, aprovado_em = excluded.aprovado_em`)
-            .run(despesaId, json(rotulosDoExemplo(despesa.campos)), json(entradaDoExemplo(db, despesa)), quem, agora());
+            .run(despesaId, json(rotulosDoExemplo(despesa.campos, naoUsarNoTreino)), json(entradaDoExemplo(db, despesa)), quem, agora());
     });
     return lerDespesa(db, despesaId);
 }
@@ -355,6 +361,29 @@ function reabrir(db, despesaId, motivo, autor) {
         db.prepare("DELETE FROM exemplos_treino WHERE despesa_id = ?").run(despesaId);
     });
     return lerDespesa(db, despesaId);
+}
+
+/**
+ * Marca campos de exemplos JA aprovados como "nao valem para treino" (ex.:
+ * centro de custo e pagamento inventados em notas antigas).
+ */
+function marcarNaoUsarNoTreino(db, despesaIds, campos, autor) {
+    const quem = String(autor || "").trim();
+    if (!quem) throw new Error("Informe quem está alterando.");
+    const validos = campos.filter((chave) => CAMPOS_EXCLUIVEIS_DO_TREINO.includes(chave));
+    let alterados = 0;
+    transacao(db, () => {
+        for (const id of despesaIds) {
+            const exemplo = db.prepare("SELECT rotulos FROM exemplos_treino WHERE despesa_id = ?").get(id);
+            if (!exemplo) continue;
+            const rotulos = lerJson(exemplo.rotulos, {});
+            rotulos._nao_usar_no_treino = [...new Set([...(rotulos._nao_usar_no_treino || []), ...validos])];
+            db.prepare("UPDATE exemplos_treino SET rotulos = ? WHERE despesa_id = ?").run(json(rotulos), id);
+            registrarHistorico(db, id, "APROVADO", "APROVADO", `treino: nao usar ${validos.join(", ")} (${quem})`);
+            alterados += 1;
+        }
+    });
+    return { alterados };
 }
 
 /**
@@ -462,7 +491,8 @@ function detalhar(db, despesaId) {
  * aceitou sem mexer, separando erro de leitura de erro de classificacao.
  */
 function metricas(db) {
-    const aprovadas = db.prepare("SELECT id, campos, campos_originais FROM despesas WHERE estado = 'APROVADO'").all();
+    const aprovadas = db.prepare(`SELECT d.id, d.campos, d.campos_originais, e.rotulos FROM despesas d
+        LEFT JOIN exemplos_treino e ON e.despesa_id = d.id WHERE d.estado = 'APROVADO'`).all();
     const correcoesPorDespesa = new Map();
     for (const linha of db.prepare(`SELECT c.despesa_id, c.campo, c.tipo_erro FROM correcoes c
         JOIN despesas d ON d.id = c.despesa_id WHERE d.estado = 'APROVADO'`).all()) {
@@ -476,7 +506,9 @@ function metricas(db) {
         const original = lerJson(despesa.campos_originais, null) || final;
         const corrigidos = correcoesPorDespesa.get(despesa.id) || new Map();
         if (!corrigidos.size) semCorrecao += 1;
+        const ignorados = new Set(lerJson(despesa.rotulos, {})?._nao_usar_no_treino || []);
         for (const chave of Object.keys(CAMPOS)) {
+            if (ignorados.has(chave)) continue;
             const valorFinal = valorDe(final, chave);
             const valorIa = valorDe(original, chave);
             if (valorFinal == null && valorIa == null) continue;
@@ -514,5 +546,6 @@ function remetentesNaoVinculados(db) {
 module.exports = {
     CAMPOS, ESTADOS, ABAS, TIPOS_ERRO,
     opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados,
-    regenerar: regenerarPrevia, regenerarPendentes,
+    regenerar: regenerarPrevia, regenerarPendentes, marcarNaoUsarNoTreino, CAMPOS_EXCLUIVEIS_DO_TREINO,
+    valorDoCampo: valorDe,
 };

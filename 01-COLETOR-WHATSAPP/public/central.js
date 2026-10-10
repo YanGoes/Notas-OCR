@@ -20,6 +20,10 @@ const ORIGENS = {
     itens_da_nota: "itens da nota", horario_da_nota_pista: "pelo horário da nota (só pista)", horario_da_nota_confirmado_pelo_lote: "horário confirmado pela mensagem do dia",
     quantidade_do_lote_semantica_indeterminada: "\"Qtd\" da mensagem do dia (não confirmado)", texto: "mensagem", regra_especial_sem_categoria: "regra especial (sem categoria)",
 };
+Object.assign(ORIGENS, {
+    fornecedor_generico_do_tipo: "fornecedor padrão do tipo", itens_da_nota: "estimado pelos itens da nota (confirme)",
+    hospedes_na_nota: "hóspedes na nota (confirme)", texto_da_nota: "texto da nota", frota_por_semelhanca: "parecida com a frota",
+});
 const nomeOrigem = (codigo) => ORIGENS[codigo] || String(codigo).replaceAll("_", " ");
 const PAGAMENTOS_EXTRA = [["PIX", "PIX"], ["DINHEIRO", "Dinheiro"], ["CARTAO_DEBITO", "Cartão de débito"]];
 
@@ -170,7 +174,7 @@ const CAMPOS_ABASTECIMENTO = ["litros", "odometro", "placa"];
 function linhaCampo(campo, detalhe) {
     const tipoAtual = detalhe.valores.tipo;
     if (CAMPOS_ABASTECIMENTO.includes(campo.chave) && tipoAtual !== "ABASTECIMENTO" && detalhe.valores[campo.chave] == null) return null;
-    if (campo.chave === "pessoas" && !["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE"].includes(tipoAtual) && detalhe.valores.pessoas == null) return null;
+    if (campo.chave === "pessoas" && !["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE", "HOSPEDAGEM"].includes(tipoAtual) && detalhe.valores.pessoas == null) return null;
     const valor = detalhe.valores[campo.chave];
     const origem = origemDe(detalhe.campos, campo.chave);
     const entrada = controle(campo, valor, !detalhe.editavel);
@@ -183,10 +187,13 @@ function linhaCampo(campo, detalhe) {
                     el("input", { type: "radio", name: `erro-${campo.chave}`, value: tipo, checked: tipo === campo.erro_sugerido }),
                     tipo === "LEITURA" ? "leitura (OCR leu errado)" : "classificação (interpretou errado)")))));
     entrada.id = `c-${campo.chave}`;
-    const sugestao = campo.chave === "categoria" && !valor ? detalhe.campos.categoria?.sugestao : null;
-    if (sugestao && detalhe.editavel) {
+    const sugestao = valor ? null
+        : campo.chave === "categoria" ? detalhe.campos.categoria?.sugestao
+            : campo.chave === "placa" && detalhe.campos.abastecimento?.placa?.sugestao
+                ? { nome: detalhe.campos.abastecimento.placa.sugestao.valor, origem: detalhe.campos.abastecimento.placa.sugestao.origem } : null;
+    if (sugestao?.nome && detalhe.editavel) {
         const confianca = sugestao.confianca ? ` · ${Math.round(sugestao.confianca * 100)}% de confiança` : "";
-        const origemSugestao = sugestao.origem === "placa_fora_da_frota" ? "placa fora da frota" : "aprendido da planilha";
+        const origemSugestao = { placa_fora_da_frota: "placa fora da frota", frota_por_semelhanca: "placa parecida com a frota" }[sugestao.origem] || "aprendido da planilha";
         linha.querySelector(".entrada").insertBefore(el("div", { class: "sugestao" },
             `Sugestão (${origemSugestao}${confianca}): `, el("b", {}, sugestao.nome), " ",
             el("button", { type: "button", class: "secondary", onclick: () => {
@@ -210,16 +217,62 @@ function blocoFoto(detalhe) {
     if (!detalhe.imagem_url) {
         return el("div", { class: "foto" }, el("div", { class: "vazio" }, detalhe.midia ? "Imagem não encontrada nas pastas de dados." : "Despesa sem foto (informada só por mensagem)."));
     }
-    const img = el("img", { src: detalhe.imagem_url, alt: `Comprovante da despesa #${detalhe.id}` });
-    const caixa = el("div", { class: "foto" });
-    const girar = () => { estado.giro = (estado.giro + 90) % 360; img.style.transform = `rotate(${estado.giro}deg)`; };
-    img.addEventListener("click", () => caixa.classList.toggle("zoom"));
-    caixa.append(el("div", { class: "foto-acoes" },
-        el("button", { type: "button", class: "secondary", onclick: () => caixa.classList.toggle("zoom") }, "Zoom"),
-        el("button", { type: "button", class: "secondary", onclick: girar }, "Girar"),
-        el("a", { class: "voltar", href: detalhe.imagem_url, target: "_blank", rel: "noreferrer" }, "Abrir")), img);
-    return caixa;
+    return visualizadorDeFoto(detalhe.imagem_url, `Comprovante da despesa #${detalhe.id}`, false);
 }
+
+/**
+ * Foto com zoom em niveis (botoes, Ctrl+roda do mouse), arrastar para mover,
+ * girar e tela cheia — para ler a nota inteira sem cortar.
+ */
+function visualizadorDeFoto(url, alt, telaCheia) {
+    let zoom = 1;
+    const img = el("img", { src: url, alt, draggable: "false" });
+    const area = el("div", { class: "foto-area" }, img);
+    const rotulo = el("span", { class: "foto-zoom" }, "100%");
+    const aplicar = () => {
+        img.style.width = `${zoom * 100}%`;
+        img.style.transform = estado.giro ? `rotate(${estado.giro}deg)` : "";
+        rotulo.textContent = `${Math.round(zoom * 100)}%`;
+    };
+    const mudarZoom = (fator) => { zoom = Math.min(6, Math.max(0.5, zoom * fator)); aplicar(); };
+    area.addEventListener("wheel", (evento) => {
+        if (!evento.ctrlKey) return;
+        evento.preventDefault();
+        mudarZoom(evento.deltaY < 0 ? 1.2 : 1 / 1.2);
+    }, { passive: false });
+    // Arrastar com o mouse para andar pela nota ampliada.
+    let arrasto = null;
+    area.addEventListener("mousedown", (evento) => { arrasto = { x: evento.clientX, y: evento.clientY, esquerda: area.scrollLeft, topo: area.scrollTop }; area.classList.add("arrastando"); });
+    window.addEventListener("mouseup", () => { arrasto = null; area.classList.remove("arrastando"); });
+    area.addEventListener("mousemove", (evento) => {
+        if (!arrasto) return;
+        area.scrollLeft = arrasto.esquerda - (evento.clientX - arrasto.x);
+        area.scrollTop = arrasto.topo - (evento.clientY - arrasto.y);
+    });
+    img.addEventListener("dblclick", () => mudarZoom(zoom >= 2 ? 1 / zoom : 2));
+    const botoes = el("div", { class: "foto-acoes" },
+        el("button", { type: "button", class: "secondary", title: "Diminuir", onclick: () => mudarZoom(1 / 1.25) }, "−"),
+        rotulo,
+        el("button", { type: "button", class: "secondary", title: "Aumentar", onclick: () => mudarZoom(1.25) }, "+"),
+        el("button", { type: "button", class: "secondary", onclick: () => { zoom = 1; aplicar(); } }, "Ajustar"),
+        el("button", { type: "button", class: "secondary", onclick: () => { estado.giro = (estado.giro + 90) % 360; aplicar(); } }, "Girar"),
+        telaCheia
+            ? el("button", { type: "button", class: "primary", onclick: fecharTelaCheia }, "Fechar (Esc)")
+            : el("button", { type: "button", class: "secondary", onclick: () => abrirTelaCheia(url, alt) }, "Tela cheia"),
+        el("span", { class: "origem" }, "Ctrl + roda do mouse dá zoom · arraste para mover · duplo clique amplia"));
+    aplicar();
+    return el("div", { class: `foto${telaCheia ? " cheia" : ""}` }, botoes, area);
+}
+
+function abrirTelaCheia(url, alt) {
+    fecharTelaCheia();
+    const camada = el("div", { class: "tela-cheia", id: "telaCheia", role: "dialog", "aria-label": "Foto em tela cheia" }, visualizadorDeFoto(url, alt, true));
+    camada.addEventListener("click", (evento) => { if (evento.target === camada) fecharTelaCheia(); });
+    document.body.append(camada);
+}
+
+function fecharTelaCheia() { document.querySelector("#telaCheia")?.remove(); }
+document.addEventListener("keydown", (evento) => { if (evento.key === "Escape") fecharTelaCheia(); });
 
 function blocoLeitura(detalhe) {
     if (!detalhe.documento) return null;
@@ -256,6 +309,7 @@ function desenharDetalhe() {
         acoes.append(
             el("button", { type: "button", class: "secondary", onclick: () => executar(() => salvar(campos), "Correções salvas.") }, "Salvar correções"),
             el("button", { type: "button", class: "primary", onclick: () => executar(() => aprovar(campos), "Aprovada. Virou exemplo de treino.") }, "Salvar e aprovar"),
+            marcadorNaoUsar(),
             detalhe.correcoes.length ? null : el("button", { type: "button", class: "ghost", title: "Gera a prévia de novo com os cadastros atuais (sem chamar o OCR)", onclick: () => executar(regenerar, "Prévia gerada de novo.") }, "Regerar prévia"));
     } else {
         acoes.append(el("button", { type: "button", class: "secondary", onclick: () => executar(reabrir, "Reaberta para revisão.") },
@@ -313,11 +367,22 @@ async function salvar(campos) {
     await recarregar();
 }
 
+/** "Centro e pagamento nao sao reais" (notas antigas de teste): esses dois campos ficam fora do treino. */
+function marcadorNaoUsar() {
+    let marcado = false;
+    try { marcado = localStorage.getItem("vmac-nao-usar-centro-pagamento") === "1"; } catch (_) { /* sem armazenamento */ }
+    const caixa = el("input", { type: "checkbox", id: "naoUsarCentroPagamento", checked: marcado });
+    caixa.addEventListener("change", () => { try { localStorage.setItem("vmac-nao-usar-centro-pagamento", caixa.checked ? "1" : "0"); } catch (_) { /* ignora */ } });
+    return el("label", { class: "nao-usar", title: "Use em notas antigas/de teste em que o centro de custo e o cartão foram preenchidos sem certeza" },
+        caixa, " Centro de custo e pagamento não são reais (não usar no treino)");
+}
+
 async function aprovar(campos) {
     const autor = revisor();
     const alteracoes = alteracoesDe(campos);
     if (alteracoes.length) await api(`/despesas/${estado.selecionada}/corrigir`, { alteracoes, autor });
-    await api(`/despesas/${estado.selecionada}/aprovar`, { autor });
+    const naoUsar = document.querySelector("#naoUsarCentroPagamento")?.checked ? ["centro_custo", "pagamento"] : [];
+    await api(`/despesas/${estado.selecionada}/aprovar`, { autor, nao_usar_no_treino: naoUsar });
     estado.selecionada = null;
     await recarregar();
 }
