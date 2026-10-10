@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { analisarDocumento } = require("./azure-ocr");
+const cotaAzure = require("./cota-azure");
 const { interpretarLegenda, normalizar } = require("./legenda");
 const { classificar } = require("./classificador");
 const { hashArquivo, chaveFiscal, validar } = require("./validador");
@@ -166,6 +167,7 @@ async function processar(imagem, opcoes, aoProcessar) {
     let ocrCompleto;
     try {
         ocrCompleto = await analisarDocumento(imagem, Number(opcoes.timeout_azure_segundos || 180));
+        cotaAzure.registrar(ocrCompleto?.resposta_bruta?.analyzeResult?.pages?.length || 1, { limite: limiteAzure(opcoes) });
     } catch (erro) {
         if (/nao configurado|Azure 401|Azure 403|429|temporariamente|Tempo limite|timeout|aborted|fetch failed|ECONN|ENOTFOUND/i.test(erro.message)) throw erro;
         ocrCompleto = {
@@ -247,6 +249,17 @@ async function processar(imagem, opcoes, aoProcessar) {
     return final;
 }
 
+const limiteAzure = (opcoes) => (opcoes?.limite_paginas_azure_mes ?? cotaAzure.LIMITE_PADRAO);
+let ultimoAvisoCota = null;
+
+function avisarCotaEsgotada(cota, naFila) {
+    if (ultimoAvisoCota === cota.mes) return;
+    ultimoAvisoCota = cota.mes;
+    const texto = `Limite do Azure deste mês atingido (${cota.paginas} de ${cota.limite} páginas). ${naFila} foto(s) ficam esperando e serão lidas quando o mês virar.`;
+    console.warn(`Pipeline: ${texto}`);
+    try { require("./notificacoes").registrar({ titulo: "Leitura de notas pausada (limite do Azure)", texto, nivel: "atencao" }); } catch (_) { /* painel sem avisos */ }
+}
+
 async function processarPendentes(pastaEntrada, opcoes, aoProcessar) {
     if (executando) return;
     executando = true;
@@ -265,6 +278,12 @@ async function processarPendentes(pastaEntrada, opcoes, aoProcessar) {
             return Date.now() - recebidoEm >= esperaComentarioMs;
         });
         for (const nome of arquivos) {
+            // Plano gratuito do Azure: perto do limite do mes, a foto espera na fila.
+            const cota = cotaAzure.situacao({ limite: limiteAzure(opcoes) });
+            if (!cota.disponivel) {
+                avisarCotaEsgotada(cota, arquivos.length);
+                break;
+            }
             const imagem = path.join(pastaEntrada, nome);
             try { await processar(imagem, opcoes, aoProcessar); }
             catch (erro) {

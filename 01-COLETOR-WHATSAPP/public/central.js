@@ -453,7 +453,10 @@ async function carregarTreino() {
             el("article", {}, el("span", {}, "Exemplos validados"), el("strong", {}, m.exemplos_treino)),
             el("article", {}, el("span", {}, "Aprovadas sem nenhuma correção"), el("strong", {}, m.aprovadas ? pct(m.aprovadas_sem_correcao / m.aprovadas) : "—")),
             el("article", {}, el("span", {}, "Correções de leitura"), el("strong", {}, m.correcoes_por_tipo.LEITURA || 0)),
-            el("article", {}, el("span", {}, "Correções de classificação"), el("strong", {}, m.correcoes_por_tipo.CLASSIFICACAO || 0))),
+            el("article", {}, el("span", {}, "Correções de classificação"), el("strong", {}, m.correcoes_por_tipo.CLASSIFICACAO || 0)),
+            m.azure ? el("article", {}, el("span", {}, `Azure em ${m.azure.mes} (plano gratuito)`),
+                el("strong", {}, m.azure.limite ? `${m.azure.paginas} / ${m.azure.limite}` : m.azure.paginas),
+                el("span", {}, m.azure.disponivel ? "páginas lidas no mês" : "limite atingido: fotos esperando o próximo mês")) : null),
         m.aprovadas
             ? el("div", { class: "rolagem" }, el("table", { class: "tabela-metricas" },
                 el("thead", {}, el("tr", {}, ["Campo", "Avaliados", "IA acertou", "Acerto", "Erro de leitura", "Erro de classificação", "IA deixou vazio"].map((t) => el("th", {}, t)))),

@@ -35,6 +35,14 @@ function resumoPlanilha() {
     } catch (_) { return null; }
 }
 
+/** Uso do Azure no mes, com o limite do config (pipeline.limite_paginas_azure_mes). */
+function situacaoAzure() {
+    try {
+        const config = JSON.parse(fs.readFileSync(path.join(RAIZ, "config.json"), "utf8"));
+        return require("../cota-azure").situacao({ limite: config.pipeline?.limite_paginas_azure_mes ?? undefined });
+    } catch (_) { return require("../cota-azure").situacao(); }
+}
+
 function localizarArquivo(nome) {
     if (!nome || path.basename(nome) !== nome) return null;
     for (const pasta of PASTAS_IMAGEM) {
@@ -73,7 +81,7 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
     rotas.post("/despesas/:id/descartar", responder((req) => revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));
-    rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db()), planilha: resumoPlanilha() })));
+    rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db()), planilha: resumoPlanilha(), azure: situacaoAzure() })));
     rotas.get("/remetentes", responder(() => revisao.remetentesNaoVinculados(db())));
     rotas.post("/remetentes", responder((req) => revisao.vincularRemetente(db(), cad(), String(req.body?.whatsapp_id || ""),
         String(req.body?.pessoa_id || ""), { regras: regras() })));

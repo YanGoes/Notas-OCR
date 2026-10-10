@@ -191,3 +191,26 @@ test("centro de custo e pagamento marcados 'nao usar' saem das metricas e do exe
     assert.equal(m.por_campo.centro_custo, undefined);
     assert.ok(m.por_campo.valor);
 });
+
+// --- Cota do Azure (plano gratuito) -------------------------------------------
+
+test("cota mensal do Azure: conta paginas, bloqueia no limite e zera no mes seguinte", () => {
+    const os = require("os");
+    const path = require("path");
+    const fs = require("fs");
+    const cota = require("../src/cota-azure");
+    const arquivo = path.join(os.tmpdir(), `azure-uso-${process.pid}-${Date.now()}.json`);
+    try {
+        const outubro = new Date("2026-10-10T12:00:00Z");
+        assert.equal(cota.situacao({ limite: 3, arquivo, agora: outubro }).disponivel, true);
+        cota.registrar(1, { arquivo, agora: outubro, limite: 3 });
+        cota.registrar(2, { arquivo, agora: outubro, limite: 3 });
+        const cheia = cota.situacao({ limite: 3, arquivo, agora: outubro });
+        assert.equal(cheia.paginas, 3);
+        assert.equal(cheia.disponivel, false);
+        assert.equal(cota.situacao({ limite: 0, arquivo, agora: outubro }).disponivel, true, "limite 0 = sem limite (plano pago)");
+        const novembro = cota.situacao({ limite: 3, arquivo, agora: new Date("2026-11-01T08:00:00Z") });
+        assert.equal(novembro.paginas, 0);
+        assert.equal(novembro.disponivel, true);
+    } finally { fs.rmSync(arquivo, { force: true }); }
+});

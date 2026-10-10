@@ -27,7 +27,8 @@
     "modo": "simulacao",
     "intervalo_segundos": 10,
     "timeout_azure_segundos": 180,
-    "encaminhar_automaticamente_conta_ai": false
+    "encaminhar_automaticamente_conta_ai": false,
+    "limite_paginas_azure_mes": 450
   },
   "conclusao_automatica": {
     "habilitada": false,

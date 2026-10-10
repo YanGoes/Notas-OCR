@@ -2,10 +2,17 @@
 setlocal
 cd /d "%~dp0.."
 
-rem Abre a Central de revisao em modo treino:
-rem  - porta 3211 (nao conflita com o programa original, que usa a 3210);
-rem  - SEM conectar o WhatsApp (o original continua sendo o coletor oficial);
-rem  - nada e lancado no Conta Azul nem copiado para o Drive.
+rem Abre a Central de revisao em modo treino (porta 3211).
+rem  - Se a coleta da V2 (15_COLETAR_WHATSAPP_V2.bat) ja estiver aberta, so abre
+rem    a Central no navegador: ela ja esta rodando junto com a coleta.
+rem  - Senao, sobe so a Central, SEM conectar o WhatsApp.
+rem  - Nada e lancado no Conta Azul nem copiado para o Drive.
+
+netstat -ano | findstr /R /C:":3211 .*LISTENING" >nul
+if not errorlevel 1 (
+  start "" "http://127.0.0.1:3211/central.html"
+  exit /b 0
+)
 
 where node >nul 2>nul
 if errorlevel 1 (
