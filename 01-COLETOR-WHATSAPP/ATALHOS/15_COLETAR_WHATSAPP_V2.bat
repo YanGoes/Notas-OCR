@@ -10,7 +10,7 @@ rem Porta 3211. Painel: http://127.0.0.1:3211   Central: http://127.0.0.1:3211/c
 
 netstat -ano | findstr /R /C:":3210 .*LISTENING" >nul
 if not errorlevel 1 (
-  echo O PROGRAMA ORIGINAL ESTA ABERTO (porta 3210).
+  echo O PROGRAMA ORIGINAL ESTA ABERTO - porta 3210.
   echo Feche o original antes: os dois coletando ao mesmo tempo leem cada foto
   echo duas vezes e gastam o limite do Azure em dobro.
   pause

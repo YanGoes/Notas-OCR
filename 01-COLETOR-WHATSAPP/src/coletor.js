@@ -10,12 +10,12 @@ const { normalizar } = require("./legenda");
 const { concluirDocumento } = require("./conclusao-automatica");
 const notificacoes = require("./notificacoes");
 const { arquivar } = require("./arquivo-drive");
+const conexao = require("./whatsapp-conexao");
+const baileys = require("@whiskeysockets/baileys");
 const {
     default: makeWASocket,
     useMultiFileAuthState,
-    DisconnectReason,
     downloadMediaMessage,
-    fetchLatestBaileysVersion,
     Browsers,
 } = require("@whiskeysockets/baileys");
 
@@ -565,7 +565,9 @@ async function processar(socket, pacote) {
     try {
         const idGrupo = String(pacote.key?.remoteJid || "");
         if (!idGrupo.endsWith("@g.us") || !pacote.message) return;
-        if (gruposPermitidos.size && !gruposPermitidos.has(idGrupo)) return;
+        // So grupos marcados no painel. Nenhum marcado = nenhum processado (antes,
+        // lista vazia processava TODOS os grupos do numero e gastava o Azure).
+        if (!gruposPermitidos.has(idGrupo)) return;
 
         const timestamp = timestampNumero(pacote.messageTimestamp);
         const timestampMs = timestamp * 1000;
@@ -642,18 +644,20 @@ async function processar(socket, pacote) {
 
 let reconectando = false;
 let tentativasReconexao = 0;
+let qrSeguidos = 0;
 async function iniciar() {
     if (socketAtual && ["conectando", "conectado", "aguardando_qr", "aguardando_codigo"].includes(estado.status)) return;
+    // Conectar clicado pela pessoa (nao e reconexao automatica): conta de QR recomeca.
+    if (["desconectado", "erro"].includes(estado.status)) qrSeguidos = 0;
     deslogando = false;
     atualizarEstado({ status: "conectando", erro: null });
     const { state, saveCreds } = await useMultiFileAuthState(PASTA_SESSAO);
 
-    // Versao do WhatsApp Web: busca a atual e, sem internet, usa a embutida na
-    // biblioteca. Uma versao defasada faz o celular recusar o pareamento.
-    let versao;
-    try {
-        versao = (await fetchLatestBaileysVersion()).version;
-    } catch (_) { versao = undefined; }
+    // Versao do WhatsApp Web: a do SITE do WhatsApp (a lista do Baileys fica
+    // defasada e o celular recusa o vinculo). Ver src/whatsapp-conexao.js.
+    const { versao, origem: origemVersao } = await conexao.versaoWhatsAppWeb(baileys);
+    conexao.registrarLog("iniciando", { versao: versao?.join("."), origem: origemVersao, sessao_registrada: Boolean(state.creds?.registered) });
+    console.log(`WhatsApp Web versao ${versao ? versao.join(".") : "embutida"} (${origemVersao}).`);
 
     const socket = makeWASocket({
         auth: state,
@@ -673,13 +677,16 @@ async function iniciar() {
     });
     socket.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
         if (qr) {
-            atualizarEstado({ status: "aguardando_qr", qr, erro: null });
+            conexao.registrarLog("qr_gerado");
+            atualizarEstado({ status: "aguardando_qr", qr, qr_gerado_em: new Date().toISOString(), erro: estado.erro && /QR Code novo|renovado/.test(estado.erro) ? estado.erro : null });
             console.log("\nEscaneie o QR Code em WhatsApp > Aparelhos conectados > Conectar aparelho:\n");
             qrcode.generate(qr, { small: true });
         }
         if (connection === "open") {
             reconectando = false;
             tentativasReconexao = 0;
+            qrSeguidos = 0;
+            conexao.registrarLog("conectado", { usuario: socket.user?.id ? "ok" : null });
             atualizarEstado({ status: "conectado", qr: null, conectado_desde: new Date().toISOString(), erro: null });
             console.log(`\nCOLETOR ATIVO\nPasta de saida: ${config.pasta_saida}\nAguardando novas fotos...\n`);
         }
@@ -688,11 +695,34 @@ async function iniciar() {
         if (connection === "close") {
             socketAtual = null;
             const codigo = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
-            if (deslogando || codigo === DisconnectReason.loggedOut) {
-                if (fs.existsSync(PASTA_SESSAO)) fs.rmSync(PASTA_SESSAO, { recursive: true, force: true });
-                atualizarEstado({ status: "desconectado", qr: null, conectado_desde: null });
-                console.error("Sessao desconectada pelo WhatsApp. Clique em Conectar para gerar um novo QR Code.");
-            } else if (!reconectando) {
+            const diagnostico = conexao.diagnosticarQueda(codigo, {
+                saidaPedida: deslogando, registrado: Boolean(state.creds?.registered), statusAnterior: estado.status,
+            });
+            conexao.registrarLog("queda", { codigo: codigo ?? null, motivo: lastDisconnect?.error?.message || null, status_anterior: estado.status, acao: diagnostico.acao });
+            if (diagnostico.mensagem) console.log(`WhatsApp: ${diagnostico.mensagem} (codigo ${codigo ?? "?"})`);
+            if (diagnostico.limparSessao && fs.existsSync(PASTA_SESSAO)) fs.rmSync(PASTA_SESSAO, { recursive: true, force: true });
+
+            if (diagnostico.acao === "PARAR") {
+                atualizarEstado({ status: deslogando ? "desconectado" : codigo === 440 || codigo === 403 ? "erro" : "desconectado",
+                    qr: null, conectado_desde: null, erro: diagnostico.mensagem });
+                return;
+            }
+            if (diagnostico.acao === "RECONECTAR_JA" || diagnostico.acao === "NOVO_QR") {
+                // Muitos QR seguidos sem leitura: para e espera a pessoa clicar em Conectar
+                // (ninguem na frente do computador nao deve gerar QR para sempre).
+                if (diagnostico.acao === "NOVO_QR" && ++qrSeguidos > 4) {
+                    qrSeguidos = 0;
+                    atualizarEstado({ status: "desconectado", qr: null, erro: "Nenhum QR Code foi lido a tempo. Clique em Conectar quando estiver com o celular em mãos." });
+                    return;
+                }
+                atualizarEstado({ status: "conectando", qr: null, erro: diagnostico.mensagem });
+                setTimeout(() => iniciar().catch((erro) => {
+                    console.error("Reconexao falhou:", erro?.message || erro);
+                    atualizarEstado({ status: "erro", erro: erro?.message || String(erro) });
+                }), diagnostico.acao === "RECONECTAR_JA" ? 500 : 1500);
+                return;
+            }
+            if (!reconectando) {
                 // Se a propria tentativa de reconexao cair, este bloco roda de
                 // novo e agenda outra tentativa (antes o status travava em
                 // "reconectando" para sempre). Espera cresce ate 60 s.
