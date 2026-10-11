@@ -59,6 +59,8 @@ const RE_ROTULO_CENTRO = /^\s*(?:centro\s*(?:de\s*)?custos?|projeto|obra|cc)\b\s
 const RE_QUANTIDADE = /^\s*(?:qtd\.?|qtde\.?|quantidade)?\s*[:\-]?\s*(\d{1,3})\s*[x-]?\s+(.+)$/i;
 const RE_QTD_SEM_NUMERO = /^\s*(?:qtd\.?|qtde\.?|quantidade)\s*[:\-]?\s*(\D.*)$/i;
 const RE_PESSOAS = /(\d{1,3})\s*(?:pessoas?|pessoa|pax|funcionarios?|colaboradores?)\b/i;
+// Formato com rotulo, como no padrao pedido aos operadores: "Pessoas: 4", "Qtd de pessoas: 4".
+const RE_PESSOAS_ROTULO = /^\s*(?:(?:qtd\.?|qtde\.?|quantidade|n[ºo°]?)\s*(?:de\s*)?)?(?:pessoas?|pax|funcionarios?|colaboradores?)\s*[:\-=]\s*(\d{1,3})\b/i;
 const RE_VALOR = /^\s*valor\s*[:\-]?\s*(?:r\$)?\s*([\d.,]+)/i;
 const RE_OBS = /^\s*(?:observa[cç](?:[aã]o|[oõ]es)|obs\.?)\s*[:,\-]?\s*(.*)$/i;
 const RE_PAGAMENTO = /^\s*(?:pagamento|forma\s*de\s*pagamento|conta\/?cart[aã]o|cart[aã]o|conta)\s*[:\-]\s*(.+)$/i;
@@ -153,7 +155,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
             continue;
         }
 
-        const pessoas = linha.match(RE_PESSOAS);
+        const pessoas = linha.match(RE_PESSOAS) || linha.match(RE_PESSOAS_ROTULO);
         if (pessoas) {
             dados.pessoas = { quantidade: Number(pessoas[1]), tipo: tipoDoTexto(linha), semantica: "PESSOAS", origem: "texto" };
             const tipo = tipoDoTexto(linha);

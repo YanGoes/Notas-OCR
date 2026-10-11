@@ -656,7 +656,7 @@ async function iniciar() {
     // Versao do WhatsApp Web: a do SITE do WhatsApp (a lista do Baileys fica
     // defasada e o celular recusa o vinculo). Ver src/whatsapp-conexao.js.
     const { versao, origem: origemVersao } = await conexao.versaoWhatsAppWeb(baileys);
-    conexao.registrarLog("iniciando", { versao: versao?.join("."), origem: origemVersao, sessao_registrada: Boolean(state.creds?.registered) });
+    conexao.registrarLog("iniciando", { versao: versao?.join("."), origem: origemVersao, sessao_registrada: Boolean(state.creds?.registered || state.creds?.me?.id) });
     console.log(`WhatsApp Web versao ${versao ? versao.join(".") : "embutida"} (${origemVersao}).`);
 
     const socket = makeWASocket({
@@ -696,7 +696,7 @@ async function iniciar() {
             socketAtual = null;
             const codigo = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
             const diagnostico = conexao.diagnosticarQueda(codigo, {
-                saidaPedida: deslogando, registrado: Boolean(state.creds?.registered), statusAnterior: estado.status,
+                saidaPedida: deslogando, registrado: Boolean(state.creds?.registered || state.creds?.me?.id), statusAnterior: estado.status,
             });
             conexao.registrarLog("queda", { codigo: codigo ?? null, motivo: lastDisconnect?.error?.message || null, status_anterior: estado.status, acao: diagnostico.acao });
             if (diagnostico.mensagem) console.log(`WhatsApp: ${diagnostico.mensagem} (codigo ${codigo ?? "?"})`);

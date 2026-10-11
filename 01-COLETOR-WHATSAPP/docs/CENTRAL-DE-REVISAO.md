@@ -7,10 +7,11 @@ A Central mostra cada despesa que a IA montou a partir das fotos do WhatsApp, ao
 ## Como abrir
 
 1. Dê dois cliques em `ATALHOS/13_ABRIR_CENTRAL_REVISAO.bat`.
-2. O atalho traz as notas novas que o programa original já leu. Ele só lê a pasta do original e não chama o Azure de novo.
-3. Em seguida, a Central abre em `http://127.0.0.1:3211/central.html`.
+2. A Central abre em `http://127.0.0.1:3211/central.html`.
 
-O atalho usa a porta 3211 e não conecta o WhatsApp, então pode ficar aberto junto com o programa original (porta 3210).
+Com a coleta aberta (`ATALHOS/15_COLETAR_WHATSAPP.bat`), a Central já está rodando junto, e o atalho 13 só abre o navegador. Com a coleta fechada, o atalho 13 sobe só a Central, sem conectar o WhatsApp, para revisar o que já chegou.
+
+Para trazer notas lidas em outra instalação do programa, sem chamar o Azure de novo, use `npm run central:importar -- --origem <pasta dados>`.
 
 ## Abas
 

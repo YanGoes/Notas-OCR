@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0.."
 
 rem Abre a Central de revisao em modo treino (porta 3211).
-rem  - Se a coleta da V2 (15_COLETAR_WHATSAPP_V2.bat) ja estiver aberta, so abre
+rem  - Se a coleta (15_COLETAR_WHATSAPP.bat) ja estiver aberta, so abre
 rem    a Central no navegador: ela ja esta rodando junto com a coleta.
 rem  - Senao, sobe so a Central, SEM conectar o WhatsApp.
 rem  - Nada e lancado no Conta Azul nem copiado para o Drive.
@@ -22,14 +22,10 @@ if errorlevel 1 (
 )
 
 if not exist "config.json" (
-  echo ERRO: config.json nao encontrado nesta copia. Copie config.exemplo.json para config.json.
+  echo ERRO: config.json nao encontrado. Copie config.exemplo.json para config.json.
   pause
   exit /b 1
 )
-
-echo Trazendo para a Central as notas novas lidas pelo programa original (somente leitura)...
-call node ferramentas\importar-para-central.js
-echo.
 
 set "PORT=3211"
 set "NAO_CONECTAR_WHATSAPP=1"

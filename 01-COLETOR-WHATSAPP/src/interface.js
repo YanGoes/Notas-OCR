@@ -24,7 +24,7 @@ const {
 
 const RAIZ = path.resolve(__dirname, "..");
 const app = express();
-const porta = Number(process.env.PORT || 3210);
+const porta = Number(process.env.PORT || 3211);
 // O upload manual manda a foto em base64 (fotos de celular passam de 5 MB);
 // as demais rotas continuam com limite pequeno.
 app.use("/api/documentos/upload", express.json({ limit: "15mb" }));
@@ -356,6 +356,31 @@ app.use("/api/central", criarRotasCentral());
 
 app.use((erro, _req, res, _next) => res.status(400).json({ erro: erro.message || "Erro inesperado." }));
 app.get("*splat", (_req, res) => res.sendFile(path.join(RAIZ, "public", "index.html")));
+
+// Trava de instancia unica do WHATSAPP, independente da porta: duas copias
+// usando a mesma sessao derrubam uma a outra (o WhatsApp avisa "conexao
+// substituida"). A segunda copia se recusa a subir e diz qual esta aberta.
+const ARQUIVO_TRAVA = path.join(RAIZ, "dados", "whatsapp-instancia.lock");
+function processoVivo(pid) {
+    try { process.kill(pid, 0); return true; } catch (erro) { return erro.code === "EPERM"; }
+}
+if (process.env.NAO_CONECTAR_WHATSAPP !== "1") {
+    try {
+        const trava = JSON.parse(fs.readFileSync(ARQUIVO_TRAVA, "utf8"));
+        if (trava.pid && trava.pid !== process.pid && processoVivo(trava.pid)) {
+            console.error(`\nO programa JA ESTA COLETANDO o WhatsApp nesta maquina (painel http://127.0.0.1:${trava.porta}, aberto em ${trava.desde}).`
+                + "\nUse a janela que ja esta aberta. Duas copias ao mesmo tempo derrubam a conexao uma da outra.\n");
+            process.exit(1);
+        }
+    } catch (_) { /* sem trava ou trava antiga: segue */ }
+    fs.mkdirSync(path.dirname(ARQUIVO_TRAVA), { recursive: true });
+    fs.writeFileSync(ARQUIVO_TRAVA, JSON.stringify({ pid: process.pid, porta, desde: new Date().toISOString() }), "utf8");
+    const liberar = () => {
+        try { if (JSON.parse(fs.readFileSync(ARQUIVO_TRAVA, "utf8")).pid === process.pid) fs.rmSync(ARQUIVO_TRAVA, { force: true }); } catch (_) { /* ja liberada */ }
+    };
+    process.on("exit", liberar);
+    for (const sinal of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sinal, () => { liberar(); process.exit(0); });
+}
 
 const servidor = app.listen(porta, "127.0.0.1", () => {
     const url = `http://127.0.0.1:${porta}`;

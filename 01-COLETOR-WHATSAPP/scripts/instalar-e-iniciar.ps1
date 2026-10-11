@@ -8,8 +8,14 @@ function Atualizar-Path {
     $env:Path = "$machinePath;$userPath"
 }
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "Node.js nao encontrado. Instalando a versao LTS..." -ForegroundColor Yellow
+# A Central usa o banco SQLite embutido do Node (node:sqlite), que exige
+# Node 22.5 ou mais novo. Versao antiga instalada tambem e atualizada.
+$versaoAtual = $null
+if (Get-Command node -ErrorAction SilentlyContinue) { $versaoAtual = [version]((& node --version).TrimStart("v")) }
+$precisaInstalar = (-not $versaoAtual) -or ($versaoAtual -lt [version]"22.5.0")
+if ($precisaInstalar) {
+    if ($versaoAtual) { Write-Host "Node.js $versaoAtual e antigo demais (precisa 22.5 ou mais novo). Atualizando para a versao LTS..." -ForegroundColor Yellow }
+    else { Write-Host "Node.js nao encontrado. Instalando a versao LTS..." -ForegroundColor Yellow }
 
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         throw "Nao foi possivel instalar o Node.js automaticamente. Instale a versao LTS em https://nodejs.org e execute o INICIAR.bat novamente."

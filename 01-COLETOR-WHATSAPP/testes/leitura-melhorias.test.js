@@ -214,3 +214,15 @@ test("cota mensal do Azure: conta paginas, bloqueia no limite e zera no mes segu
         assert.equal(novembro.disponivel, true);
     } finally { fs.rmSync(arquivo, { force: true }); }
 });
+
+test("mensagem do operador no formato com rotulo: 'Pessoas: 4', 'Projeto:', 'Cartão:'", () => {
+    const { interpretar } = require("../src/central/interpretador");
+    const c = { pessoas: [], projetos: [{ nome_oficial: "ROTA DO PEQUI", ativo: true, apelidos: ["Rota do Pequi"] }], centros: [], veiculos: [],
+        cartoes: [{ codigo: "C6", rotulo: "CRÉDITO C6", forma_pagamento: "CARTAO_CREDITO", apelidos: ["c6"] }], categorias: [], fornecedores: { recorrentes: [] } };
+    const r = interpretar(c, { texto: "Almoço\nPessoas: 4\nProjeto: Rota do Pequi\nCartão: C6", temMidia: true });
+    assert.equal(r.dados.pessoas.quantidade, 4);
+    assert.equal(r.dados.projeto_texto, "Rota do Pequi");
+    assert.equal(r.dados.pagamento.cartao, "C6");
+    assert.deepEqual(r.dados.linhas_nao_entendidas, []);
+    assert.equal(interpretar(c, { texto: "Qtd de pessoas: 3", temMidia: true }).dados.pessoas.quantidade, 3);
+});

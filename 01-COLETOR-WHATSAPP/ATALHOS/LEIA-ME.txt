@@ -44,7 +44,7 @@ OUTROS
                                   Veja ..docsCENTRAL-DE-REVISAO.md.
   14_TREINAR_CENTRAL.bat          Treina e mede a categoria com a planilha do
                                   Conta Azul. Resultado na aba Treino da Central.
-  15_COLETAR_WHATSAPP_V2.bat      Coleta fotos e mensagens dos grupos pela V2
+  15_COLETAR_WHATSAPP.bat      Coleta fotos e mensagens dos grupos
                                   (porta 3211). Nao lanca, nao copia para o
                                   Drive e nao escreve nos grupos. Feche o
                                   programa original antes.

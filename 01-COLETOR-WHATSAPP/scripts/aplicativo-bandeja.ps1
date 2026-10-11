@@ -4,7 +4,7 @@ Add-Type -AssemblyName System.Drawing
 
 $raizProjeto = Split-Path -Parent $PSScriptRoot
 $node = "C:\Program Files\nodejs\node.exe"
-$urlPainel = "http://127.0.0.1:3210"
+$urlPainel = "http://127.0.0.1:3211"
 $processoNode = $null
 
 if (-not (Test-Path -LiteralPath $node)) {
@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $node)) {
 function Porta-Ativa {
     try {
         $cliente = New-Object Net.Sockets.TcpClient
-        $resultado = $cliente.BeginConnect("127.0.0.1", 3210, $null, $null)
+        $resultado = $cliente.BeginConnect("127.0.0.1", 3211, $null, $null)
         $ok = $resultado.AsyncWaitHandle.WaitOne(500)
         if ($ok) { $cliente.EndConnect($resultado) }
         $cliente.Close()
