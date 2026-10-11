@@ -16,7 +16,11 @@
 const fs = require("fs");
 const path = require("path");
 
-const ARQUIVO = path.resolve(__dirname, "..", "dados", "azure-uso.json");
+// Nos testes automaticos (node --test) o contador vai para um arquivo
+// temporario: leitura simulada nao pode gastar a cota real do mes.
+const ARQUIVO = process.env.NODE_TEST_CONTEXT
+    ? path.join(require("os").tmpdir(), `vmac-azure-uso-teste-${process.pid}.json`)
+    : path.resolve(__dirname, "..", "dados", "azure-uso.json");
 const LIMITE_PADRAO = 450;
 
 const mesAtual = (agora = new Date()) => agora.toISOString().slice(0, 7);
