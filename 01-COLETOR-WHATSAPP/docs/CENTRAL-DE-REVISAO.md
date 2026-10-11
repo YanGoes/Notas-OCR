@@ -27,9 +27,13 @@ Para trazer notas lidas em outra instalação do programa, sem chamar o Azure de
 
 1. Escreva seu nome em **Revisor** (topo da página). Toda correção e aprovação fica registrada com ele.
 2. Compare a foto com os campos. Embaixo de cada campo aparece de onde o valor veio: lido na nota, legenda da foto, orientação da gerência etc.
-3. Ao mudar um campo, escolha o tipo de erro:
+3. Ao mudar um campo, aparece o **motivo da correção**:
    - **Leitura**: o OCR leu errado o que está impresso (valor, data, placa, litros, hodômetro, fornecedor).
    - **Classificação**: a leitura estava certa, mas a interpretação não (tipo, categoria, centro de custo, pagamento, pessoas, descrição).
+   - **Não informado**: a informação não existia, por exemplo quando o operador não disse o cartão ou a nota não tem a placa. Não conta como erro da IA, mas mostra o que falta pedir aos operadores. Quando o campo era vazio e só o operador pode informar (pagamento, centro de custo, pessoas), este motivo já vem marcado.
+   - **Outro**: qualquer outra situação. Neste caso, a explicação é obrigatória.
+
+   Abaixo do motivo há um campo para **explicar o erro com suas palavras** (por exemplo, "operador mandou o cartão no dia seguinte"). A explicação fica guardada com a correção e entra no exemplo de treino.
 4. Escolha um destes botões:
    - **Salvar correções**: grava sem aprovar.
    - **Salvar e aprovar**: grava e aprova. Data, valor, tipo, descrição, categoria e centro de custo são obrigatórios.
@@ -71,7 +75,7 @@ Tudo fica em `dados/central.db` (SQLite, fora do Git). As fotos importadas ficam
 |---|---|
 | `despesas.campos_originais` | A prévia exatamente como a IA gerou |
 | `despesas.campos` | A versão atual, com as correções |
-| `correcoes` | Cada campo corrigido: antes, depois, tipo de erro, autor e data |
+| `correcoes` | Cada campo corrigido: antes, depois, motivo, explicação, autor e data |
 | `exemplos_treino` | Só despesas aprovadas: entrada (leitura do OCR, mensagem, prévia da IA) e rótulos (valores finais aprovados) |
 
 ## Treino com a planilha do Conta Azul

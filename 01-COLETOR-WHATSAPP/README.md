@@ -104,7 +104,7 @@ Endereço: http://127.0.0.1:3211/central.html. O manual completo está em [docs/
 
 - **Abas:** para revisar, classificadas, aprovadas, duplicadas/descartadas, treino e centros de custo.
 - **Tela da despesa:** a foto fica ao lado dos campos, com zoom, girar e tela cheia. Cada campo mostra de onde veio o valor.
-- **Correções:** cada correção registra se foi erro de **leitura** (o OCR leu errado) ou de **classificação** (interpretou errado).
+- **Correções:** cada correção registra o motivo, que pode ser **leitura** (o OCR leu errado), **classificação** (interpretou errado), **não informado** (faltou na mensagem ou na nota, e não conta como erro da IA) ou **outro**, e uma explicação livre para a IA entender o que errou.
 - **Aprovar** transforma a despesa em exemplo de treino. A caixa "Centro de custo e pagamento não são reais" tira esses dois campos do treino, para notas antigas ou de teste.
 - **Centros de custo:** cadastro de projetos com situação, centro no Conta Azul e apelidos, com histórico de quem alterou.
 - **Remetentes não reconhecidos** aparecem numa faixa, para dizer quem é cada número.

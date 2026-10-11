@@ -188,6 +188,11 @@ const MIGRACOES = [
         em TEXT NOT NULL
     );
     `,
+    // 4 — Explicacao livre de cada correcao ("o operador nao disse o cartao"),
+    // para a IA entender o que errou. Tipos novos: NAO_INFORMADO e OUTRO.
+    `
+    ALTER TABLE correcoes ADD COLUMN observacao TEXT;
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

@@ -256,3 +256,34 @@ test("placa fora da frota sugere VEICULO - ALUGADO", () => {
     assert.equal(previa.campos.categoria.sugestao.nome, "VEICULO - ALUGADO");
     assert.equal(previa.campos.categoria.nome, null);
 });
+
+// --- Motivo da correcao: nao informado, outro e explicacao livre --------------
+
+test("campo que so o operador informa e estava vazio: motivo sugerido e 'nao informado'", () => {
+    assert.equal(revisao.erroSugerido("pagamento", null), "NAO_INFORMADO");
+    assert.equal(revisao.erroSugerido("centro_custo", null), "NAO_INFORMADO");
+    assert.equal(revisao.erroSugerido("pagamento", "INTER"), "CLASSIFICACAO", "trocar o cartao informado e outra coisa");
+    assert.equal(revisao.erroSugerido("valor", null), "LEITURA");
+});
+
+test("correcao guarda o motivo e a explicacao; 'outro' exige explicacao", () => {
+    const { db, cad, id } = cenario({ legenda: "Jantar 2 pessoas\nBR020" });
+    assert.throws(() => revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "INTER", tipo_erro: "OUTRO" }], "Yan"), /escreva qual foi o erro/);
+    revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "INTER", observacao: "  operador não disse   o cartão " }], "Yan");
+    const linha = db.prepare("SELECT tipo_erro, observacao FROM correcoes WHERE despesa_id = ?").get(id);
+    assert.equal(linha.tipo_erro, "NAO_INFORMADO");
+    assert.equal(linha.observacao, "operador não disse o cartão");
+    assert.equal(revisao.detalhar(db, id).correcoes[0].observacao, "operador não disse o cartão");
+});
+
+test("'nao informado' nao conta como erro da IA no acerto, e vai para o exemplo de treino", () => {
+    const { db, cad, id } = cenario({ legenda: "Jantar 2 pessoas\nBR020" });
+    revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "INTER", tipo_erro: "NAO_INFORMADO", observacao: "faltou o cartão na mensagem" }], "Yan");
+    revisao.aprovar(db, id, "Yan");
+    const m = revisao.metricas(db);
+    assert.equal(m.por_campo.pagamento.nao_informado, 1);
+    assert.equal(m.por_campo.pagamento.erros_classificacao, 0);
+    assert.equal(m.por_campo.pagamento.acuracia, null, "sem casos em que a IA podia acertar");
+    const entrada = JSON.parse(db.prepare("SELECT entrada FROM exemplos_treino").get().entrada);
+    assert.deepEqual(entrada.correcoes_da_revisao, [{ campo: "pagamento", motivo: "NAO_INFORMADO", explicacao: "faltou o cartão na mensagem" }]);
+});

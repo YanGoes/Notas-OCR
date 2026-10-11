@@ -18,7 +18,24 @@ const { lerDespesa, regenerarPrevia, registrarHistorico, ESTADOS_REGERAVEIS } = 
 const { TIPOS, descricaoAbastecimento, descricaoRefeicao } = require("./regras-vmac");
 const { normalizar } = require("./texto");
 
-const TIPOS_ERRO = ["LEITURA", "CLASSIFICACAO"];
+// Motivo de cada correcao. NAO_INFORMADO = a informacao nao existia (o
+// operador nao disse o cartao, a nota nao tem a placa): nao e erro da IA, e
+// sim o que falta pedir. OUTRO exige explicacao escrita.
+const TIPOS_ERRO = ["LEITURA", "CLASSIFICACAO", "NAO_INFORMADO", "OUTRO"];
+const ROTULOS_ERRO = {
+    LEITURA: "Leitura (OCR leu errado)",
+    CLASSIFICACAO: "Classificação (entendeu errado)",
+    NAO_INFORMADO: "Não informado (faltou a informação)",
+    OUTRO: "Outro (explique abaixo)",
+};
+// Campos que so o operador informa: vazio na previa = provavelmente nao informado.
+const INFORMADOS_PELO_OPERADOR = new Set(["pagamento", "centro_custo", "pessoas"]);
+
+/** Motivo sugerido para uma correcao (a pessoa pode trocar). */
+function erroSugerido(chave, anterior) {
+    if ((anterior === null || anterior === undefined || anterior === "") && INFORMADOS_PELO_OPERADOR.has(chave)) return "NAO_INFORMADO";
+    return CAMPOS[chave]?.erro || "CLASSIFICACAO";
+}
 const ESTADOS = {
     AGUARDANDO_REVISAO: "AGUARDANDO_REVISAO",
     CLASSIFICADO: "CLASSIFICADO",
@@ -112,7 +129,8 @@ function opcoes(cad) {
         centros: opcoesCentro(cad),
         cartoes: (cad.cartoes || []).map((cartao) => ({ codigo: cartao.codigo, rotulo: cartao.rotulo, forma: cartao.forma_pagamento })),
         pessoas: (cad.pessoas || []).map((pessoa) => ({ id: pessoa.id, nome: pessoa.nome })),
-        tipos_erro: TIPOS_ERRO,
+        tipos_erro: TIPOS_ERRO.map((codigo) => ({ codigo, rotulo: ROTULOS_ERRO[codigo] })),
+        informados_pelo_operador: [...INFORMADOS_PELO_OPERADOR],
     };
 }
 
@@ -225,7 +243,8 @@ function atualizarDescricao(campos) {
 /**
  * Corrige um ou mais campos de uma despesa em revisao.
  *
- * @param {Array<{campo:string, valor:any, tipo_erro?:string}>} alteracoes
+ * @param {Array<{campo:string, valor:any, tipo_erro?:string, observacao?:string}>} alteracoes
+ *   `observacao`: explicacao livre do erro (obrigatoria quando tipo_erro = OUTRO)
  * @param {string} autor — quem corrigiu (obrigatorio)
  */
 function corrigir(db, cad, despesaId, alteracoes, autor) {
@@ -241,21 +260,24 @@ function corrigir(db, cad, despesaId, alteracoes, autor) {
     for (const alteracao of alteracoes) {
         const chave = String(alteracao?.campo || "");
         if (!CAMPOS[chave]) throw new Error(`Campo não editável: ${chave}.`);
-        const tipoErro = alteracao.tipo_erro || CAMPOS[chave].erro;
-        if (!TIPOS_ERRO.includes(tipoErro)) throw new Error(`Tipo de erro inválido: ${tipoErro}.`);
         const novo = normalizarValor(chave, alteracao.valor);
         const anterior = valorDe(campos, chave);
+        const tipoErro = alteracao.tipo_erro || erroSugerido(chave, anterior);
+        if (!TIPOS_ERRO.includes(tipoErro)) throw new Error(`Tipo de erro inválido: ${tipoErro}.`);
+        const observacao = String(alteracao.observacao || "").replace(/\s+/g, " ").trim();
+        if (observacao.length > 300) throw new Error(`${CAMPOS[chave].rotulo}: explicação longa demais (máximo 300 caracteres).`);
+        if (tipoErro === "OUTRO" && !observacao) throw new Error(`${CAMPOS[chave].rotulo}: escreva qual foi o erro (motivo "Outro").`);
         if (iguais(anterior, novo)) continue;
         aplicar(cad, campos, chave, novo);
-        registros.push({ chave, anterior, novo, tipoErro });
+        registros.push({ chave, anterior, novo, tipoErro, observacao: observacao || null });
     }
     if (!registros.length) return { despesa, alteradas: 0 };
     atualizarDescricao(campos);
 
     transacao(db, () => {
-        const inserir = db.prepare(`INSERT INTO correcoes (despesa_id, campo, valor_anterior, valor_novo, tipo_erro, autor, em)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`);
-        for (const item of registros) inserir.run(despesaId, item.chave, json(item.anterior), json(item.novo), item.tipoErro, quem, agora());
+        const inserir = db.prepare(`INSERT INTO correcoes (despesa_id, campo, valor_anterior, valor_novo, tipo_erro, observacao, autor, em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+        for (const item of registros) inserir.run(despesaId, item.chave, json(item.anterior), json(item.novo), item.tipoErro, item.observacao, quem, agora());
         // Despesa antiga (antes da migracao 2) sem a previa original: guarda a de agora como base.
         db.prepare(`UPDATE despesas SET campos = ?, campos_originais = COALESCE(campos_originais, ?), revisado_por = ?, revisado_em = ?,
             atualizado_em = ? WHERE id = ?`).run(json(campos), json(despesa.campos), quem, agora(), agora(), despesaId);
@@ -284,6 +306,10 @@ function entradaDoExemplo(db, despesa) {
         mensagem: mensagem ? { texto: mensagem.texto, pessoa_id: mensagem.pessoa_id, enviada_em: mensagem.enviada_em } : null,
         lote: lote ? { ...lote, quantidades: lerJson(lote.quantidades, null), observacoes: lerJson(lote.observacoes, null) } : null,
         previa_da_ia: despesa.campos_originais || null,
+        // O que a pessoa corrigiu, com o motivo e a explicacao: diz a IA o que
+        // ela errou (e o que simplesmente nao foi informado).
+        correcoes_da_revisao: db.prepare("SELECT campo, tipo_erro, observacao FROM correcoes WHERE despesa_id = ? ORDER BY id").all(despesa.id)
+            .map((linha) => ({ campo: linha.campo, motivo: linha.tipo_erro, explicacao: linha.observacao || null })),
     };
 }
 
@@ -479,7 +505,7 @@ function detalhar(db, despesaId) {
         lote: lote ? { ...lote, quantidades: lerJson(lote.quantidades, null), observacoes: lerJson(lote.observacoes, null) } : null,
         outras_da_mesma_foto: irmas,
         historico: db.prepare("SELECT de, para, motivo, em FROM historico_estados WHERE despesa_id = ? ORDER BY id").all(despesaId),
-        correcoes: db.prepare("SELECT campo, valor_anterior, valor_novo, tipo_erro, autor, em FROM correcoes WHERE despesa_id = ? ORDER BY id").all(despesaId)
+        correcoes: db.prepare("SELECT campo, valor_anterior, valor_novo, tipo_erro, observacao, autor, em FROM correcoes WHERE despesa_id = ? ORDER BY id").all(despesaId)
             .map((linha) => ({ ...linha, valor_anterior: lerJson(linha.valor_anterior), valor_novo: lerJson(linha.valor_novo) })),
         editavel: EDITAVEIS.includes(despesa.estado),
         valores: Object.fromEntries(Object.keys(CAMPOS).map((chave) => [chave, valorDe(despesa.campos, chave)])),
@@ -515,15 +541,23 @@ function metricas(db) {
             // Descricao de template refeita so porque outro campo foi corrigido
             // e consequencia daquele erro, nao um erro proprio da descricao.
             if (chave === "descricao" && !corrigidos.has("descricao") && !iguais(valorIa, valorFinal)) continue;
-            const item = porCampo[chave] ||= { rotulo: CAMPOS[chave].rotulo, avaliados: 0, acertos: 0, ia_vazia: 0, erros_leitura: 0, erros_classificacao: 0 };
+            const item = porCampo[chave] ||= { rotulo: CAMPOS[chave].rotulo, avaliados: 0, acertos: 0, ia_vazia: 0,
+                erros_leitura: 0, erros_classificacao: 0, nao_informado: 0, outros: 0 };
             item.avaliados += 1;
             if (valorIa == null) item.ia_vazia += 1;
-            if (iguais(valorIa, valorFinal)) item.acertos += 1;
-            else if ((corrigidos.get(chave) || CAMPOS[chave].erro) === "LEITURA") item.erros_leitura += 1;
+            if (iguais(valorIa, valorFinal)) { item.acertos += 1; continue; }
+            const motivo = corrigidos.get(chave) || CAMPOS[chave].erro;
+            if (motivo === "LEITURA") item.erros_leitura += 1;
+            else if (motivo === "NAO_INFORMADO") item.nao_informado += 1;
+            else if (motivo === "OUTRO") item.outros += 1;
             else item.erros_classificacao += 1;
         }
     }
-    for (const item of Object.values(porCampo)) item.acuracia = item.avaliados ? item.acertos / item.avaliados : null;
+    // "Nao informado" nao e erro da IA (a informacao nao existia): fica fora da conta do acerto.
+    for (const item of Object.values(porCampo)) {
+        const base = item.avaliados - item.nao_informado;
+        item.acuracia = base > 0 ? item.acertos / base : null;
+    }
     const estados = Object.fromEntries(db.prepare("SELECT estado, COUNT(*) AS total FROM despesas GROUP BY estado").all().map((linha) => [linha.estado, linha.total]));
     const tiposErro = Object.fromEntries(db.prepare("SELECT tipo_erro, COUNT(*) AS total FROM correcoes GROUP BY tipo_erro").all().map((linha) => [linha.tipo_erro, linha.total]));
     return {
@@ -544,7 +578,7 @@ function remetentesNaoVinculados(db) {
 }
 
 module.exports = {
-    CAMPOS, ESTADOS, ABAS, TIPOS_ERRO,
+    CAMPOS, ESTADOS, ABAS, TIPOS_ERRO, erroSugerido,
     opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados,
     regenerar: regenerarPrevia, regenerarPendentes, marcarNaoUsarNoTreino, CAMPOS_EXCLUIVEIS_DO_TREINO,
     valorDoCampo: valorDe,

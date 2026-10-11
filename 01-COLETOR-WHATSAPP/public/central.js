@@ -25,6 +25,7 @@ Object.assign(ORIGENS, {
     hospedes_na_nota: "hóspedes na nota (confirme)", texto_da_nota: "texto da nota", frota_por_semelhanca: "parecida com a frota",
 });
 const nomeOrigem = (codigo) => ORIGENS[codigo] || String(codigo).replaceAll("_", " ");
+const MOTIVOS = { LEITURA: "leitura", CLASSIFICACAO: "classificação", NAO_INFORMADO: "não informado", OUTRO: "outro" };
 const PAGAMENTOS_EXTRA = [["PIX", "PIX"], ["DINHEIRO", "Dinheiro"], ["CARTAO_DEBITO", "Cartão de débito"]];
 
 // ---------------------------------------------------------------------------
@@ -171,6 +172,28 @@ function controle(campo, valor, desabilitado) {
 
 const CAMPOS_ABASTECIMENTO = ["litros", "odometro", "placa"];
 
+/**
+ * Motivo da correcao (aparece quando o campo e alterado): leitura,
+ * classificacao, nao informado ou outro, mais uma explicacao livre para a IA
+ * entender o que errou. Campo que so o operador informa e estava vazio ja vem
+ * como "nao informado".
+ */
+function blocoMotivo(campo, valorAtual) {
+    const vazio = valorAtual === null || valorAtual === undefined || valorAtual === "";
+    const sugerido = vazio && estado.opcoes.informados_pelo_operador?.includes(campo.chave) ? "NAO_INFORMADO" : campo.erro_sugerido;
+    const motivo = el("select", { class: "motivo-erro", "aria-label": `Motivo da correção de ${campo.rotulo}` },
+        estado.opcoes.tipos_erro.map((tipo) => el("option", { value: tipo.codigo, selected: tipo.codigo === sugerido }, tipo.rotulo)));
+    const explicacao = el("input", { class: "explicacao-erro", maxlength: 300, placeholder: "Explique o erro (opcional) — ex.: operador não disse o cartão" });
+    const ajustar = () => {
+        const outro = motivo.value === "OUTRO";
+        explicacao.placeholder = outro ? "Obrigatório: descreva qual foi o erro" : "Explique o erro (opcional) — ex.: operador não disse o cartão";
+        explicacao.required = outro;
+    };
+    motivo.addEventListener("change", ajustar);
+    ajustar();
+    return el("div", { class: "tipo-erro" }, el("span", {}, "Motivo da correção:"), motivo, explicacao);
+}
+
 function linhaCampo(campo, detalhe) {
     const tipoAtual = detalhe.valores.tipo;
     if (CAMPOS_ABASTECIMENTO.includes(campo.chave) && tipoAtual !== "ABASTECIMENTO" && detalhe.valores[campo.chave] == null) return null;
@@ -182,10 +205,7 @@ function linhaCampo(campo, detalhe) {
         el("label", { for: `c-${campo.chave}` }, campo.rotulo),
         el("div", { class: "entrada" }, entrada,
             el("span", { class: `origem ${origem === "correcao_humana" ? "humana" : ""}` }, origem ? nomeOrigem(origem) : "sem valor"),
-            el("div", { class: "tipo-erro" }, "Erro de:",
-                ["LEITURA", "CLASSIFICACAO"].map((tipo) => el("label", {},
-                    el("input", { type: "radio", name: `erro-${campo.chave}`, value: tipo, checked: tipo === campo.erro_sugerido }),
-                    tipo === "LEITURA" ? "leitura (OCR leu errado)" : "classificação (interpretou errado)")))));
+            blocoMotivo(campo, valor)));
     entrada.id = `c-${campo.chave}`;
     const sugestao = valor ? null
         : campo.chave === "categoria" ? detalhe.campos.categoria?.sugestao
@@ -324,7 +344,7 @@ function desenharDetalhe() {
     const historico = el("details", { class: "leitura" }, el("summary", {}, `Histórico (${detalhe.historico.length}) e correções (${detalhe.correcoes.length})`),
         el("ul", { class: "historico" },
             detalhe.historico.map((h) => el("li", {}, `${dataHora(h.em)} · ${h.de || "—"} → ${h.para}${h.motivo ? ` (${h.motivo})` : ""}`)),
-            detalhe.correcoes.map((c) => el("li", {}, `${dataHora(c.em)} · ${c.autor} corrigiu ${c.campo}: ${JSON.stringify(c.valor_anterior)} → ${JSON.stringify(c.valor_novo)} [${c.tipo_erro}]`))));
+            detalhe.correcoes.map((c) => el("li", {}, `${dataHora(c.em)} · ${c.autor} corrigiu ${c.campo}: ${JSON.stringify(c.valor_anterior)} → ${JSON.stringify(c.valor_novo)} [${MOTIVOS[c.tipo_erro] || c.tipo_erro}]${c.observacao ? ` — "${c.observacao}"` : ""}`))));
 
     const irmas = detalhe.outras_da_mesma_foto.length
         ? el("p", { class: "origem" }, "Outros comprovantes nesta mesma foto: ", detalhe.outras_da_mesma_foto.map((d) => el("a", { href: "#", onclick: (e) => { e.preventDefault(); selecionar(d.id); } }, `#${d.id} `)))
@@ -355,8 +375,9 @@ function desenharDetalhe() {
 function alteracoesDe(campos) {
     return [...campos.querySelectorAll(".campo.mudou")].map((linha) => ({
         campo: linha.dataset.chave,
-        valor: linha.querySelector("input:not([type=radio]), select").value,
-        tipo_erro: linha.querySelector(".tipo-erro input:checked")?.value,
+        valor: linha.querySelector(`#c-${CSS.escape(linha.dataset.chave)}`).value,
+        tipo_erro: linha.querySelector(".motivo-erro")?.value,
+        observacao: linha.querySelector(".explicacao-erro")?.value.trim() || undefined,
     }));
 }
 
@@ -454,16 +475,17 @@ async function carregarTreino() {
             el("article", {}, el("span", {}, "Aprovadas sem nenhuma correção"), el("strong", {}, m.aprovadas ? pct(m.aprovadas_sem_correcao / m.aprovadas) : "—")),
             el("article", {}, el("span", {}, "Correções de leitura"), el("strong", {}, m.correcoes_por_tipo.LEITURA || 0)),
             el("article", {}, el("span", {}, "Correções de classificação"), el("strong", {}, m.correcoes_por_tipo.CLASSIFICACAO || 0)),
+            el("article", {}, el("span", {}, "Faltou informação (não é erro da IA)"), el("strong", {}, m.correcoes_por_tipo.NAO_INFORMADO || 0)),
             m.azure ? el("article", {}, el("span", {}, `Azure em ${m.azure.mes} (plano gratuito)`),
                 el("strong", {}, m.azure.limite ? `${m.azure.paginas} / ${m.azure.limite}` : m.azure.paginas),
                 el("span", {}, m.azure.disponivel ? "páginas lidas no mês" : "limite atingido: fotos esperando o próximo mês")) : null),
         m.aprovadas
             ? el("div", { class: "rolagem" }, el("table", { class: "tabela-metricas" },
-                el("thead", {}, el("tr", {}, ["Campo", "Avaliados", "IA acertou", "Acerto", "Erro de leitura", "Erro de classificação", "IA deixou vazio"].map((t) => el("th", {}, t)))),
+                el("thead", {}, el("tr", {}, ["Campo", "Avaliados", "IA acertou", "Acerto", "Erro de leitura", "Erro de classificação", "Não informado", "Outro", "IA deixou vazio"].map((t) => el("th", {}, t)))),
                 el("tbody", {}, linhas.map((item) => el("tr", {},
                     el("td", {}, item.rotulo), el("td", {}, item.avaliados), el("td", {}, item.acertos),
                     el("td", {}, pct(item.acuracia), el("span", { class: "barra" }, el("i", { style: `width:${Math.round((item.acuracia || 0) * 100)}%` }))),
-                    el("td", {}, item.erros_leitura), el("td", {}, item.erros_classificacao), el("td", {}, item.ia_vazia))))))
+                    el("td", {}, item.erros_leitura), el("td", {}, item.erros_classificacao), el("td", {}, item.nao_informado ?? 0), el("td", {}, item.outros ?? 0), el("td", {}, item.ia_vazia))))))
             : el("div", { class: "vazio" }, "Ainda não há despesas aprovadas. As métricas aparecem conforme você aprova as prévias."),
         el("p", { class: "origem" }, "Só entram nas métricas e no treino as despesas que uma pessoa aprovou. Uma despesa reaberta ou descartada sai do treino."),
         blocoPlanilha(m.planilha, pct));
