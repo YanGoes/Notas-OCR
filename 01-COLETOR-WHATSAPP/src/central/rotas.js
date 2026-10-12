@@ -66,7 +66,9 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
     };
 
     rotas.get("/opcoes", responder(() => revisao.opcoes(cad())));
-    rotas.get("/despesas", responder((req) => revisao.listar(db(), { aba: String(req.query.aba || "revisar") })));
+    rotas.get("/despesas", responder((req) => revisao.listar(db(), {
+        aba: String(req.query.aba || "revisar"), operador: req.query.operador ? String(req.query.operador) : null, cad: cad(),
+    })));
     rotas.get("/despesas/:id", (req, res, next) => {
         try {
             const detalhe = revisao.detalhar(db(), idDe(req));
@@ -81,7 +83,7 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
     rotas.post("/despesas/:id/descartar", responder((req) => revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));
-    rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db()), planilha: resumoPlanilha(), azure: situacaoAzure() })));
+    rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db(), { nomes: revisao.nomesDasPessoas(cad()) }), planilha: resumoPlanilha(), azure: situacaoAzure() })));
     rotas.get("/remetentes", responder(() => revisao.remetentesNaoVinculados(db())));
     rotas.post("/remetentes", responder((req) => revisao.vincularRemetente(db(), cad(), String(req.body?.whatsapp_id || ""),
         String(req.body?.pessoa_id || ""), { regras: regras() })));

@@ -287,3 +287,53 @@ test("'nao informado' nao conta como erro da IA no acerto, e vai para o exemplo 
     const entrada = JSON.parse(db.prepare("SELECT entrada FROM exemplos_treino").get().entrada);
     assert.deepEqual(entrada.correcoes_da_revisao, [{ campo: "pagamento", motivo: "NAO_INFORMADO", explicacao: "faltou o cartão na mensagem" }]);
 });
+
+// --- Separacao por operador ---------------------------------------------------
+
+function duasPessoas() {
+    const db = banco.abrir(":memory:");
+    const cad = { ...cadastros(), pessoas: [
+        { id: "almir", nome: "Almir", telefone: "5511900000001", papel: "OPERADOR", pasta_drive: "Almir" },
+        { id: "vitor", nome: "Vitor", telefone: "5512900000002", papel: "OPERADOR", pasta_drive: "Vitor" },
+        { id: "vanessa", nome: "Vanessa", telefone: "5561900000003", papel: "ADMINISTRATIVO", pasta_drive: null },
+    ] };
+    const foto = (remetente, legenda) => orquestrador.processarFoto(db, cad, {
+        arquivo: `f-${Math.random()}.jpg`, sha256: `h-${Math.random()}`, brutoAzure: JANTAR, hoje: new Date("2026-10-02T12:00:00Z"),
+        meta: { id_mensagem: `m-${Math.random()}`, id_grupo: GRUPO, remetente, legenda, recebido_em_ms: Date.parse("2026-10-01T08:00:00-03:00") },
+    }).despesas[0];
+    return { db, cad, almir1: foto(ALMIR, "Jantar 2 pessoas"), almir2: foto(ALMIR, "Jantar 3 pessoas"), desconhecido: foto(DESCONHECIDO, "Jantar") };
+}
+
+test("lista filtra pelo operador (a pessoa), com contagem por operador na aba", () => {
+    const { db, cad, almir1, almir2, desconhecido } = duasPessoas();
+    const todos = revisao.listar(db, { aba: "revisar", cad });
+    const contagem = Object.fromEntries(todos.operadores.map((item) => [item.id, item.total]));
+    assert.equal(contagem.almir, 2);
+    assert.equal(contagem.vitor, 0, "operador do cadastro aparece mesmo sem notas");
+    assert.equal(contagem[revisao.SEM_OPERADOR], 1);
+    assert.equal(contagem.vanessa, undefined, "quem nao e operador nao vira botao vazio");
+    assert.equal(todos.operadores.at(-1).id, revisao.SEM_OPERADOR, "nao identificado fica por ultimo");
+    assert.deepEqual(revisao.listar(db, { aba: "revisar", cad, operador: "almir" }).itens.map((i) => i.id).sort(), [almir1, almir2].sort());
+    assert.deepEqual(revisao.listar(db, { aba: "revisar", cad, operador: revisao.SEM_OPERADOR }).itens.map((i) => i.id), [desconhecido]);
+    // Vinculou o remetente: a nota passa para o operador certo.
+    revisao.vincularRemetente(db, cad, DESCONHECIDO, "vitor");
+    assert.deepEqual(revisao.listar(db, { aba: "revisar", cad, operador: "vitor" }).itens.map((i) => i.id), [desconhecido]);
+});
+
+test("metricas por operador: notas, situacao, acerto e o que faltou informar", () => {
+    const { db, cad, almir1, almir2 } = duasPessoas();
+    revisao.corrigir(db, cad, almir1, [
+        { campo: "pagamento", valor: "INTER", tipo_erro: "NAO_INFORMADO" },
+        { campo: "centro_custo", valor: "DYNA BR 020 e BR 242", tipo_erro: "NAO_INFORMADO" },
+    ], "Yan");
+    revisao.aprovar(db, almir1, "Yan");
+    revisao.descartar(db, almir2, "teste", "Yan");
+    const almir = revisao.metricas(db, { nomes: revisao.nomesDasPessoas(cad) }).por_operador.find((item) => item.operador === "almir");
+    assert.equal(almir.nome, "Almir");
+    assert.equal(almir.aprovadas, 1);
+    assert.equal(almir.descartadas, 1);
+    assert.equal(almir.para_revisar, 0);
+    assert.equal(almir.faltou.pagamento, 1);
+    assert.equal(almir.faltou.centro_custo, 1);
+    assert.ok(almir.acuracia > 0);
+});

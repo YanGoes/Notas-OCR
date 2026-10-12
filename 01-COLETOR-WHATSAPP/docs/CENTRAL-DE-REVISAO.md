@@ -23,6 +23,15 @@ Para trazer notas lidas em outra instalação do programa, sem chamar o Azure de
 | Duplicadas / descartadas | Mesma nota fiscal já registrada, ou descartadas com motivo |
 | Treino | Acerto da IA por campo, só sobre o que foi aprovado |
 
+## Separação por operador
+
+Acima da lista há um botão para cada operador, com quantas notas ele tem na aba aberta: **Todos · Lorran (3) · Almir (0) · … · Não identificado (46)**. Clique para ver só as notas daquela pessoa. A escolha fica lembrada no navegador.
+
+- **Operador é a pessoa que mandou a nota**, reconhecida pelo telefone, e não o grupo, porque um grupo pode ter mais de um operador.
+- **Todos os operadores do cadastro aparecem**, mesmo com zero notas, para ficar claro quem não mandou nada.
+- **"Não identificado"** junta as notas de números que o programa ainda não reconhece. Depois de vincular o número (faixa amarela), as notas passam para o operador certo.
+- **Aba Treino:** a tabela **Por operador** mostra notas enviadas, quantas estão para revisar, aprovadas e descartadas, o acerto da IA e o que **faltou informar** (cartão, projeto, pessoas). Ela aponta quem precisa ser orientado sobre a mensagem padrão.
+
 ## Como revisar uma despesa
 
 1. Escreva seu nome em **Revisor** (topo da página). Toda correção e aprovação fica registrada com ele.

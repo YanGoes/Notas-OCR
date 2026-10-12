@@ -88,13 +88,37 @@ async function executar(acao, mensagemOk) {
 // Lista
 // ---------------------------------------------------------------------------
 
+// Operador escolhido no filtro (lembrado no navegador). "todos" = sem filtro.
+estado.operador = (() => { try { return localStorage.getItem("vmac-operador") || "todos"; } catch (_) { return "todos"; } })();
+
+function desenharFiltroOperador(operadores, totalDaAba) {
+    const barra = $("#filtroOperador");
+    // Operador lembrado que sumiu do cadastro: volta para "todos".
+    if (estado.operador !== "todos" && !operadores.some((item) => item.id === estado.operador)) estado.operador = "todos";
+    const botao = (id, rotulo, total) => el("button", {
+        type: "button", class: `chip-operador${id === "nao_identificado" ? " sem-operador" : ""}${total === 0 ? " zerado" : ""}`,
+        "aria-pressed": String(estado.operador === id), title: id === "todos" ? "Todas as notas desta aba" : `Só as notas de ${rotulo}`,
+        onclick: () => {
+            estado.operador = id;
+            estado.selecionada = null;
+            try { localStorage.setItem("vmac-operador", id); } catch (_) { /* sem armazenamento */ }
+            executar(carregarLista);
+        },
+    }, rotulo, " ", el("span", { class: "n" }, total));
+    barra.replaceChildren(el("span", { class: "rotulo-operadores" }, "Operador:"), botao("todos", "Todos", totalDaAba),
+        ...operadores.map((item) => botao(item.id, item.nome, item.total)));
+}
+
 async function carregarLista() {
-    const { itens, contagem } = await api(`/despesas?aba=${encodeURIComponent(estado.aba)}`);
+    const filtro = estado.operador && estado.operador !== "todos" ? `&operador=${encodeURIComponent(estado.operador)}` : "";
+    const { itens, contagem, operadores, total_da_aba: totalDaAba } = await api(`/despesas?aba=${encodeURIComponent(estado.aba)}${filtro}`);
     mostrarContagem(contagem);
+    desenharFiltroOperador(operadores || [], totalDaAba ?? itens.length);
     const lista = $("#lista");
     lista.replaceChildren();
     if (!itens.length) {
-        lista.append(el("div", { class: "vazio" }, "Nada nesta aba."));
+        const nome = (operadores || []).find((item) => item.id === estado.operador)?.nome;
+        lista.append(el("div", { class: "vazio" }, nome ? `Nenhuma nota de ${nome} nesta aba.` : "Nada nesta aba."));
         if (!itens.some((item) => item.id === estado.selecionada)) mostrarVazio();
         return;
     }
@@ -488,7 +512,35 @@ async function carregarTreino() {
                     el("td", {}, item.erros_leitura), el("td", {}, item.erros_classificacao), el("td", {}, item.nao_informado ?? 0), el("td", {}, item.outros ?? 0), el("td", {}, item.ia_vazia))))))
             : el("div", { class: "vazio" }, "Ainda não há despesas aprovadas. As métricas aparecem conforme você aprova as prévias."),
         el("p", { class: "origem" }, "Só entram nas métricas e no treino as despesas que uma pessoa aprovou. Uma despesa reaberta ou descartada sai do treino."),
+        blocoPorOperador(m.por_operador, pct),
         blocoPlanilha(m.planilha, pct));
+}
+
+/**
+ * Uma linha por operador: notas enviadas, onde estao, acerto da IA nas
+ * aprovadas e o que FALTOU informar (para orientar quem precisa).
+ */
+function blocoPorOperador(linhas, pct) {
+    if (!linhas?.length) return null;
+    const faltou = (item) => {
+        const partes = [["pagamento", "cartão"], ["centro_custo", "projeto"], ["pessoas", "pessoas"]]
+            .filter(([chave]) => item.faltou?.[chave]).map(([chave, nome]) => `${nome} (${item.faltou[chave]})`);
+        return partes.length ? partes.join(", ") : "—";
+    };
+    return el("div", { class: "bloco" },
+        el("h3", {}, "Por operador"),
+        el("div", { class: "rolagem" }, el("table", { class: "tabela-metricas" },
+            el("thead", {}, el("tr", {}, ["Operador", "Notas", "Para revisar", "Aprovadas", "Descartadas", "Acerto da IA", "Faltou informar"].map((t) => el("th", {}, t)))),
+            el("tbody", {}, linhas.map((item) => el("tr", {},
+                el("td", {}, el("a", { href: "#revisar", onclick: (e) => {
+                    e.preventDefault();
+                    estado.operador = item.operador;
+                    try { localStorage.setItem("vmac-operador", item.operador); } catch (_) { /* sem armazenamento */ }
+                    trocarAba("revisar");
+                } }, item.nome)),
+                el("td", {}, item.notas), el("td", {}, item.para_revisar), el("td", {}, item.aprovadas), el("td", {}, item.descartadas),
+                el("td", {}, item.acuracia == null ? "—" : pct(item.acuracia)), el("td", {}, faltou(item))))))),
+        el("p", { class: "origem" }, "\"Faltou informar\" conta as correções marcadas como \"Não informado\": mostra quem precisa ser orientado sobre a mensagem padrão. Clique no nome para ver as notas daquele operador."));
 }
 
 function blocoPlanilha(planilha, pct) {
@@ -517,6 +569,7 @@ async function trocarAba(aba) {
     for (const botao of document.querySelectorAll(".abas button")) botao.setAttribute("aria-selected", botao.dataset.aba === aba ? "true" : "false");
     const area = aba === "treino" ? "#areaTreino" : aba === "centros" ? "#areaCentros" : "#areaRevisao";
     for (const id of ["#areaRevisao", "#areaTreino", "#areaCentros"]) $(id).classList.toggle("oculto", id !== area);
+    $("#filtroOperador").classList.toggle("oculto", area !== "#areaRevisao");
     await executar(aba === "treino" ? carregarTreino : aba === "centros" ? carregarCentros : carregarLista);
 }
 

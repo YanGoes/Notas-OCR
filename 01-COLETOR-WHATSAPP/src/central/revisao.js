@@ -454,10 +454,25 @@ const ABAS = {
     fora: [ESTADOS.BLOQUEADO_DUPLICADO, ESTADOS.DESCARTADO],
 };
 
+// Operador = a PESSOA que mandou a nota (nao o grupo: um grupo pode ter
+// varios operadores). Sem vinculo, cai em "nao identificado".
+const SEM_OPERADOR = "nao_identificado";
+const OPERADOR_SQL = `COALESCE(msg.pessoa_id, json_extract(d.campos, '$.remetente.pessoa_id'), '${SEM_OPERADOR}')`;
+
+function nomeDoOperador(id, nomes, nomeNoWhatsApp = null) {
+    if (id === SEM_OPERADOR) return "Não identificado";
+    return nomes.get(id) || nomeNoWhatsApp || id;
+}
+
+/** id -> nome das pessoas do cadastro (para os rotulos). */
+function nomesDasPessoas(cad) {
+    return new Map((cad?.pessoas || []).map((pessoa) => [pessoa.id, pessoa.nome]));
+}
+
 function resumo(linha) {
     const campos = lerJson(linha.campos, {});
     return {
-        id: linha.id, estado: linha.estado, midia_id: linha.midia_id,
+        id: linha.id, estado: linha.estado, midia_id: linha.midia_id, operador: linha.operador || null,
         data: campos.data_competencia?.valor || null, valor: campos.valor?.valor ?? null,
         fornecedor: campos.fornecedor?.valor || null, tipo: campos.tipo?.valor || null,
         descricao: campos.descricao?.valor || null, centro_custo: campos.centro_custo?.nome || null,
@@ -467,20 +482,42 @@ function resumo(linha) {
     };
 }
 
-function listar(db, { aba = "revisar", limite = 300 } = {}) {
+/**
+ * Lista de uma aba, opcionalmente so de um operador.
+ * `operadores` traz, para a aba atual, quantas notas cada operador tem
+ * (operadores do cadastro aparecem mesmo com zero).
+ */
+function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null } = {}) {
     const estados = ABAS[aba] || ABAS.revisar;
+    const marcadores = estados.map(() => "?").join(",");
+    const filtrarOperador = operador && operador !== "todos";
     const linhas = db.prepare(`
-        SELECT d.*, m.recebida_em, msg.remetente_nome,
+        SELECT d.*, m.recebida_em, msg.remetente_nome, ${OPERADOR_SQL} AS operador,
             (SELECT COUNT(*) FROM correcoes c WHERE c.despesa_id = d.id) AS correcoes
         FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
-        WHERE d.estado IN (${estados.map(() => "?").join(",")})
-        ORDER BY COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`).all(...estados, Math.min(Number(limite) || 300, 1000));
+        WHERE d.estado IN (${marcadores}) ${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""}
+        ORDER BY COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
+        .all(...estados, ...(filtrarOperador ? [String(operador)] : []), Math.min(Number(limite) || 300, 1000));
     const contagem = Object.fromEntries(Object.keys(ABAS).map((nome) => [nome, 0]));
     for (const { estado, total } of db.prepare("SELECT estado, COUNT(*) AS total FROM despesas GROUP BY estado").all()) {
         const nome = Object.keys(ABAS).find((chave) => ABAS[chave].includes(estado));
         if (nome) contagem[nome] += total;
     }
-    return { itens: linhas.map(resumo), contagem };
+
+    const nomes = nomesDasPessoas(cad);
+    const porOperador = new Map();
+    for (const pessoa of cad?.pessoas || []) {
+        if (pessoa.papel === "OPERADOR") porOperador.set(pessoa.id, { id: pessoa.id, nome: pessoa.nome, total: 0 });
+    }
+    for (const linha of db.prepare(`
+        SELECT ${OPERADOR_SQL} AS operador, MAX(msg.remetente_nome) AS remetente_nome, COUNT(*) AS total
+        FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
+        WHERE d.estado IN (${marcadores}) GROUP BY operador`).all(...estados)) {
+        porOperador.set(linha.operador, { id: linha.operador, nome: nomeDoOperador(linha.operador, nomes, linha.remetente_nome), total: linha.total });
+    }
+    const operadores = [...porOperador.values()]
+        .sort((a, b) => (a.id === SEM_OPERADOR) - (b.id === SEM_OPERADOR) || b.total - a.total || a.nome.localeCompare(b.nome));
+    return { itens: linhas.map(resumo), contagem, operadores, total_da_aba: operadores.reduce((soma, item) => soma + item.total, 0) };
 }
 
 function detalhar(db, despesaId) {
@@ -513,51 +550,69 @@ function detalhar(db, despesaId) {
 }
 
 /**
- * Metricas por campo sobre o que foi APROVADO: quanto da previa da IA a pessoa
- * aceitou sem mexer, separando erro de leitura de erro de classificacao.
+ * Avalia campo a campo uma despesa APROVADA: a previa da IA bateu com o que a
+ * pessoa aprovou? Se nao, qual foi o motivo da correcao.
+ * @returns {Array<{chave:string, resultado:'ACERTO'|'LEITURA'|'CLASSIFICACAO'|'NAO_INFORMADO'|'OUTRO', iaVazia:boolean}>}
  */
-function metricas(db) {
+function avaliarCampos(despesa, corrigidos) {
+    const final = lerJson(despesa.campos, {});
+    const original = lerJson(despesa.campos_originais, null) || final;
+    const ignorados = new Set(lerJson(despesa.rotulos, {})?._nao_usar_no_treino || []);
+    const resultado = [];
+    for (const chave of Object.keys(CAMPOS)) {
+        if (ignorados.has(chave)) continue;
+        const valorFinal = valorDe(final, chave);
+        const valorIa = valorDe(original, chave);
+        if (valorFinal == null && valorIa == null) continue;
+        // Descricao de template refeita so porque outro campo foi corrigido
+        // e consequencia daquele erro, nao um erro proprio da descricao.
+        if (chave === "descricao" && !corrigidos.has("descricao") && !iguais(valorIa, valorFinal)) continue;
+        const motivo = iguais(valorIa, valorFinal) ? "ACERTO" : (corrigidos.get(chave) || CAMPOS[chave].erro);
+        resultado.push({ chave, resultado: TIPOS_ERRO.includes(motivo) || motivo === "ACERTO" ? motivo : "CLASSIFICACAO", iaVazia: valorIa == null });
+    }
+    return resultado;
+}
+
+/** Correcoes (ultimo motivo por campo) das despesas aprovadas. */
+function correcoesDasAprovadas(db) {
+    const mapa = new Map();
+    for (const linha of db.prepare(`SELECT c.despesa_id, c.campo, c.tipo_erro FROM correcoes c
+        JOIN despesas d ON d.id = c.despesa_id WHERE d.estado = 'APROVADO' ORDER BY c.id`).all()) {
+        if (!mapa.has(linha.despesa_id)) mapa.set(linha.despesa_id, new Map());
+        mapa.get(linha.despesa_id).set(linha.campo, linha.tipo_erro);
+    }
+    return mapa;
+}
+
+// "Nao informado" nao e erro da IA (a informacao nao existia): fica fora da conta do acerto.
+const acuraciaDe = (acertos, avaliados, naoInformado) => (avaliados - naoInformado > 0 ? acertos / (avaliados - naoInformado) : null);
+
+/**
+ * Metricas por campo sobre o que foi APROVADO: quanto da previa da IA a pessoa
+ * aceitou sem mexer, separando os motivos das correcoes.
+ */
+function metricas(db, { nomes = new Map() } = {}) {
     const aprovadas = db.prepare(`SELECT d.id, d.campos, d.campos_originais, e.rotulos FROM despesas d
         LEFT JOIN exemplos_treino e ON e.despesa_id = d.id WHERE d.estado = 'APROVADO'`).all();
-    const correcoesPorDespesa = new Map();
-    for (const linha of db.prepare(`SELECT c.despesa_id, c.campo, c.tipo_erro FROM correcoes c
-        JOIN despesas d ON d.id = c.despesa_id WHERE d.estado = 'APROVADO'`).all()) {
-        if (!correcoesPorDespesa.has(linha.despesa_id)) correcoesPorDespesa.set(linha.despesa_id, new Map());
-        correcoesPorDespesa.get(linha.despesa_id).set(linha.campo, linha.tipo_erro);
-    }
+    const correcoes = correcoesDasAprovadas(db);
     const porCampo = {};
     let semCorrecao = 0;
     for (const despesa of aprovadas) {
-        const final = lerJson(despesa.campos, {});
-        const original = lerJson(despesa.campos_originais, null) || final;
-        const corrigidos = correcoesPorDespesa.get(despesa.id) || new Map();
+        const corrigidos = correcoes.get(despesa.id) || new Map();
         if (!corrigidos.size) semCorrecao += 1;
-        const ignorados = new Set(lerJson(despesa.rotulos, {})?._nao_usar_no_treino || []);
-        for (const chave of Object.keys(CAMPOS)) {
-            if (ignorados.has(chave)) continue;
-            const valorFinal = valorDe(final, chave);
-            const valorIa = valorDe(original, chave);
-            if (valorFinal == null && valorIa == null) continue;
-            // Descricao de template refeita so porque outro campo foi corrigido
-            // e consequencia daquele erro, nao um erro proprio da descricao.
-            if (chave === "descricao" && !corrigidos.has("descricao") && !iguais(valorIa, valorFinal)) continue;
+        for (const { chave, resultado, iaVazia } of avaliarCampos(despesa, corrigidos)) {
             const item = porCampo[chave] ||= { rotulo: CAMPOS[chave].rotulo, avaliados: 0, acertos: 0, ia_vazia: 0,
                 erros_leitura: 0, erros_classificacao: 0, nao_informado: 0, outros: 0 };
             item.avaliados += 1;
-            if (valorIa == null) item.ia_vazia += 1;
-            if (iguais(valorIa, valorFinal)) { item.acertos += 1; continue; }
-            const motivo = corrigidos.get(chave) || CAMPOS[chave].erro;
-            if (motivo === "LEITURA") item.erros_leitura += 1;
-            else if (motivo === "NAO_INFORMADO") item.nao_informado += 1;
-            else if (motivo === "OUTRO") item.outros += 1;
+            if (iaVazia) item.ia_vazia += 1;
+            if (resultado === "ACERTO") item.acertos += 1;
+            else if (resultado === "LEITURA") item.erros_leitura += 1;
+            else if (resultado === "NAO_INFORMADO") item.nao_informado += 1;
+            else if (resultado === "OUTRO") item.outros += 1;
             else item.erros_classificacao += 1;
         }
     }
-    // "Nao informado" nao e erro da IA (a informacao nao existia): fica fora da conta do acerto.
-    for (const item of Object.values(porCampo)) {
-        const base = item.avaliados - item.nao_informado;
-        item.acuracia = base > 0 ? item.acertos / base : null;
-    }
+    for (const item of Object.values(porCampo)) item.acuracia = acuraciaDe(item.acertos, item.avaliados, item.nao_informado);
     const estados = Object.fromEntries(db.prepare("SELECT estado, COUNT(*) AS total FROM despesas GROUP BY estado").all().map((linha) => [linha.estado, linha.total]));
     const tiposErro = Object.fromEntries(db.prepare("SELECT tipo_erro, COUNT(*) AS total FROM correcoes GROUP BY tipo_erro").all().map((linha) => [linha.tipo_erro, linha.total]));
     return {
@@ -565,7 +620,44 @@ function metricas(db) {
         aprovadas_sem_correcao: semCorrecao,
         exemplos_treino: db.prepare("SELECT COUNT(*) AS total FROM exemplos_treino").get().total,
         estados, correcoes_por_tipo: tiposErro, por_campo: porCampo,
+        por_operador: metricasPorOperador(db, nomes, correcoes),
     };
+}
+
+/**
+ * Por operador: quantas notas mandou, em que pe estao, o acerto da IA nas
+ * aprovadas e o que mais FALTOU informar (cartao, projeto, pessoas) — mostra
+ * quem precisa ser orientado sobre a mensagem padrao.
+ */
+function metricasPorOperador(db, nomes, correcoes) {
+    const linhas = db.prepare(`
+        SELECT d.id, d.estado, d.campos, d.campos_originais, e.rotulos, ${OPERADOR_SQL} AS operador, msg.remetente_nome
+        FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref LEFT JOIN exemplos_treino e ON e.despesa_id = d.id`).all();
+    const porOperador = new Map();
+    for (const linha of linhas) {
+        const item = porOperador.get(linha.operador) || {
+            operador: linha.operador, nome: nomeDoOperador(linha.operador, nomes, linha.remetente_nome),
+            notas: 0, para_revisar: 0, aprovadas: 0, descartadas: 0, avaliados: 0, acertos: 0, nao_informado: 0,
+            faltou: { pagamento: 0, centro_custo: 0, pessoas: 0 },
+        };
+        porOperador.set(linha.operador, item);
+        if (linha.estado === ESTADOS.DESCARTADO) { item.descartadas += 1; continue; }
+        item.notas += 1;
+        if (EDITAVEIS.includes(linha.estado)) item.para_revisar += 1;
+        if (linha.estado !== ESTADOS.APROVADO) continue;
+        item.aprovadas += 1;
+        for (const { chave, resultado } of avaliarCampos(linha, correcoes.get(linha.id) || new Map())) {
+            item.avaliados += 1;
+            if (resultado === "ACERTO") item.acertos += 1;
+            if (resultado === "NAO_INFORMADO") {
+                item.nao_informado += 1;
+                if (chave in item.faltou) item.faltou[chave] += 1;
+            }
+        }
+    }
+    return [...porOperador.values()].map(({ avaliados, acertos, nao_informado: naoInformado, ...item }) => ({
+        ...item, nao_informado: naoInformado, acuracia: acuraciaDe(acertos, avaliados, naoInformado),
+    })).sort((a, b) => (a.operador === SEM_OPERADOR) - (b.operador === SEM_OPERADOR) || b.notas - a.notas || a.nome.localeCompare(b.nome));
 }
 
 /** Pessoas ainda nao reconhecidas que mandaram despesas (para vincular na Central). */
@@ -574,11 +666,12 @@ function remetentesNaoVinculados(db) {
         SELECT m.remetente_id, MAX(m.remetente_nome) AS nome, COUNT(DISTINCT d.id) AS despesas
         FROM mensagens m JOIN despesas d ON d.mensagem_ref = m.id
         WHERE m.pessoa_id IS NULL AND m.remetente_id NOT IN (SELECT whatsapp_id FROM remetentes_vinculados)
+          AND d.estado <> 'DESCARTADO'
         GROUP BY m.remetente_id ORDER BY despesas DESC`).all();
 }
 
 module.exports = {
-    CAMPOS, ESTADOS, ABAS, TIPOS_ERRO, erroSugerido,
+    CAMPOS, ESTADOS, ABAS, TIPOS_ERRO, SEM_OPERADOR, erroSugerido, nomesDasPessoas,
     opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados,
     regenerar: regenerarPrevia, regenerarPendentes, marcarNaoUsarNoTreino, CAMPOS_EXCLUIVEIS_DO_TREINO,
     valorDoCampo: valorDe,

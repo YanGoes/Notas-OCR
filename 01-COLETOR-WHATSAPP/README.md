@@ -103,6 +103,7 @@ Tudo o que a regra não consegue decidir com segurança vira **pendência** na C
 Endereço: http://127.0.0.1:3211/central.html. O manual completo está em [docs/CENTRAL-DE-REVISAO.md](docs/CENTRAL-DE-REVISAO.md).
 
 - **Abas:** para revisar, classificadas, aprovadas, duplicadas/descartadas, treino e centros de custo.
+- **Por operador:** botões acima da lista filtram as notas de cada pessoa, com contador. A aba Treino mostra o resumo por operador, inclusive o que cada um deixou de informar.
 - **Tela da despesa:** a foto fica ao lado dos campos, com zoom, girar e tela cheia. Cada campo mostra de onde veio o valor.
 - **Correções:** cada correção registra o motivo, que pode ser **leitura** (o OCR leu errado), **classificação** (interpretou errado), **não informado** (faltou na mensagem ou na nota, e não conta como erro da IA) ou **outro**, e uma explicação livre para a IA entender o que errou.
 - **Aprovar** transforma a despesa em exemplo de treino. A caixa "Centro de custo e pagamento não são reais" tira esses dois campos do treino, para notas antigas ou de teste.
