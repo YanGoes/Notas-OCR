@@ -352,7 +352,7 @@ app.post("/api/conta-azul/despesas/:base/validar-no-erp", async (req, res, next)
 });
 
 // Central de revisao (previas, correcoes e treino). Painel em /central.html.
-app.use("/api/central", criarRotasCentral());
+app.use("/api/central", criarRotasCentral({ identificarRemetentes: () => whatsapp.identificarRemetentes(), contaConectada: () => whatsapp.contaConectada() }));
 
 app.use((erro, _req, res, _next) => res.status(400).json({ erro: erro.message || "Erro inesperado." }));
 app.get("*splat", (_req, res) => res.sendFile(path.join(RAIZ, "public", "index.html")));

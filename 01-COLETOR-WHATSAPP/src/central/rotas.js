@@ -59,7 +59,7 @@ const idDe = (req) => {
 };
 
 /** @param {object} [opcoes] @param {() => object} [opcoes.db] — permite usar outro banco (testes) */
-function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
+function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarRemetentes = null, contaConectada = () => null } = {}) {
     const rotas = express.Router();
     const responder = (fn) => (req, res, next) => {
         try { res.json(fn(req)); } catch (erro) { next(erro); }
@@ -84,7 +84,20 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar() } = {}) {
     rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));
     rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db(), { nomes: revisao.nomesDasPessoas(cad()) }), planilha: resumoPlanilha(), azure: situacaoAzure() })));
-    rotas.get("/remetentes", responder(() => revisao.remetentesNaoVinculados(db())));
+    // Marca o numero conectado ao programa (quem mandou foi a propria conta).
+    rotas.get("/remetentes", responder(() => {
+        const conta = contaConectada() || {};
+        return revisao.remetentesNaoVinculados(db()).map((item) => ({
+            ...item, conta_conectada: Boolean(item.remetente_id && [conta.lid, conta.telefone].filter(Boolean).includes(String(item.remetente_id).split("@")[0].split(":")[0])),
+        }));
+    }));
+    // Busca nos contatos do WhatsApp o telefone dos remetentes desconhecidos (precisa estar conectado).
+    rotas.post("/remetentes/identificar", async (req, res, next) => {
+        try {
+            if (!identificarRemetentes) throw new Error("Busca de contatos indisponível: o WhatsApp não está ligado nesta janela.");
+            res.json(await identificarRemetentes());
+        } catch (erro) { next(erro); }
+    });
     rotas.post("/remetentes", responder((req) => revisao.vincularRemetente(db(), cad(), String(req.body?.whatsapp_id || ""),
         String(req.body?.pessoa_id || ""), { regras: regras() })));
     rotas.post("/regerar-pendentes", responder(() => revisao.regenerarPendentes(db(), cad(), { regras: regras() })));

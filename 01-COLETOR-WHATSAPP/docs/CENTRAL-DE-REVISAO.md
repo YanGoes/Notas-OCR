@@ -74,7 +74,16 @@ Esta aba **não cria nada no Conta Azul**. O fluxo para um projeto novo é:
 
 ## Remetentes não reconhecidos
 
-Quando uma foto chega de um número que não está em `configuracao/pessoas.json`, aparece uma faixa amarela. Escolha quem é a pessoa e clique em **Vincular**. As prévias dela que ainda não têm correção são refeitas, e as próximas já chegam com o nome certo.
+Nos grupos, o WhatsApp identifica cada pessoa por um código interno ("…@lid") que esconde o telefone. O programa traduz esse código para o telefone e procura no cadastro (`configuracao/pessoas.json`):
+
+- **Mensagem nova:** se o WhatsApp mandar o telefone junto, a pessoa é reconhecida na hora.
+- **Ao conectar:** o programa pergunta ao WhatsApp o telefone de cada remetente ainda desconhecido. Salvar o contato no celular ajuda o WhatsApp a liberar esse telefone.
+- **Botão "Buscar nos contatos do WhatsApp"** (faixa amarela): faz a mesma busca na hora. Quando o telefone não está no cadastro, a resposta mostra só os **4 últimos dígitos**, para conferir no celular sem expor o número.
+- **Manual:** escolha quem é a pessoa e clique em **Vincular**.
+
+Em todos os casos, as prévias sem correção são refeitas e as próximas fotos já chegam com o nome certo. O número conectado ao programa aparece como **"Você (número conectado ao programa)"**.
+
+Se um operador continuar desconhecido, confira se o telefone dele no cadastro é o mesmo do WhatsApp, com DDD.
 
 ## Onde ficam os dados
 

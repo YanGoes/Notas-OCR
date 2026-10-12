@@ -416,9 +416,9 @@ function marcarNaoUsarNoTreino(db, despesaIds, campos, autor) {
  * Confirma de quem e um id do WhatsApp e regera as previas ainda sem correcao
  * desse remetente (o remetente passa a ser reconhecido daqui em diante).
  */
-function vincularRemetente(db, cad, whatsappId, pessoaId, { regras = {}, hoje = new Date() } = {}) {
+function vincularRemetente(db, cad, whatsappId, pessoaId, { regras = {}, hoje = new Date(), origem = "confirmacao_central" } = {}) {
     if (!cad.pessoas.some((pessoa) => pessoa.id === pessoaId)) throw new Error("Pessoa não cadastrada.");
-    contexto.vincularRemetente(db, whatsappId, pessoaId, "confirmacao_central");
+    contexto.vincularRemetente(db, whatsappId, pessoaId, origem);
     const pendentes = db.prepare(`
         SELECT d.id FROM despesas d JOIN mensagens m ON m.id = d.mensagem_ref
         WHERE m.remetente_id = ? AND d.estado IN (${ESTADOS_REGERAVEIS.map(() => "?").join(",")})

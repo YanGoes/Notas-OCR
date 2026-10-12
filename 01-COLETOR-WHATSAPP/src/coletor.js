@@ -440,6 +440,44 @@ function extrairTexto(message) {
     return null;
 }
 
+/**
+ * O WhatsApp as vezes manda o telefone junto do codigo interno (LID) do
+ * remetente. Se o telefone for de alguem do cadastro, o vinculo fica gravado
+ * e as notas dessa pessoa ja chegam com o nome certo.
+ */
+function vincularPeloTelefoneDaMensagem(remetente, chave) {
+    if (!centralHabilitada() || !String(remetente).endsWith("@lid")) return;
+    const telefone = chave.participantAlt || chave.participantPn || chave.senderPn;
+    if (!telefone) return;
+    try {
+        const { db, cad } = central();
+        const vinculo = require("./central/identificacao-whatsapp").vincularPorTelefone(db, cad, remetente, telefone);
+        if (vinculo) console.log(`Central: remetente reconhecido pelo telefone: ${vinculo.pessoa} (${vinculo.regeradas} previa(s) refeita(s)).`);
+    } catch (erro) { console.error("Central: nao consegui vincular pelo telefone:", erro?.message || erro); }
+}
+
+/**
+ * Pergunta ao WhatsApp o telefone de cada remetente ainda desconhecido (tabela
+ * LID -> telefone da sessao) e vincula quem estiver no cadastro de pessoas.
+ */
+/** Numero e codigo interno (LID) da conta conectada, so os digitos. */
+function contaConectada() {
+    const usuario = socketAtual?.user;
+    if (!usuario) return null;
+    const digitos = (jid) => String(jid || "").split("@")[0].split(":")[0] || null;
+    return { telefone: digitos(usuario.id), lid: digitos(usuario.lid) };
+}
+
+async function identificarRemetentes() {
+    if (!centralHabilitada()) return { verificados: 0, vinculados: [], sem_telefone: 0, fora_do_cadastro: 0 };
+    const mapa = socketAtual?.signalRepository?.lidMapping;
+    if (!socketAtual || estado.status !== "conectado" || !mapa?.getPNForLID) throw new Error("Conecte o WhatsApp para buscar os contatos.");
+    const { db, cad } = central();
+    const resultado = await require("./central/identificacao-whatsapp").identificarDesconhecidos(db, cad, (lid) => mapa.getPNForLID(lid));
+    for (const item of resultado.vinculados) console.log(`Central: ${item.notas} nota(s) agora sao de ${item.pessoa}.`);
+    return resultado;
+}
+
 function remetenteDaMensagem(chave) {
     return String(chave.participant || chave.remoteJid || "nao_identificado");
 }
@@ -572,6 +610,7 @@ async function processar(socket, pacote) {
         const timestamp = timestampNumero(pacote.messageTimestamp);
         const timestampMs = timestamp * 1000;
         const remetente = remetenteDaMensagem(pacote.key);
+        vincularPeloTelefoneDaMensagem(remetente, pacote.key);
         // Nome que aparece no WhatsApp: e o que permite identificar de qual
         // operador de campo e a nota (o remetente vem como um id opaco @lid).
         const nomeRemetente = String(pacote.pushName || "").trim();
@@ -689,6 +728,8 @@ async function iniciar() {
             conexao.registrarLog("conectado", { usuario: socket.user?.id ? "ok" : null });
             atualizarEstado({ status: "conectado", qr: null, conectado_desde: new Date().toISOString(), erro: null });
             console.log(`\nCOLETOR ATIVO\nPasta de saida: ${config.pasta_saida}\nAguardando novas fotos...\n`);
+            // Ao conectar, tenta reconhecer quem ainda aparece como desconhecido.
+            setTimeout(() => identificarRemetentes().catch((erro) => console.error("Central: identificar remetentes:", erro?.message || erro)), 8000);
         }
         // Evento de um socket antigo (ja substituido) nao deve mexer no estado.
         if (connection === "close" && socket !== socketAtual) return;
@@ -752,7 +793,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-    iniciar, desconectar, listarGrupos, salvarGrupos, solicitarCodigoPareamento,
+    iniciar, desconectar, listarGrupos, salvarGrupos, solicitarCodigoPareamento, identificarRemetentes, contaConectada,
     obterEstado: () => ({ ...estado }), eventos,
     obterConfiguracao: () => ({
         grupos_permitidos: [...gruposPermitidos],

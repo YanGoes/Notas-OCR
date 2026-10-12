@@ -463,11 +463,20 @@ async function carregarRemetentes() {
     const lista = await api("/remetentes");
     if (!lista.length) { caixa.classList.add("oculto"); return; }
     caixa.classList.remove("oculto");
-    caixa.replaceChildren(el("b", {}, "Remetentes ainda não reconhecidos."), " Diga quem é cada um: as prévias dele são refeitas e as próximas fotos já chegam com o nome certo.",
+    const buscar = el("button", { type: "button", class: "secondary", title: "Pergunta ao WhatsApp o telefone de cada número e procura no cadastro de pessoas",
+        onclick: () => executar(async () => {
+            const r = await api("/remetentes/identificar", {});
+            await recarregar();
+            const nomes = r.vinculados.map((item) => `${item.pessoa} (${item.notas} nota(s))`).join(", ");
+            avisar(r.vinculados.length ? `Reconhecidos: ${nomes}.`
+                : `Nenhum reconhecido: ${r.sem_telefone} sem telefone disponível no WhatsApp, ${r.fora_do_cadastro} com telefone fora do cadastro de pessoas.`, r.vinculados.length ? "ok" : "erro");
+        }) }, "Buscar nos contatos do WhatsApp");
+    caixa.replaceChildren(el("b", {}, "Remetentes ainda não reconhecidos."), " Diga quem é cada um, ou ", buscar,
+        ". As prévias deles são refeitas e as próximas fotos já chegam com o nome certo.",
         ...lista.map((remetente) => {
             const escolha = el("select", {}, el("option", { value: "" }, "Quem é?"), estado.opcoes.pessoas.map((pessoa) => el("option", { value: pessoa.id }, pessoa.nome)));
             return el("div", { class: "linha" },
-                el("code", {}, remetente.nome || remetente.remetente_id), `${remetente.despesas} despesa(s)`, escolha,
+                el("code", {}, remetente.conta_conectada ? "Você (número conectado ao programa)" : remetente.nome || remetente.remetente_id), `${remetente.despesas} despesa(s)`, escolha,
                 el("button", { type: "button", class: "secondary", onclick: () => executar(async () => {
                     if (!escolha.value) throw new Error("Escolha a pessoa.");
                     const { regeradas } = await api("/remetentes", { whatsapp_id: remetente.remetente_id, pessoa_id: escolha.value });

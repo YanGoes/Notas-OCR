@@ -108,7 +108,7 @@ Endereço: http://127.0.0.1:3211/central.html. O manual completo está em [docs/
 - **Correções:** cada correção registra o motivo, que pode ser **leitura** (o OCR leu errado), **classificação** (interpretou errado), **não informado** (faltou na mensagem ou na nota, e não conta como erro da IA) ou **outro**, e uma explicação livre para a IA entender o que errou.
 - **Aprovar** transforma a despesa em exemplo de treino. A caixa "Centro de custo e pagamento não são reais" tira esses dois campos do treino, para notas antigas ou de teste.
 - **Centros de custo:** cadastro de projetos com situação, centro no Conta Azul e apelidos, com histórico de quem alterou.
-- **Remetentes não reconhecidos** aparecem numa faixa, para dizer quem é cada número.
+- **Quem mandou:** o operador é reconhecido pelo telefone. O código interno do WhatsApp ("…@lid") é traduzido para o telefone sozinho, ao chegar a mensagem ou ao conectar. Quem ainda não foi reconhecido aparece numa faixa, com o botão "Buscar nos contatos do WhatsApp" ou a opção de dizer quem é.
 
 ## Treino da IA
 
@@ -181,7 +181,7 @@ O plano gratuito lê 500 páginas por mês. O programa para em 450, deixando fol
 
 ```powershell
 npm ci           # instala as bibliotecas
-npm test         # 249 testes automatizados
+npm test         # 258 testes automatizados
 npm run check    # confere a sintaxe de todos os arquivos
 npm start        # sobe o painel e a coleta (porta 3211)
 ```
