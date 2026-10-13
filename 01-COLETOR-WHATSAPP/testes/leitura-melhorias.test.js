@@ -226,3 +226,90 @@ test("mensagem do operador no formato com rotulo: 'Pessoas: 4', 'Projeto:', 'Car
     assert.deepEqual(r.dados.linhas_nao_entendidas, []);
     assert.equal(interpretar(c, { texto: "Qtd de pessoas: 3", temMidia: true }).dados.pessoas.quantidade, 3);
 });
+
+// --- Licoes das notas do Lorran (revisao de 12/10/2026) -----------------------
+
+test("valor da mensagem impresso na nota vence o subtotal lido pelo Azure", () => {
+    const p = previa({ fornecedor: "SHAWARMA", tipo_despesa_sugerido: "alimentacao", hora: "20:00:00", valor: 75,
+        texto_bruto: "Shawarma 68,00\nCoca 7,00\nSUBTOTAL 75,00\nTAXA 6,88\nTOTAL 81,88" }, { valor_declarado: 81.88 });
+    assert.equal(p.campos.valor.valor, 81.88);
+    assert.equal(p.campos.valor.origem, "nota_confirmada_pela_mensagem");
+});
+
+test("valor lido sem a virgula (5800) e corrigido pelo valor da mensagem (58)", () => {
+    const p = previa({ fornecedor: "RESTAURANTE", tipo_despesa_sugerido: "alimentacao", hora: "12:30:00", valor: 5800, texto_bruto: "TOTAL\n5800" },
+        { valor_declarado: 58 });
+    assert.equal(p.campos.valor.valor, 58);
+});
+
+test("valor da mensagem que nao aparece na nota nao vence: fica o da nota, com pendencia", () => {
+    const p = previa({ fornecedor: "RESTAURANTE", tipo_despesa_sugerido: "alimentacao", hora: "12:30:00", valor: 90, texto_bruto: "TOTAL 90,00" },
+        { valor_declarado: 120 });
+    assert.equal(p.campos.valor.valor, 90);
+    assert.ok(p.pendencias.some((x) => x.includes("difere do valor da mensagem")));
+});
+
+test("litros com o separador perdido (61618) viram 61,618 quando o preco por litro confere", () => {
+    const p = previa({ fornecedor: "POSTO", itens: [{ descricao: "DIESEL S10" }], litragem: 61618, valor: 449.81, placa: "JKM-0I96", odometro: 181954 });
+    assert.equal(p.campos.abastecimento.litros.valor, 61.618);
+    assert.match(p.campos.descricao.valor, /^61,618L od 181\.954 - /);
+});
+
+test("placa com 8 no lugar de B e reconhecida pela frota (SGR4854 = SGR4B54)", () => {
+    const c = cad();
+    c.veiculos.push({ nome: "FIAT SCUDO - SGR4B54", placa: "SGR4B54", categoria_nome_conta_azul: "FIAT SCUDO - SGR4B54" });
+    const p = regras.montarPrevia({ ocr: { confianca: 0.99, data: "2026-10-12", valor: 283.28, fornecedor: "POSTO", itens: [{ descricao: "DIESEL" }],
+        litragem: 38, odometro: 182100, placa: "SGR-4854" }, legenda: {}, identificacao: {}, cad: c, hoje: new Date("2026-10-13T12:00:00Z"), modelo: null });
+    assert.equal(p.campos.abastecimento.placa.valor, "SGR4B54");
+    assert.equal(p.campos.categoria.nome, "FIAT SCUDO - SGR4B54");
+    assert.equal(cadastros.veiculoPorSosia(c, "XYZ4854"), null, "sem veiculo parecido na frota, nao inventa");
+});
+
+test("habito do operador: pessoas estimadas pelo costume vencem a contagem de itens; cartao vira sugestao", () => {
+    const habitos = { pessoas: { refeicao: { valor: 1, amostras: 6 } }, cartao: { codigo: "INTER", amostras: 9 } };
+    const c = { ...cad(), cartoes: [{ codigo: "INTER", rotulo: "CRÉDITO INTER", forma_pagamento: "CARTAO_CREDITO" }] };
+    const p = regras.montarPrevia({ ocr: { confianca: 0.99, data: "2026-10-10", valor: 81.88, fornecedor: "SHAWARMA", tipo_despesa_sugerido: "alimentacao",
+        hora: "20:00:00", itens: [{ descricao: "Shawarma mist", quantidade: 2 }, { descricao: "Coca-Cola", quantidade: 1 }] },
+    legenda: { tipos: ["JANTAR"] }, identificacao: { pessoa: { id: "lorran", nome: "Lorran", pasta_drive: "Lorran" } }, cad: c,
+    hoje: new Date("2026-10-13T12:00:00Z"), modelo: null, habitos });
+    assert.equal(p.campos.pessoas.valor, 1);
+    assert.equal(p.campos.pessoas.origem, "habito_do_operador");
+    assert.equal(p.campos.descricao.valor, "JANTAR - 1 PESSOA");
+    assert.equal(p.campos.pagamento.cartao, null, "o costume nao decide o cartao");
+    assert.equal(p.campos.pagamento.sugestao.codigo, "INTER");
+    assert.equal(p.estado, "AGUARDANDO_REVISAO");
+});
+
+test("habitos so contam com 5+ notas aprovadas e 80%+ iguais", () => {
+    const { habitosDoOperador } = require("../src/central/habitos");
+    const db = banco.abrir(":memory:");
+    const inserir = (pessoas, cartao) => {
+        const msg = db.prepare("INSERT INTO mensagens (grupo_id, mensagem_id, remetente_id, pessoa_id, enviada_em, registrada_em) VALUES ('g', ?, 'r', 'lorran', 'x', 'x')")
+            .run(`m${Math.random()}`).lastInsertRowid;
+        db.prepare("INSERT INTO despesas (mensagem_ref, estado, campos, pendencias, avisos, criado_em, atualizado_em) VALUES (?, 'APROVADO', ?, '[]', '[]', 'x', 'x')")
+            .run(msg, JSON.stringify({ tipo: { valor: "JANTAR" }, pessoas: { valor: pessoas }, pagamento: { cartao } }));
+    };
+    for (let i = 0; i < 4; i += 1) inserir(1, "INTER");
+    assert.equal(habitosDoOperador(db, "lorran").pessoas.refeicao, null, "4 notas ainda nao e habito");
+    inserir(1, "INTER");
+    assert.equal(habitosDoOperador(db, "lorran").pessoas.refeicao.valor, 1);
+    assert.equal(habitosDoOperador(db, "lorran").cartao.codigo, "INTER");
+    inserir(3, "C6"); inserir(2, "C6");
+    assert.equal(habitosDoOperador(db, "lorran").pessoas.refeicao, null, "5 de 7 (71%) nao e habito firme");
+});
+
+test("assinatura do operador na mensagem nao vira linha nao entendida", () => {
+    const { interpretar } = require("../src/central/interpretador");
+    const r = interpretar(cad(), { texto: "Janta\nLorran\nValor R$ 81,88", temMidia: true, pessoa: { id: "lorran", nome: "Lorran" } });
+    assert.deepEqual(r.dados.linhas_nao_entendidas, []);
+    assert.equal(r.dados.valor_declarado, 81.88);
+});
+
+test("hospedagem sem pessoas informadas: diaria de ate R$ 350 estima 1 pessoa (a confirmar)", () => {
+    const p = previa({ fornecedor: "HOTEL BOA NOITE", valor: 230, texto_bruto: "HOTEL BOA NOITE\nDIARIA 230,00" }, { tipos: ["HOSPEDAGEM"] });
+    assert.equal(p.campos.pessoas.valor, 1);
+    assert.equal(p.campos.pessoas.origem, "valor_da_diaria");
+    assert.equal(p.campos.descricao.valor, "HOSPEDAGEM - 1 PESSOA");
+    const cara = previa({ fornecedor: "HOTEL BOA NOITE", valor: 900, texto_bruto: "HOTEL BOA NOITE\nDIARIAS 900,00" }, { tipos: ["HOSPEDAGEM"] });
+    assert.equal(cara.campos.pessoas.valor, null, "diaria alta nao vira 1 pessoa");
+});

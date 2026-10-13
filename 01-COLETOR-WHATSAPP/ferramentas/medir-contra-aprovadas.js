@@ -28,6 +28,7 @@ const { processarFoto, lerDespesa } = require("../src/central/orquestrador");
 const { CAMPOS, valorDoCampo } = require("../src/central/revisao");
 const { normalizar } = require("../src/central/texto");
 const maturidade = require("../src/central/maturidade");
+const { habitosDoOperador } = require("../src/central/habitos");
 
 const RAIZ = path.resolve(__dirname, "..");
 // Respostas do Azure: as desta instalacao e, se existir, as da pasta antiga.
@@ -69,13 +70,20 @@ function executar() {
     // Reprocessa as fotos com a versao atual, em memoria (as mensagens de
     // contexto vem na ordem em que chegaram).
     const temporario = banco.abrir(":memory:");
+    // Quem e quem (codigo do WhatsApp -> pessoa), igual ao banco real.
+    const copiarVinculo = temporario.prepare("INSERT INTO remetentes_vinculados (whatsapp_id, pessoa_id, origem, vinculado_em) VALUES (?, ?, ?, ?)");
+    for (const v of real.prepare("SELECT * FROM remetentes_vinculados").all()) copiarVinculo.run(v.whatsapp_id, v.pessoa_id, v.origem, v.vinculado_em);
     const novasPorArquivo = new Map();
     let semLeitura = 0;
     for (const linha of real.prepare("SELECT * FROM midias ORDER BY recebida_em, id").all()) {
         const bruto = respostaAzure(linha.arquivo);
         if (!bruto) { semLeitura += 1; continue; }
+        // Habitos do operador vem do banco REAL, sem as despesas desta foto
+        // (senao a nota "cola" a propria resposta e a maturidade sai inflada).
+        const daFoto = real.prepare("SELECT id FROM despesas WHERE midia_id = ?").all(linha.id).map((d) => d.id);
         const resultado = processarFoto(temporario, cad, {
             arquivo: linha.arquivo, sha256: linha.sha256 || crypto.randomUUID(), regras, hoje: new Date(), brutoAzure: bruto,
+            obterHabitos: (pessoaId) => habitosDoOperador(real, pessoaId, { excluirDespesas: daFoto }),
             meta: { id_mensagem: linha.mensagem_id, id_grupo: linha.grupo_id, remetente: linha.remetente_id, legenda: linha.legenda || "", recebido_em_ms: Date.parse(linha.recebida_em) },
         });
         novasPorArquivo.set(linha.arquivo, resultado.despesas.map((id) => lerDespesa(temporario, id)));

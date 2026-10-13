@@ -200,6 +200,13 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
             continue;
         }
 
+        // Assinatura: o operador escreve o proprio nome ("Lorran") na mensagem.
+        const nomesDoRemetente = [pessoa?.nome, nomeRemetente, String(nomeRemetente || "").split(" ")[0]].filter(Boolean).map(normalizar);
+        if (nomesDoRemetente.includes(normalizar(linha))) {
+            dados.assinatura = linha;
+            continue;
+        }
+
         dados.linhas_nao_entendidas.push(linha);
     }
 

@@ -23,6 +23,10 @@ Para trazer notas lidas em outra instalação do programa, sem chamar o Azure de
 | Duplicadas / descartadas | Mesma nota fiscal já registrada, ou descartadas com motivo |
 | Treino | Acerto da IA por campo, só sobre o que foi aprovado |
 
+## Dica para marcar o motivo
+
+Quando a IA não tinha como saber (o operador não mandou o cartão, as pessoas ou o projeto), use **"Não informado"**, inclusive na descrição que depende desse campo. Assim isso não conta como erro dela. Use **"Outro"** só para situações diferentes, e escreva a explicação no próprio campo corrigido. As explicações entram no exemplo de treino.
+
 ## Separação por operador
 
 Acima da lista há um botão para cada operador, com quantas notas ele tem na aba aberta: **Todos · Lorran (3) · Almir (0) · … · Não identificado (46)**. Clique para ver só as notas daquela pessoa. A escolha fica lembrada no navegador.

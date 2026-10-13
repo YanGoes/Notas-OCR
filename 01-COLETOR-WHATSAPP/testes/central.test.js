@@ -191,7 +191,8 @@ test("data da nota vale mesmo quando a foto chega no dia seguinte, e valor da no
     const [despesa] = foto(db, { bruto: azure([JANTAR]), legenda: "janta 3 pessoas\nValor 80", recebida: "2026-10-01T09:30:00-03:00" }).lidas;
     assert.equal(despesa.campos.data_competencia.valor, "2026-09-30");
     assert.equal(despesa.campos.valor.valor, 85.5);
-    assert.ok(despesa.avisos.some((texto) => /vale o da nota/.test(texto)));
+    // R$ 80 da mensagem nao aparece na nota: vale o da nota, mas vai para conferencia.
+    assert.ok(despesa.pendencias.some((texto) => /difere do valor da mensagem/.test(texto)));
     assert.equal(despesa.campos.descricao.valor, "JANTAR - 3 PESSOAS");
     assert.equal(despesa.campos.pessoas.confirmado, true);
 });

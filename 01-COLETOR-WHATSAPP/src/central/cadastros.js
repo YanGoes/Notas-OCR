@@ -212,6 +212,24 @@ function resolverVeiculo(cad, placa) {
     return achados.length === 1 ? achados[0] : null;
 }
 
+// Caracteres que o OCR confunde entre si (8/B, 0/O/D/Q, 1/I/L, 5/S, 2/Z, 6/G).
+const SOSIAS = { 8: "B", B: "B", 0: "0", O: "0", D: "0", Q: "0", 1: "1", I: "1", L: "1", 5: "5", S: "5", 2: "2", Z: "2", 6: "6", G: "6" };
+const placaSosia = (valor) => [...placaCanonica(valor)].map((c) => SOSIAS[c] || c).join("");
+
+/**
+ * Placa lida com troca de OCR em QUALQUER posicao ("SGR4854" = SGR4B54 da
+ * frota, 8 no lugar de B). So resolve quando as diferencas sao todas entre
+ * caracteres parecidos e um UNICO veiculo da frota bate.
+ * @returns {{veiculo:object, lida:string}|null}
+ */
+function veiculoPorSosia(cad, placa) {
+    const lida = placaCanonica(placa);
+    if (lida.length !== 7) return null;
+    const alvo = placaSosia(lida);
+    const achados = cad.veiculos.filter((veiculo) => placaSosia(veiculo.placa) === alvo);
+    return achados.length === 1 ? { veiculo: achados[0], lida } : null;
+}
+
 /**
  * Placa ilegivel ("JKMOISE") comparada com a frota. So SUGERE: as 3 letras
  * iniciais tem que bater com um UNICO veiculo e o resto pode diferir em ate 2
@@ -284,6 +302,6 @@ function categoriaPorNome(cad, nomeInterno) {
 module.exports = {
     carregar, identificarPessoa, variantesTelefone,
     resolverProjeto, pareceProjeto, projetosComId, nomeCentro,
-    resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, veiculoAproximado, placaCanonica, placaComparavel,
+    resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, veiculoAproximado, veiculoPorSosia, placaCanonica, placaComparavel,
     resolverFornecedor, categoriaPorNome, PASTA_PADRAO,
 };

@@ -81,16 +81,17 @@ O projeto informado vale para as próximas notas daquele operador, mesmo em outr
 
 | Campo | Regra |
 | --- | --- |
-| Data e valor | Sempre os da nota. A data da mensagem só gera aviso se for diferente. Data lida no futuro (erro de leitura) é trocada pela outra data da nota |
+| Data e valor | Sempre os da nota. Se a mensagem diz outro valor e **esse valor também está impresso na nota** (o OCR pegou o subtotal) ou é o mesmo número sem a vírgula (5800 = 58,00), vale o da mensagem. Se não aparece na nota, fica o da nota e vai para conferência. Data lida no futuro é trocada pela outra data da nota |
 | Fornecedor | Padrão VMac por tipo: posto → **POSTOS DE COMBUSTÍVEL**, refeição → **RESTAURANTES**, hotel → **HOTÉIS**. O nome impresso fica guardado. A própria VMac (tomadora da NFS-e) nunca é fornecedor |
 | Tipo | Pela nota (itens, estabelecimento, texto da NFS-e) e pela mensagem. Refeição pelo horário é só pista e vai para confirmação |
-| Placa | Lida na nota, inclusive com "PLACA" mal impresso ("FLACA") e trocas do OCR ("RBTZE25" → RBT2E25). Placa ilegível é comparada com a frota e vira **sugestão** |
+| Placa | Lida na nota, inclusive com "PLACA" mal impresso ("FLACA") e trocas do OCR ("RBTZE25" → RBT2E25, "SGR4854" → SGR4B54 da frota). Placa ilegível é comparada com a frota e vira **sugestão** |
+| Litros | Lidos na nota. Separador de milhar perdido ("61618") vira 61,618 quando o preço por litro confere (R$ 3 a 12) |
 | Hodômetro | Rótulos "HODOMETRO", "OD", "KM", "HM". Um número sem rótulo colado à placa é usado, mas vai para confirmação. O km da rodovia no endereço é ignorado |
-| Pessoas | A mensagem manda. Sem ela, estima pela maior quantidade de um mesmo item (3 hambúrgueres = 3 pessoas) ou pelos hóspedes da nota, **sempre a confirmar** |
+| Pessoas | A mensagem manda. Sem ela, estima, **sempre a confirmar**: pelo **costume do operador** (5+ notas aprovadas, 80%+ iguais), pela maior quantidade de um mesmo item, pelos hóspedes da nota ou por diária de até R$ 350 (1 pessoa) |
 | Descrição | Abastecimento: `35,43L od 145.225 - JKN2876`. Refeição e hospedagem: `JANTAR - 3 PESSOAS`, `HOSPEDAGEM - 1 PESSOA` |
 | Categoria | Combustível pela placa da frota; refeição, hospedagem e pedágio pela prática atual da VMac. Sem regra, o modelo treinado só **sugere** |
 | Centro de custo | Do projeto informado pelo operador. Só nome ou apelido **exatos** escolhem o projeto. Projeto inativo vai para revisão |
-| Cartão | O informado pelo operador. Sem ele, vale a orientação da gerência para o projeto. O que vem impresso no cupom não decide |
+| Cartão | O informado pelo operador. Sem ele, vale a orientação da gerência para o projeto. O que vem impresso no cupom não decide. Sem nenhum dos dois, o **cartão de costume** do operador aparece só como sugestão |
 
 Mais regras:
 - **Uma foto, várias notas:** uma foto com duas notas diferentes vira **duas despesas**, inclusive notas lado a lado separadas pela posição na foto. Cupom fiscal mais a via da maquininha da mesma compra é uma despesa só.
@@ -197,7 +198,7 @@ O plano gratuito lê 500 páginas por mês. O programa para em 450, deixando fol
 
 ```powershell
 npm ci           # instala as bibliotecas
-npm test         # 263 testes automatizados
+npm test         # 272 testes automatizados
 npm run check    # confere a sintaxe de todos os arquivos
 npm start        # sobe o painel e a coleta (porta 3211)
 ```

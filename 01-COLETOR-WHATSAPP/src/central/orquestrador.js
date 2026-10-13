@@ -16,6 +16,7 @@ const { agora, json, lerJson, transacao } = require("./banco");
 const contexto = require("./contexto");
 const { dividirDocumentos, chaveNfce, impressaoDigital } = require("./documentos");
 const { montarPrevia } = require("./regras-vmac");
+const { habitosDoOperador } = require("./habitos");
 const { INTENCOES, interpretar } = require("./interpretador");
 
 function momentoDaMeta(meta = {}) {
@@ -61,7 +62,7 @@ function legendaInterpretada(registro, textoLegenda) {
  * @param {object} [entrada.regras]
  * @returns {{midiaId:number, repetida:boolean, despesas:number[]}}
  */
-function processarFoto(db, cad, { arquivo, sha256, meta = {}, brutoAzure = null, modelId = "prebuilt-receipt", erroLeitura = null, regras = {}, hoje = new Date() }) {
+function processarFoto(db, cad, { arquivo, sha256, meta = {}, brutoAzure = null, modelId = "prebuilt-receipt", erroLeitura = null, regras = {}, hoje = new Date(), obterHabitos = null }) {
     const existente = db.prepare("SELECT id FROM midias WHERE arquivo = ?").get(String(arquivo));
     if (existente) {
         const despesas = db.prepare("SELECT id FROM despesas WHERE midia_id = ?").all(existente.id).map((linha) => linha.id);
@@ -92,7 +93,9 @@ function processarFoto(db, cad, { arquivo, sha256, meta = {}, brutoAzure = null,
         const legenda = legendaInterpretada(registro, meta.legenda);
         const politica = (texto) => contexto.politicaCartao(db, texto ? contexto.chaveProjeto(cad, texto).chave : null, momento);
         const politicaVigente = politica(legenda.projeto_texto || ctx.projeto?.texto);
-        const base = { legenda, contexto: ctx, politica: politicaVigente, identificacao: registro.pessoa, cad, regras, hoje };
+        // obterHabitos: a medicao passa os habitos de OUTRO banco (sem a propria nota).
+        const habitos = obterHabitos ? obterHabitos(registro.pessoa?.pessoa?.id) : habitosDoOperador(db, registro.pessoa?.pessoa?.id);
+        const base = { legenda, contexto: ctx, politica: politicaVigente, identificacao: registro.pessoa, cad, regras, hoje, habitos };
 
         if (!brutoAzure) {
             const previa = montarPrevia({ ...base, ocr: { erro_leitura: erroLeitura } });
@@ -158,7 +161,8 @@ function processarMensagemTexto(db, cad, msg, { regras = {}, hoje = new Date() }
     const legenda = { ...dados, texto: msg.texto || "" };
     const projetoTexto = legenda.projeto_texto || ctx.projeto?.texto;
     const politica = contexto.politicaCartao(db, projetoTexto ? contexto.chaveProjeto(cad, projetoTexto).chave : null, msg.enviadaEm);
-    const previa = montarPrevia({ ocr: null, legenda, contexto: ctx, politica, identificacao: registro.pessoa, cad, regras, hoje });
+    const previa = montarPrevia({ ocr: null, legenda, contexto: ctx, politica, identificacao: registro.pessoa, cad, regras, hoje,
+        habitos: habitosDoOperador(db, registro.pessoa?.pessoa?.id) });
     const id = transacao(db, () => inserirDespesa(db, { mensagemRef: registro.mensagemRef, loteId: ctx.lote?.id, previa, estado: "AGUARDANDO_REVISAO" }));
     return { ...registro, despesa: id };
 }
@@ -206,7 +210,8 @@ function regenerarPrevia(db, cad, despesaId, { regras = {}, hoje = new Date() } 
     const leituraFalhou = Boolean(midia) && !documento;
     const ocr = documento ? lerJson(documento.ocr, {}) : leituraFalhou ? { erro_leitura: true } : null;
 
-    const previa = montarPrevia({ ocr, legenda, contexto: ctx, politica, identificacao, cad, regras, hoje });
+    const previa = montarPrevia({ ocr, legenda, contexto: ctx, politica, identificacao, cad, regras, hoje,
+        habitos: habitosDoOperador(db, identificacao.pessoa?.id) });
     if (leituraFalhou) previa.pendencias.unshift("Leitura automática falhou. Leia a imagem manualmente.");
     if (despesa.duplicada_de) previa.pendencias.push(`Possível duplicidade com a despesa #${despesa.duplicada_de} (mesmo emissor, data, valor e hora). Confirme se são compras diferentes.`);
     const estado = previa.pendencias.length ? "AGUARDANDO_REVISAO" : "CLASSIFICADO";

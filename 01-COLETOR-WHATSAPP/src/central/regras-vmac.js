@@ -202,7 +202,7 @@ function pessoasPelaNota(ocr, tipo) {
     return maior >= 1 ? { valor: maior, origem: "itens_da_nota" } : null;
 }
 
-function decidirPessoas({ tipo, legenda, lote, ocr = null }) {
+function decidirPessoas({ tipo, legenda, lote, ocr = null, habitos = null }) {
     if (legenda?.pessoas?.quantidade) return { valor: legenda.pessoas.quantidade, origem: "mensagem_da_foto", confirmado: true };
     const declarado = lote?.quantidades?.pessoas;
     if (declarado?.quantidade && (!declarado.tipo || declarado.tipo === tipo)) {
@@ -213,10 +213,22 @@ function decidirPessoas({ tipo, legenda, lote, ocr = null }) {
         // "Qtd 3 almoço": pode ser 3 pessoas ou 3 notas. Vira estimativa a confirmar.
         return { valor: qtdLote.quantidade, origem: "quantidade_do_lote_semantica_indeterminada", confirmado: false };
     }
+    // Habito do operador (ex.: o Lorran viaja sozinho: todas as refeicoes
+    // aprovadas sao de 1 pessoa). Vale mais que contar itens da nota, que
+    // confunde "2 itens" com "2 pessoas". Sempre estimativa a confirmar.
+    const habito = habitos?.pessoas?.[tipo === "HOSPEDAGEM" ? "hospedagem" : "refeicao"];
+    if (habito?.valor) return { valor: habito.valor, origem: "habito_do_operador", confirmado: false, amostras: habito.amostras };
     const pelaNota = pessoasPelaNota(ocr, tipo);
     if (pelaNota) return { ...pelaNota, confirmado: false };
+    // Hospedagem sem nada informado: diaria de ate R$ 350 e, na pratica da
+    // VMac, de 1 pessoa (observacao da revisao de 12/10). So estimativa.
+    if (tipo === "HOSPEDAGEM" && Number(ocr?.valor) > 0 && Number(ocr.valor) <= LIMITE_DIARIA_UMA_PESSOA) {
+        return { valor: 1, origem: "valor_da_diaria", confirmado: false };
+    }
     return { valor: null, origem: null, confirmado: false };
 }
+
+const LIMITE_DIARIA_UMA_PESSOA = 350;
 
 // ---------------------------------------------------------------------------
 // Montagem da previa
@@ -233,7 +245,30 @@ function decidirPessoas({ tipo, legenda, lote, ocr = null }) {
  * @param {object} [entrada.regras] — regras.json (confianca_minima)
  * @param {Date} [entrada.hoje]
  */
-function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo }) {
+/** O valor aparece impresso no texto da nota? ("81,88", "81.88", "R$81,88") */
+function valorImpressoNaNota(texto, valor) {
+    if (!texto || !(Number(valor) > 0)) return false;
+    const [inteiro, decimal] = Number(valor).toFixed(2).split(".");
+    const milhar = inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    const formas = new Set([`${inteiro},${decimal}`, `${inteiro}.${decimal}`, `${milhar},${decimal}`]);
+    return [...formas].some((forma) => new RegExp(`(?<![\\d,.])${forma.replace(/\./g, "\\.")}(?![\\d])`).test(String(texto)));
+}
+
+/**
+ * Litros com separador de milhar lido como numero inteiro ("61618" = 61,618 L).
+ * Corrige so quando o preco por litro resultante e de combustivel (R$ 3 a 12).
+ */
+function corrigirLitros(litros, valor) {
+    if (!(litros > 300)) return { litros, corrigido: false };
+    for (const divisor of [1000, 100]) {
+        const candidato = Math.round((litros / divisor) * 1000) / 1000;
+        const preco = valor ? valor / candidato : null;
+        if (candidato >= 1 && candidato <= 300 && (!preco || (preco >= 3 && preco <= 12))) return { litros: candidato, corrigido: true };
+    }
+    return { litros, corrigido: false };
+}
+
+function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo, habitos = null }) {
     const pendencias = [];
     const avisos = [];
     const campos = {};
@@ -267,15 +302,27 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         if (declarada && declarada !== dataNota) avisos.push(`Data da nota (${dataNota}) difere da data da mensagem (${declarada}); vale a da nota.`);
     }
 
-    // Valor: sempre o da nota
-    const valorNota = Number(ocr?.valor) > 0 ? Number(ocr.valor) : null;
-    campos.valor = { valor: valorNota, origem: valorNota ? "nota" : null };
+    // Valor: sempre o da nota. Quando a mensagem diz outro valor, confere se
+    // ESSE valor tambem esta impresso na nota (o OCR pegou o subtotal, ou leu
+    // "58,00" como 5800): ai vale o valor impresso que bate com a mensagem.
+    let valorNota = Number(ocr?.valor) > 0 ? Number(ocr.valor) : null;
+    let origemValor = valorNota ? "nota" : null;
     const declarado = legenda?.valor_declarado ?? null;
+    if (valorNota && declarado && centavos(declarado) !== centavos(valorNota)) {
+        const impresso = valorImpressoNaNota(ocr?.texto_bruto, declarado);
+        const semVirgula = centavos(valorNota) === centavos(declarado * 100);
+        if (impresso || semVirgula) {
+            avisos.push(`Valor lido R$ ${valorNota.toFixed(2)} trocado por R$ ${declarado.toFixed(2)}: é o valor da mensagem e ele ${semVirgula ? "é o mesmo número com a vírgula perdida na leitura" : "também está impresso na nota"}.`);
+            valorNota = declarado;
+            origemValor = "nota_confirmada_pela_mensagem";
+        } else {
+            pendencias.push(`Valor da nota (R$ ${valorNota.toFixed(2)}) difere do valor da mensagem (R$ ${declarado.toFixed(2)}), que não aparece na nota; confirme.`);
+        }
+    }
+    campos.valor = { valor: valorNota, origem: origemValor };
     if (!valorNota) {
         pendencias.push(ocr ? "Valor total não foi lido com segurança na nota." : "Valor sem comprovante para confirmar.");
         if (declarado) campos.valor.sugestao = { valor: declarado, origem: "mensagem" };
-    } else if (declarado && centavos(declarado) !== centavos(valorNota)) {
-        avisos.push(`Valor da mensagem (R$ ${declarado.toFixed(2)}) difere da nota (R$ ${valorNota.toFixed(2)}); vale o da nota.`);
     }
     const minimo = Number(regras.confianca_minima || 0);
     if (ocr && minimo && Number(ocr.confianca || 0) < minimo) {
@@ -320,7 +367,21 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             if (info.origem === "mensagem_do_operador") avisos.push(`${nome} não lido na nota; usado o valor digitado pelo operador.`);
         }
         const placaLida = placaInfo.valor;
-        const veiculo = placaLida ? cadastros.resolverVeiculo(cad, placaLida) : null;
+        let veiculo = placaLida ? cadastros.resolverVeiculo(cad, placaLida) : null;
+        // "SGR4854" lida = SGR4B54 da frota (8 no lugar de B): so troca de caractere parecido e um unico veiculo.
+        if (!veiculo && placaLida) {
+            const sosia = cadastros.veiculoPorSosia(cad, placaLida);
+            if (sosia) {
+                veiculo = sosia.veiculo;
+                avisos.push(`Placa lida como "${sosia.lida}" corresponde a ${cadastros.placaCanonica(veiculo.placa)} da frota (troca de caractere parecido na leitura).`);
+            }
+        }
+        // Litros com o separador de milhar perdido ("61618" = 61,618 L), conferido pelo preco por litro.
+        const ajusteLitros = corrigirLitros(litrosInfo.valor, valorNota);
+        if (ajusteLitros.corrigido) {
+            avisos.push(`Litros lidos como ${litrosInfo.valor} corrigidos para ${litrosBr(ajusteLitros.litros)} L (separador perdido na leitura; preço por litro confere).`);
+            litrosInfo.valor = ajusteLitros.litros;
+        }
         const litros = litrosInfo.valor;
         const odometro = odometroInfo.valor;
         campos.abastecimento = {
@@ -369,11 +430,15 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         descricao = { valor: descricaoAbastecimento({ litros, odometro, placa: campos.abastecimento.placa.valor }), origem: "template_abastecimento" };
     } else if (TIPOS[tipo]?.refeicao || tipo === "HOSPEDAGEM") {
         // Refeicao e hospedagem: descricao "JANTAR - 3 PESSOAS" / "HOSPEDAGEM - 1 PESSOA".
-        const pessoas = decidirPessoas({ tipo, legenda, lote, ocr });
+        const pessoas = decidirPessoas({ tipo, legenda, lote, ocr, habitos });
         campos.pessoas = pessoas;
         if (!pessoas.valor) pendencias.push(`Quantidade de pessoas ${tipo === "HOSPEDAGEM" ? "hospedadas" : "da refeição"} não informada.`);
-        else if (pessoas.origem === "itens_da_nota") {
+        else if (pessoas.origem === "habito_do_operador") {
+            pendencias.push(`Pessoas não informadas; estimado ${pessoas.valor} pelo costume de ${pessoa?.nome || "deste operador"} (${pessoas.amostras} notas aprovadas). Confirme.`);
+        } else if (pessoas.origem === "itens_da_nota") {
             pendencias.push(`${pessoas.valor} ${pessoas.valor === 1 ? "pessoa estimada" : "pessoas estimadas"} pelos itens da nota; confirme.`);
+        } else if (pessoas.origem === "valor_da_diaria") {
+            pendencias.push(`Pessoas não informadas; estimada 1 pelo valor da diária (até R$ ${LIMITE_DIARIA_UMA_PESSOA}). Confirme.`);
         } else if (pessoas.origem === "hospedes_na_nota") {
             pendencias.push(`${pessoas.valor} hóspede(s) segundo a nota; confirme.`);
         } else if (!pessoas.confirmado) {
@@ -462,7 +527,15 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     campos.pagamento = pagamento || { forma: null, cartao: null, origem: null };
     if (!pagamento) {
         const impresso = ocr?.forma_pagamento ? ` (o cupom indica ${ocr.forma_pagamento}, mas isso não decide)` : "";
-        pendencias.push(`Forma/conta de pagamento não informada${impresso}.`);
+        // Cartao de costume do operador: so SUGESTAO (quem decide e a mensagem ou a gerencia).
+        const costume = habitos?.cartao;
+        const cartaoCostume = costume ? cad.cartoes.find((item) => item.codigo === costume.codigo) : null;
+        if (cartaoCostume) {
+            campos.pagamento.sugestao = { codigo: cartaoCostume.codigo, rotulo: cartaoCostume.rotulo, origem: "habito_do_operador", amostras: costume.amostras };
+            pendencias.push(`Cartão não informado${impresso}. ${pessoa?.nome || "O operador"} costuma usar ${cartaoCostume.rotulo} (${costume.amostras} notas aprovadas).`);
+        } else {
+            pendencias.push(`Forma/conta de pagamento não informada${impresso}.`);
+        }
     } else if (ocr?.forma_pagamento && pagamento.forma && ocr.forma_pagamento !== pagamento.forma) {
         avisos.push(`O cupom indica ${ocr.forma_pagamento}; prevaleceu o pagamento informado (${pagamento.rotulo || pagamento.forma}).`);
     }

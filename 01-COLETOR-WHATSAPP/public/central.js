@@ -22,7 +22,7 @@ const ORIGENS = {
 };
 Object.assign(ORIGENS, {
     fornecedor_generico_do_tipo: "fornecedor padrão do tipo", itens_da_nota: "estimado pelos itens da nota (confirme)",
-    hospedes_na_nota: "hóspedes na nota (confirme)", texto_da_nota: "texto da nota", frota_por_semelhanca: "parecida com a frota",
+    hospedes_na_nota: "hóspedes na nota (confirme)", habito_do_operador: "costume do operador (confirme)", valor_da_diaria: "estimado pelo valor da diária (confirme)", nota_confirmada_pela_mensagem: "nota (confere com a mensagem)", texto_da_nota: "texto da nota", frota_por_semelhanca: "parecida com a frota",
 });
 const nomeOrigem = (codigo) => ORIGENS[codigo] || String(codigo).replaceAll("_", " ");
 const MOTIVOS = { LEITURA: "leitura", CLASSIFICACAO: "classificação", NAO_INFORMADO: "não informado", OUTRO: "outro" };
@@ -231,18 +231,23 @@ function linhaCampo(campo, detalhe) {
             el("span", { class: `origem ${origem === "correcao_humana" ? "humana" : ""}` }, origem ? nomeOrigem(origem) : "sem valor"),
             blocoMotivo(campo, valor)));
     entrada.id = `c-${campo.chave}`;
+    const sugestaoPagamento = detalhe.campos.pagamento?.sugestao;
     const sugestao = valor ? null
         : campo.chave === "categoria" ? detalhe.campos.categoria?.sugestao
             : campo.chave === "placa" && detalhe.campos.abastecimento?.placa?.sugestao
-                ? { nome: detalhe.campos.abastecimento.placa.sugestao.valor, origem: detalhe.campos.abastecimento.placa.sugestao.origem } : null;
+                ? { nome: detalhe.campos.abastecimento.placa.sugestao.valor, origem: detalhe.campos.abastecimento.placa.sugestao.origem }
+                : campo.chave === "pagamento" && sugestaoPagamento
+                    ? { nome: sugestaoPagamento.rotulo, valor: sugestaoPagamento.codigo, origem: sugestaoPagamento.origem, amostras: sugestaoPagamento.amostras } : null;
     if (sugestao?.nome && detalhe.editavel) {
         const confianca = sugestao.confianca ? ` · ${Math.round(sugestao.confianca * 100)}% de confiança` : "";
-        const origemSugestao = { placa_fora_da_frota: "placa fora da frota", frota_por_semelhanca: "placa parecida com a frota" }[sugestao.origem] || "aprendido da planilha";
+        const origemSugestao = { placa_fora_da_frota: "placa fora da frota", frota_por_semelhanca: "placa parecida com a frota",
+            habito_do_operador: `costume do operador em ${sugestao.amostras || "várias"} notas` }[sugestao.origem] || "aprendido da planilha";
         linha.querySelector(".entrada").insertBefore(el("div", { class: "sugestao" },
             `Sugestão (${origemSugestao}${confianca}): `, el("b", {}, sugestao.nome), " ",
             el("button", { type: "button", class: "secondary", onclick: () => {
-                entrada.value = sugestao.nome;
+                entrada.value = sugestao.valor ?? sugestao.nome;
                 entrada.dispatchEvent(new Event("input"));
+                entrada.dispatchEvent(new Event("change"));
             } }, "Usar sugestão")), linha.querySelector(".origem"));
     }
     entrada.addEventListener("input", () => linha.classList.toggle("mudou", valorDoControle(entrada, campo) !== linha.dataset.inicial));
