@@ -651,9 +651,10 @@ function itensDosCampos(campos) {
 }
 
 function tipoSugeridoAzure(documento, campos) {
-    const tipoDocumento = String(documento?.docType || "").toLowerCase();
+    // O docType "receipt.retailMeal" e o tipo PADRAO de qualquer nota de varejo
+    // (ate de loja de ferragens): nao diz que e refeicao. So o ReceiptType diz.
     const tipoRecibo = String(valorCampo(campos?.ReceiptType) || "").toLowerCase();
-    if (tipoDocumento.includes("retailmeal") || /meal|restaurant|food/.test(tipoRecibo)) return "alimentacao";
+    if (/meal|restaurant|food/.test(tipoRecibo)) return "alimentacao";
     if (/gas|fuel/.test(tipoRecibo)) return "combustivel";
     return null;
 }
@@ -714,7 +715,12 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
         && Number(valorEstruturado).toFixed(2) === Number(detalhesValor.valor).toFixed(2)
     );
     const itens = itensDosCampos(campos);
-    const itemLitros = itens.find((item) => /^(l|lt|litro|litros)$/i.test(String(item.unidade || "").trim()) && Number(item.quantidade) > 0);
+    // Item de combustivel: a unidade as vezes vem mal lida (".4" no lugar de
+    // "L"); a quantidade fracionada no item do combustivel e a litragem.
+    const ehCombustivel = (texto) => /gasolina|diesel|etanol|alcool|álcool|gnv|arla/i.test(String(texto || ""));
+    const itemLitros = itens.find((item) => /^(l|lt|litro|litros)$/i.test(String(item.unidade || "").trim()) && Number(item.quantidade) > 0)
+        || itens.find((item) => ehCombustivel(item.descricao) && Number(item.quantidade) > 0 && Number(item.quantidade) <= 300
+            && !Number.isInteger(Number(item.quantidade)));
     const endereco = enderecoDoCampo(campos.MerchantAddress, texto, chaveFiscal?.estado);
     const formaPagamento = formaPagamentoDoTexto(texto);
     const placaInfo = placaDetalhada(texto);

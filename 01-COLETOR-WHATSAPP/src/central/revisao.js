@@ -129,6 +129,8 @@ function opcoes(cad) {
         centros: opcoesCentro(cad),
         cartoes: (cad.cartoes || []).map((cartao) => ({ codigo: cartao.codigo, rotulo: cartao.rotulo, forma: cartao.forma_pagamento })),
         pessoas: (cad.pessoas || []).map((pessoa) => ({ id: pessoa.id, nome: pessoa.nome })),
+        fornecedores: [...new Set([...(cad.fornecedores?.opcoes || []), ...Object.values(cad.fornecedores?.genericos_por_tipo || {}),
+            ...(cad.fornecedores?.recorrentes || []).map((item) => item.nome)])],
         tipos_erro: TIPOS_ERRO.map((codigo) => ({ codigo, rotulo: ROTULOS_ERRO[codigo] })),
         informados_pelo_operador: [...INFORMADOS_PELO_OPERADOR],
     };
@@ -229,6 +231,24 @@ function valorDe(campos, chave) {
  * Descricao de template acompanha os campos de que depende, a menos que a
  * pessoa tenha escrito a descricao a mao.
  */
+/**
+ * Centro de custo trocado para um ADMINISTRATIVO na revisao: a categoria
+ * acompanha (refeicao -> Lanches e Refeições; outros -> OUTROS), salvo se a
+ * pessoa ja escolheu a categoria ou se e material de campo.
+ */
+function ajustarCategoriaAdministrativa(cad, campos, registros) {
+    const centroMudou = registros.some((item) => item.chave === "centro_custo");
+    const categoriaEscolhida = registros.some((item) => item.chave === "categoria") || campos.categoria?.origem === "correcao_humana";
+    if (!centroMudou || categoriaEscolhida || !/despesas\s+administrativas/i.test(String(campos.centro_custo?.nome || ""))) return;
+    const tipo = campos.tipo?.valor;
+    const material = /materiais de campo/i.test(String(campos.fornecedor?.valor || ""));
+    if (material) return;
+    const interno = TIPOS[tipo]?.refeicao || tipo === "MERCADO" ? "ALIMENTACAO EM CAMPO" : tipo === "OUTROS" ? "OUTROS - REVISAO OBRIGATORIA" : null;
+    if (!interno) return;
+    const categoria = cadastros.categoriaPorNome(cad, interno);
+    if (categoria) campos.categoria = { nome: categoria.nome, id: categoria.id, origem: "despesa_administrativa" };
+}
+
 function atualizarDescricao(campos) {
     if (campos.descricao?.origem === "correcao_humana") return;
     const tipo = campos.tipo?.valor;
@@ -273,6 +293,7 @@ function corrigir(db, cad, despesaId, alteracoes, autor) {
     }
     if (!registros.length) return { despesa, alteradas: 0 };
     atualizarDescricao(campos);
+    ajustarCategoriaAdministrativa(cad, campos, registros);
 
     transacao(db, () => {
         const inserir = db.prepare(`INSERT INTO correcoes (despesa_id, campo, valor_anterior, valor_novo, tipo_erro, observacao, autor, em)

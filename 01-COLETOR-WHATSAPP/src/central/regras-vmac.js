@@ -77,6 +77,19 @@ const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "
 const HOTEIS = ["hotel", "hoteis", "pousada", "hostel", "motel", "hospedagem", "flat", "apart hotel"];
 const MERCADOS = ["supermercado", "supermercados", "mercado", "mercearia", "atacadao", "atacadista", "hipermercado", "minimercado"];
 
+// Material de campo (revisao de 13/10: ferragens com parafuso e cola de contato
+// tinham virado "restaurante"). Estabelecimento ou itens com estes termos.
+// So termos especificos: "cola" solto pegaria "Coca-Cola".
+const LOJAS_MATERIAL = ["ferragem", "ferragens", "material de construcao", "materiais de construcao", "casa do construtor", "home center",
+    "madeireira", "materiais eletricos", "material eletrico", "hidraulica", "tintas", "parafusos", "loja de ferramentas"];
+const ITENS_MATERIAL = ["parafuso", "parafusos", "porca sextavada", "arruela", "cola contato", "cascola", "super cola", "fita isolante", "fita crepe",
+    "abracadeira", "lampada", "pincel", "broca", "alicate", "martelo", "trena", "silicone", "cimento", "prego", "dobradica", "cadeado"];
+
+function ehMaterialDeCampo(estabelecimento, itens) {
+    if (LOJAS_MATERIAL.some((termo) => contemTermo(estabelecimento, termo))) return true;
+    return ITENS_MATERIAL.some((termo) => contemTermo(itens, termo));
+}
+
 function textoDoEstabelecimento(ocr) {
     return [ocr?.fornecedor, ocr?.nome_fantasia].filter(Boolean).join(" ");
 }
@@ -122,6 +135,9 @@ function tipoPelaNota(ocr) {
         return { tipo: "PEDAGIO", origem: "estabelecimento_da_nota" };
     }
     if (contemTermo(estabelecimento, "estacionamento")) return { tipo: "ESTACIONAMENTO", origem: "estabelecimento_da_nota" };
+    // Loja de ferragens / material de construcao: antes de "refeicao", porque o
+    // Azure as vezes classifica qualquer nota de varejo como refeicao.
+    if (ehMaterialDeCampo(estabelecimento, itens)) return { tipo: "OUTROS", origem: "material_de_campo", material: true };
     if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo)) || ocr?.tipo_despesa_sugerido === "alimentacao") {
         return { tipo: "REFEICAO", origem: "estabelecimento_da_nota" };
     }
@@ -339,7 +355,10 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     if (ocr?.hora) campos.hora_da_nota = { valor: ocr.hora, origem: "nota", uso: "somente_pista" };
 
     // Fornecedor
-    const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, tipo);
+    // Material de campo (ferragens, parafuso, cola de contato...): fornecedor generico "Materiais de Campo".
+    const itensDaNota = (ocr?.itens || []).map((item) => item.descricao).filter(Boolean);
+    const material = tipo === "OUTROS" && (decisaoTipo.material || ehMaterialDeCampo(textoDoEstabelecimento(ocr), itensDaNota.join(" ")));
+    const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, material ? "MATERIAL_DE_CAMPO" : tipo);
     campos.fornecedor = { valor: fornecedor.nome, origem: fornecedor.origem, nome_lido: fornecedor.nome_lido || ocr?.fornecedor || null, cnpj_lido: ocr?.cnpj || null };
     if (ocr && !fornecedor.nome) pendencias.push("Fornecedor não foi lido na nota.");
 
@@ -469,7 +488,11 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
 
     if (!descricao?.valor) {
         if (tipo === "PEDAGIO" || tipo === "ESTACIONAMENTO") descricao = { valor: TIPOS[tipo].rotulo, origem: "template_simples" };
-        else if (!descricao) {
+        else if (material && itensDaNota.length && !descricao) {
+            // "MATERIAL DE CAMPO - COLA CONTATO CASCOLA 730GR": item principal da nota, para confirmar.
+            descricao = { valor: `MATERIAL DE CAMPO - ${String(itensDaNota[0]).replace(/\s+/g, " ").trim().toUpperCase()}`, origem: "template_material" };
+            pendencias.push("Material de campo: descrição proposta pelo item da nota; confirme o texto.");
+        } else if (!descricao) {
             const citado = [...(legenda?.observacoes || []), ...(lote?.quantidades?.itens || []).map((item) => item.descricao)][0];
             descricao = { valor: citado ? String(citado).toUpperCase() : null, origem: citado ? "mensagem_do_operador" : null };
             pendencias.push(citado ? "Descrição proposta a partir da mensagem; confirme o texto." : "Descrição sem template para este tipo; defina o texto.");
@@ -494,8 +517,22 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         status: resolucao?.status || "NAO_INFORMADO",
         candidatos: (resolucao?.candidatos || []).map((projeto) => projeto.nome_oficial),
     };
-    if (!projetoTexto) pendencias.push("Projeto/centro de custo não informado pelo operador.");
-    else if (resolucao.status === "RESOLVIDO") {
+    if (!projetoTexto) {
+        // Sem projeto na mensagem: SUGERE o centro de costume (cadastro da pessoa
+        // ou habito aprendido). Ex.: as notas do Jhonathan quase sempre sao
+        // administrativas, mas nao todas — por isso nunca decide sozinho.
+        const sugerido = pessoa?.centro_custo_sugerido || habitos?.centro?.valor || null;
+        const projetoSugerido = sugerido ? cadastros.resolverProjeto(cad, sugerido, pessoa).projeto : null;
+        if (projetoSugerido) {
+            campos.centro_custo.sugestao = {
+                nome: cadastros.nomeCentro(projetoSugerido), projeto: projetoSugerido.nome_oficial, id: projetoSugerido.id_conta_azul || null,
+                origem: pessoa?.centro_custo_sugerido ? "costume_cadastrado" : "habito_do_operador", amostras: habitos?.centro?.amostras || null,
+            };
+            pendencias.push(`Projeto não informado. ${pessoa?.nome || "O operador"} costuma lançar em ${cadastros.nomeCentro(projetoSugerido)}; confirme.`);
+        } else {
+            pendencias.push("Projeto/centro de custo não informado pelo operador.");
+        }
+    } else if (resolucao.status === "RESOLVIDO") {
         if (!resolucao.projeto.id_conta_azul) pendencias.push(`Projeto "${resolucao.projeto.nome_oficial}" sem ID do Conta Azul; sincronize os centros de custo.`);
         if (resolucao.projeto.ativo !== true) pendencias.push(`Projeto "${resolucao.projeto.nome_oficial}" ainda não confirmado como ativo.`);
     } else if (resolucao.status === "INATIVO") {
@@ -503,6 +540,24 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     } else {
         const opcoes = campos.centro_custo.candidatos.length ? ` Possíveis: ${campos.centro_custo.candidatos.join(" | ")}.` : "";
         pendencias.push(`Projeto "${projetoTexto}" não corresponde exatamente a um projeto cadastrado.${opcoes}`);
+    }
+
+    // Despesa administrativa: refeicao vai para "Lanches e Refeições"; o resto
+    // (fora material de campo) para "OUTROS". Com o centro so sugerido, a
+    // categoria correspondente fica como sugestao.
+    const centroAdministrativo = ehCentroAdministrativo(campos.centro_custo.nome);
+    const sugeridoAdministrativo = !campos.centro_custo.nome && ehCentroAdministrativo(campos.centro_custo.sugestao?.nome);
+    if (centroAdministrativo || sugeridoAdministrativo) {
+        const categoriaAdm = categoriaAdministrativa(cad, tipo, material);
+        if (categoriaAdm && centroAdministrativo && !iguaisTexto(campos.categoria.nome, categoriaAdm.nome) && campos.categoria.origem !== "regra_especial") {
+            if (campos.categoria.nome) avisos.push(`Despesa administrativa: categoria "${campos.categoria.nome}" trocada por "${categoriaAdm.nome}".`);
+            campos.categoria = { ...categoriaAdm, origem: "despesa_administrativa" };
+            // As pendencias da categoria anterior deixam de valer.
+            for (let i = pendencias.length - 1; i >= 0; i -= 1) if (/^Categoria (não definida|")/.test(pendencias[i])) pendencias.splice(i, 1);
+            if (!categoriaAdm.id) pendencias.push(`Categoria "${categoriaAdm.nome}" sem ID do Conta Azul; sincronize as categorias.`);
+        } else if (categoriaAdm && sugeridoAdministrativo && !iguaisTexto(campos.categoria.nome, categoriaAdm.nome)) {
+            campos.categoria.sugestao = { nome: categoriaAdm.nome, origem: "despesa_administrativa" };
+        }
     }
 
     // Pagamento
@@ -536,6 +591,11 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         } else {
             pendencias.push(`Forma/conta de pagamento não informada${impresso}.`);
         }
+    } else if (pagamento.forma === "CARTAO_CREDITO" && !pagamento.cartao) {
+        // "Crédito" sem o banco: para lancar e preciso saber de qual cartao sai.
+        const costume = habitos?.cartao ? cad.cartoes.find((item) => item.codigo === habitos.cartao.codigo) : null;
+        if (costume) campos.pagamento.sugestao = { codigo: costume.codigo, rotulo: costume.rotulo, origem: "habito_do_operador", amostras: habitos.cartao.amostras };
+        pendencias.push(`Cartão de crédito sem o banco; confirme qual cartão${costume ? ` (${pessoa?.nome || "o operador"} costuma usar ${costume.rotulo})` : ""}.`);
     } else if (ocr?.forma_pagamento && pagamento.forma && ocr.forma_pagamento !== pagamento.forma) {
         avisos.push(`O cupom indica ${ocr.forma_pagamento}; prevaleceu o pagamento informado (${pagamento.rotulo || pagamento.forma}).`);
     }
@@ -552,6 +612,23 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         avisos: [...new Set(avisos)],
         estado: pendencias.length ? "AGUARDANDO_REVISAO" : "CLASSIFICADO",
     };
+}
+
+const ehCentroAdministrativo = (nome) => /despesas\s+administrativas/i.test(String(nome || ""));
+const iguaisTexto = (a, b) => Boolean(a) && Boolean(b) && normalizar(a) === normalizar(b);
+
+/** Categoria de despesa administrativa: refeicao -> Lanches e Refeições; resto -> OUTROS; material de campo nao muda. */
+function categoriaAdministrativa(cad, tipo, material) {
+    if (material) return null;
+    if (TIPOS[tipo]?.refeicao || tipo === "MERCADO") {
+        const lanches = cadastros.categoriaPorNome(cad, "ALIMENTACAO EM CAMPO");
+        return lanches ? { nome: lanches.nome, id: lanches.id } : { nome: "Lanches e Refeições", id: null };
+    }
+    if (["OUTROS"].includes(tipo)) {
+        const outros = cadastros.categoriaPorNome(cad, "OUTROS - REVISAO OBRIGATORIA");
+        return { nome: outros?.nome || "OUTROS", id: outros?.id || null };
+    }
+    return null;
 }
 
 /** Categoria indicada por nome livre (regra especial), resolvida no cadastro se possivel. */

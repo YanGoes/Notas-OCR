@@ -2,20 +2,36 @@
   "_leia_me": "Projetos/centros de custo. Status conforme o sistema de projetos em 08/10/2026 (ativos: 28 e 43). nome_oficial = nome no sistema de projetos; centro_conta_azul = nome EXATO do centro de custo no Conta Azul (usado para achar o ID na sincronizacao). ativo true libera escolha automatica; false = inativo (vai para revisao); null = nao confirmado. So correspondencia EXATA a um nome ou apelido resolve o projeto.",
   "projetos": [
     {
-      "nome_oficial": "DESPESAS ADMINISTRATIVAS",
+      "nome_oficial": "VMAC - LP - DESPESAS ADMINISTRATIVAS",
       "id_sistema_projetos": null,
-      "centro_conta_azul": "DESPESAS ADMINISTRATIVAS",
+      "centro_conta_azul": "VMAC - LP - DESPESAS ADMINISTRATIVAS",
       "id_conta_azul": null,
       "ativo": true,
       "servico": "ADMINISTRATIVO",
       "apelidos": [
+        "DESPESAS ADMINISTRATIVAS",
         "Escritório Santa Branca",
         "Escritorio Santa Branca",
         "Santa Branca",
         "Escritório",
-        "Administrativo"
+        "Administrativo",
+        "VMAC LP DESPESAS ADMINISTRATIVAS",
+        "LP administrativo"
       ],
-      "_nota": "Sede da VMac (Santa Branca) e despesas de escritorio."
+      "_nota": "Centro administrativo PADRAO (sede em Santa Branca, escritorio). Despesa administrativa: refeicao em 'Lanches e Refeições', o resto em 'OUTROS'."
+    },
+    {
+      "nome_oficial": "VMAC SN - DESPESAS ADMINISTRATIVAS",
+      "id_sistema_projetos": null,
+      "centro_conta_azul": "VMAC SN - DESPESAS ADMINISTRATIVAS",
+      "id_conta_azul": null,
+      "ativo": true,
+      "servico": "ADMINISTRATIVO",
+      "apelidos": [
+        "VMAC SN DESPESAS ADMINISTRATIVAS",
+        "SN administrativo"
+      ],
+      "_nota": "Segundo centro administrativo (empresa SN). Usar quando indicado; o padrao e o LP."
     },
     {
       "nome_oficial": "DYNATEST - GO",
@@ -219,7 +235,9 @@
       "ativo": true,
       "servico": "IRI",
       "busca_centro_conta_azul": "rota do pequi",
-      "apelidos": ["Rota do Pequi"],
+      "apelidos": [
+        "Rota do Pequi"
+      ],
       "_atencao": "Nome exato do centro no Conta Azul ainda nao informado. Enquanto centro_conta_azul for null, a sincronizacao usa o UNICO centro cujo nome contenha 'rota do pequi'."
     },
     {

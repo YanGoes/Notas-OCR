@@ -27,7 +27,7 @@ function maisFrequente(valores) {
     return participacao >= MINIMO_PARTICIPACAO ? { valor, amostras: valores.length, participacao } : null;
 }
 
-/** @returns {{pessoas:{refeicao:object|null, hospedagem:object|null}, cartao:object|null}|null} */
+/** @returns {{pessoas:{refeicao:object|null, hospedagem:object|null}, cartao:object|null, centro:object|null}|null} */
 function habitosDoOperador(db, pessoaId, { excluirDespesas = [] } = {}) {
     if (!pessoaId) return null;
     const excluir = new Set(excluirDespesas.map(Number));
@@ -35,7 +35,7 @@ function habitosDoOperador(db, pessoaId, { excluirDespesas = [] } = {}) {
         SELECT d.id, d.campos, e.rotulos FROM despesas d
         JOIN mensagens m ON m.id = d.mensagem_ref LEFT JOIN exemplos_treino e ON e.despesa_id = d.id
         WHERE d.estado = 'APROVADO' AND m.pessoa_id = ?`).all(String(pessoaId));
-    const refeicao = []; const hospedagem = []; const cartoes = [];
+    const refeicao = []; const hospedagem = []; const cartoes = []; const centros = [];
     for (const linha of linhas) {
         if (excluir.has(Number(linha.id))) continue;
         const campos = lerJson(linha.campos, {});
@@ -47,9 +47,14 @@ function habitosDoOperador(db, pessoaId, { excluirDespesas = [] } = {}) {
             if (tipo === "HOSPEDAGEM") hospedagem.push(pessoas);
         }
         if (!ignorados.has("pagamento") && campos.pagamento?.cartao) cartoes.push(campos.pagamento.cartao);
+        // Centro de teste ("TESTE CC") nao e costume de ninguem.
+        const centro = campos.centro_custo?.nome;
+        if (!ignorados.has("centro_custo") && centro && !/^teste\b/i.test(centro)) centros.push(centro);
     }
     const cartao = maisFrequente(cartoes);
+    const centro = maisFrequente(centros);
     return {
+        centro: centro ? { valor: centro.valor, amostras: centro.amostras, participacao: centro.participacao } : null,
         pessoas: { refeicao: maisFrequente(refeicao), hospedagem: maisFrequente(hospedagem) },
         cartao: cartao ? { codigo: cartao.valor, amostras: cartao.amostras, participacao: cartao.participacao } : null,
     };

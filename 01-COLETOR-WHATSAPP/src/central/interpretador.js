@@ -70,6 +70,8 @@ function metodoExcepcional(texto) {
     if (contemTermo(texto, "pix")) return "PIX";
     if (contemTermo(texto, "dinheiro") || contemTermo(texto, "especie")) return "DINHEIRO";
     if (contemTermo(texto, "debito")) return "CARTAO_DEBITO";
+    // "Crédito" sem dizer o banco: cartao de credito, banco a confirmar.
+    if (contemTermo(texto, "credito")) return "CARTAO_CREDITO";
     return null;
 }
 

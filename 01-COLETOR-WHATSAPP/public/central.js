@@ -23,10 +23,12 @@ const ORIGENS = {
 Object.assign(ORIGENS, {
     fornecedor_generico_do_tipo: "fornecedor padrão do tipo", itens_da_nota: "estimado pelos itens da nota (confirme)",
     hospedes_na_nota: "hóspedes na nota (confirme)", habito_do_operador: "costume do operador (confirme)", valor_da_diaria: "estimado pelo valor da diária (confirme)", nota_confirmada_pela_mensagem: "nota (confere com a mensagem)", texto_da_nota: "texto da nota", frota_por_semelhanca: "parecida com a frota",
+    material_de_campo: "material de campo (pelos itens/loja)", template_material: "modelo de material de campo",
+    costume_cadastrado: "costume cadastrado (confirme)", despesa_administrativa: "regra de despesa administrativa",
 });
 const nomeOrigem = (codigo) => ORIGENS[codigo] || String(codigo).replaceAll("_", " ");
 const MOTIVOS = { LEITURA: "leitura", CLASSIFICACAO: "classificação", NAO_INFORMADO: "não informado", OUTRO: "outro" };
-const PAGAMENTOS_EXTRA = [["PIX", "PIX"], ["DINHEIRO", "Dinheiro"], ["CARTAO_DEBITO", "Cartão de débito"]];
+const PAGAMENTOS_EXTRA = [["CARTAO_CREDITO", "Cartão de crédito (banco não informado)"], ["CARTAO_DEBITO", "Cartão de débito"], ["PIX", "PIX"], ["DINHEIRO", "Dinheiro"]];
 
 // ---------------------------------------------------------------------------
 // Utilitarios
@@ -190,7 +192,7 @@ function controle(campo, valor, desabilitado) {
         case "pagamento": return el("select", comum, el("option", { value: "" }, "—"),
             opcoes.cartoes.map((cartao) => el("option", { value: cartao.codigo, selected: cartao.codigo === valor }, cartao.rotulo)),
             PAGAMENTOS_EXTRA.map(([codigo, rotulo]) => el("option", { value: codigo, selected: codigo === valor }, rotulo)));
-        default: return el("input", { ...comum, value: valor ?? "" });
+        default: return el("input", { ...comum, value: valor ?? "", list: campo.chave === "fornecedor" ? "listaFornecedores" : null });
     }
 }
 
@@ -234,6 +236,7 @@ function linhaCampo(campo, detalhe) {
     const sugestaoPagamento = detalhe.campos.pagamento?.sugestao;
     const sugestao = valor ? null
         : campo.chave === "categoria" ? detalhe.campos.categoria?.sugestao
+            : campo.chave === "centro_custo" ? detalhe.campos.centro_custo?.sugestao
             : campo.chave === "placa" && detalhe.campos.abastecimento?.placa?.sugestao
                 ? { nome: detalhe.campos.abastecimento.placa.sugestao.valor, origem: detalhe.campos.abastecimento.placa.sugestao.origem }
                 : campo.chave === "pagamento" && sugestaoPagamento
@@ -241,7 +244,8 @@ function linhaCampo(campo, detalhe) {
     if (sugestao?.nome && detalhe.editavel) {
         const confianca = sugestao.confianca ? ` · ${Math.round(sugestao.confianca * 100)}% de confiança` : "";
         const origemSugestao = { placa_fora_da_frota: "placa fora da frota", frota_por_semelhanca: "placa parecida com a frota",
-            habito_do_operador: `costume do operador em ${sugestao.amostras || "várias"} notas` }[sugestao.origem] || "aprendido da planilha";
+            habito_do_operador: `costume do operador em ${sugestao.amostras || "várias"} notas`,
+            costume_cadastrado: "costume cadastrado do operador", despesa_administrativa: "despesa administrativa" }[sugestao.origem] || "aprendido da planilha";
         linha.querySelector(".entrada").insertBefore(el("div", { class: "sugestao" },
             `Sugestão (${origemSugestao}${confianca}): `, el("b", {}, sugestao.nome), " ",
             el("button", { type: "button", class: "secondary", onclick: () => {
@@ -737,6 +741,7 @@ async function iniciar() {
         estado.opcoes = await api("/opcoes");
         document.body.append(el("datalist", { id: "listaCategorias" }, estado.opcoes.categorias.map((categoria) =>
             el("option", { value: categoria.nome }, `${categoria.grupo}${categoria.id ? "" : " · sem ID"}`))));
+        document.body.append(el("datalist", { id: "listaFornecedores" }, (estado.opcoes.fornecedores || []).map((nome) => el("option", { value: nome }))));
         await carregarRemetentes();
         const abaDaUrl = location.hash.slice(1);
         if (document.querySelector(`.abas [data-aba="${CSS.escape(abaDaUrl)}"]`)) await trocarAba(abaDaUrl);

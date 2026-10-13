@@ -74,4 +74,4 @@ Todos esses arquivos ficam fora do Git (`.gitignore`). Para mandar o projeto a a
 
 - **Código:** Node.js 22.5 ou superior; o banco da Central é o SQLite embutido no Node (`node:sqlite`).
 - **Versões:** controle de versão com Git (veja [COMO-SUBIR-NO-GIT](01-COLETOR-WHATSAPP/docs/COMO-SUBIR-NO-GIT.md)).
-- **Testes:** `npm test` roda os 272 testes automatizados; `npm run check` confere a sintaxe de todos os arquivos.
+- **Testes:** `npm test` roda os 278 testes automatizados; `npm run check` confere a sintaxe de todos os arquivos.

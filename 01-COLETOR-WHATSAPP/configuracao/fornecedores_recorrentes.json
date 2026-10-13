@@ -7,9 +7,12 @@
     "CAFE_DA_MANHA": "RESTAURANTES",
     "LANCHE": "RESTAURANTES",
     "REFEICAO": "RESTAURANTES",
-    "HOSPEDAGEM": "HOTÉIS"
+    "HOSPEDAGEM": "HOTÉIS",
+    "MATERIAL_DE_CAMPO": "Materiais de Campo"
   },
   "fornecedor_generico_mercado": "SUPERMERCADO",
+  "_opcoes_leia_me": "Fornecedores oferecidos na lista do campo Fornecedor da Central (pode digitar outro).",
+  "opcoes": ["POSTOS DE COMBUSTÍVEL", "RESTAURANTES", "HOTÉIS", "SUPERMERCADO", "Materiais de Campo", "Loja de Ferragens", "PADARIA", "FARMÁCIA", "AUTO PEÇAS", "MANUTENÇÃO VEÍCULOS"],
   "recorrentes": [
     { "nome": "BELLAVIA SUPERMERCADO", "apelidos": ["bellavia", "bella via"] },
     { "nome": "BOM DIA SUPERMERCADOS", "apelidos": ["bom dia supermercado", "bom dia supermercados", "supermercado bom dia"] }

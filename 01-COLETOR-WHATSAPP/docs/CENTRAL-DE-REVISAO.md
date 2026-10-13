@@ -132,3 +132,12 @@ Rode o treino de novo sempre que exportar uma planilha mais recente: a VMac muda
 - **Pessoas:** a mensagem do operador vale sempre. Sem ela, a estimativa é a maior quantidade de um mesmo item da nota ("QTD_HOSPEDE" na hospedagem), sempre a confirmar.
 - **"Não usar no treino":** ao aprovar, marque quando o centro de custo e o pagamento não forem reais (notas antigas ou de teste). Esses dois campos ficam fora do treino e das métricas.
 - `node ferramentas/medir-contra-aprovadas.js` reprocessa as fotos aprovadas com a versão atual, sem custo de Azure, e mostra o acerto de cada campo antes e depois.
+
+## Despesas administrativas e material de campo (revisão de 13/10/2026)
+
+- **Centros administrativos:** "VMAC - LP - DESPESAS ADMINISTRATIVAS" (padrão, sede em Santa Branca) e "VMAC SN - DESPESAS ADMINISTRATIVAS". Com centro administrativo, refeição e mercado vão para **"Lanches e Refeições"** e o resto para **"OUTROS"**. Material de campo não muda.
+- **Costume cadastrado:** quem tem `centro_custo_sugerido` em `pessoas.json` (ex.: o gestor → LP administrativo) recebe esse centro como **sugestão** quando a mensagem não informa o projeto, com o botão "Usar sugestão". Não é decisão automática, porque nem toda nota dele é administrativa.
+- **Material de campo:** loja de ferragens ou de material de construção, e itens como parafuso, fita isolante e abraçadeira, viram tipo "Outros" com o fornecedor **"Materiais de Campo"**, antes da regra de restaurante. "Coca-Cola" não conta como material.
+- O Azure classifica qualquer nota de varejo como `receipt.retailMeal`. Esse tipo sozinho não indica mais refeição: o programa só usa o campo ReceiptType.
+- **Fornecedor:** o campo tem uma lista de opções (Materiais de Campo, Loja de Ferragens, Restaurantes etc.), e ainda aceita digitar outro nome. A lista fica em `fornecedores_recorrentes.json` → `opcoes`.
+- **Cartão de crédito sem banco:** "Cartão de crédito" na mensagem vira a forma *Cartão de crédito (banco não informado)*, com uma pendência pedindo qual cartão. Quando o operador tem costume, o cartão dele aparece como sugestão.

@@ -198,7 +198,7 @@ O plano gratuito lê 500 páginas por mês. O programa para em 450, deixando fol
 
 ```powershell
 npm ci           # instala as bibliotecas
-npm test         # 272 testes automatizados
+npm test         # 278 testes automatizados
 npm run check    # confere a sintaxe de todos os arquivos
 npm start        # sobe o painel e a coleta (porta 3211)
 ```

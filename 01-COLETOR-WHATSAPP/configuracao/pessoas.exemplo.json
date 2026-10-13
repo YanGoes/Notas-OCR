@@ -1,5 +1,5 @@
 {
-  "_leia_me": "Copie para pessoas.json (que NAO vai para o Git) e preencha os telefones. papel: OPERADOR, ADMINISTRATIVO ou GESTOR. autoridade_financeira=true permite que a mensagem da pessoa defina cartao/projeto. pasta_drive=null significa que a pessoa nao tem pasta individual de despesas. apelidos_projeto: como a pessoa escreve o projeto -> nome oficial (correspondencia exata).",
+  "_leia_me": "Copie para pessoas.json (que NAO vai para o Git) e preencha os telefones. papel: OPERADOR, ADMINISTRATIVO ou GESTOR. autoridade_financeira=true permite que a mensagem da pessoa defina cartao/projeto. pasta_drive=null significa que a pessoa nao tem pasta individual de despesas. apelidos_projeto: como a pessoa escreve o projeto -> nome oficial (correspondencia exata). centro_custo_sugerido: centro que a Central SUGERE quando a mensagem nao informa o projeto (ex.: supervisor que lanca despesas administrativas).",
   "pessoas": [
     {
       "id": "vanessa",

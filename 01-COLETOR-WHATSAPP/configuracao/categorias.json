@@ -61,8 +61,10 @@
   },
   {
     "nome": "OUTROS - REVISAO OBRIGATORIA",
-    "id": "PREENCHER_UUID_CONTA_AZUL",
-    "apelidos": []
+    "id": null,
+    "apelidos": [],
+    "nome_conta_azul": "OUTROS",
+    "_nota": "Categoria usada em despesa administrativa que nao e refeicao (orientacao de 13/10/2026). ID sai da sincronizacao com o Conta Azul."
   },
   {
     "nome": "CAFE DA MANHA",
