@@ -233,7 +233,7 @@ function valorDe(campos, chave) {
  */
 /**
  * Centro de custo trocado para um ADMINISTRATIVO na revisao: a categoria
- * acompanha (refeicao -> Lanches e Refeições; outros -> OUTROS), salvo se a
+ * acompanha (refeicao e mercado -> Lanches e Refeições), salvo se a
  * pessoa ja escolheu a categoria ou se e material de campo.
  */
 function ajustarCategoriaAdministrativa(cad, campos, registros) {
@@ -243,7 +243,7 @@ function ajustarCategoriaAdministrativa(cad, campos, registros) {
     const tipo = campos.tipo?.valor;
     const material = /materiais de campo/i.test(String(campos.fornecedor?.valor || ""));
     if (material) return;
-    const interno = TIPOS[tipo]?.refeicao || tipo === "MERCADO" ? "ALIMENTACAO EM CAMPO" : tipo === "OUTROS" ? "OUTROS - REVISAO OBRIGATORIA" : null;
+    const interno = TIPOS[tipo]?.refeicao || tipo === "MERCADO" ? "ALIMENTACAO EM CAMPO" : null;
     if (!interno) return;
     const categoria = cadastros.categoriaPorNome(cad, interno);
     if (categoria) campos.categoria = { nome: categoria.nome, id: categoria.id, origem: "despesa_administrativa" };

@@ -468,6 +468,10 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         pendencias.push("Compra em mercado: defina se é despesa de campo ou administrativa (categoria).");
     }
 
+    if (!categoria && material) {
+        const encontrada = cadastros.categoriaPorNome(cad, "MATERIAL DE CAMPO");
+        categoria = encontrada ? { ...encontrada, origem: "material_de_campo" } : null;
+    }
     if (!categoria && TIPOS[tipo]?.categoria) {
         const encontrada = cadastros.categoriaPorNome(cad, TIPOS[tipo].categoria);
         categoria = encontrada ? { ...encontrada, origem: "regra_do_tipo" } : null;
@@ -542,8 +546,8 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         pendencias.push(`Projeto "${projetoTexto}" não corresponde exatamente a um projeto cadastrado.${opcoes}`);
     }
 
-    // Despesa administrativa: refeicao vai para "Lanches e Refeições"; o resto
-    // (fora material de campo) para "OUTROS". Com o centro so sugerido, a
+    // Despesa administrativa: refeicao e mercado vao para "Lanches e Refeições";
+    // o resto segue a regra do tipo (nao existe "OUTROS" no Conta Azul). Com o centro so sugerido, a
     // categoria correspondente fica como sugestao.
     const centroAdministrativo = ehCentroAdministrativo(campos.centro_custo.nome);
     const sugeridoAdministrativo = !campos.centro_custo.nome && ehCentroAdministrativo(campos.centro_custo.sugestao?.nome);
@@ -617,16 +621,12 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
 const ehCentroAdministrativo = (nome) => /despesas\s+administrativas/i.test(String(nome || ""));
 const iguaisTexto = (a, b) => Boolean(a) && Boolean(b) && normalizar(a) === normalizar(b);
 
-/** Categoria de despesa administrativa: refeicao -> Lanches e Refeições; resto -> OUTROS; material de campo nao muda. */
+/** Categoria de despesa administrativa: refeicao/mercado -> Lanches e Refeições; o resto segue a regra do tipo. */
 function categoriaAdministrativa(cad, tipo, material) {
     if (material) return null;
     if (TIPOS[tipo]?.refeicao || tipo === "MERCADO") {
         const lanches = cadastros.categoriaPorNome(cad, "ALIMENTACAO EM CAMPO");
         return lanches ? { nome: lanches.nome, id: lanches.id } : { nome: "Lanches e Refeições", id: null };
-    }
-    if (["OUTROS"].includes(tipo)) {
-        const outros = cadastros.categoriaPorNome(cad, "OUTROS - REVISAO OBRIGATORIA");
-        return { nome: outros?.nome || "OUTROS", id: outros?.id || null };
     }
     return null;
 }

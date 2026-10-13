@@ -135,9 +135,9 @@ Rode o treino de novo sempre que exportar uma planilha mais recente: a VMac muda
 
 ## Despesas administrativas e material de campo (revisão de 13/10/2026)
 
-- **Centros administrativos:** "VMAC - LP - DESPESAS ADMINISTRATIVAS" (padrão, sede em Santa Branca) e "VMAC SN - DESPESAS ADMINISTRATIVAS". Com centro administrativo, refeição e mercado vão para **"Lanches e Refeições"** e o resto para **"OUTROS"**. Material de campo não muda.
+- **Centros administrativos:** "VMAC - LP - DESPESAS ADMINISTRATIVAS" (padrão, sede em Santa Branca) e "VMAC SN - DESPESAS ADMINISTRATIVAS". Com centro administrativo, refeição e mercado vão para **"Lanches e Refeições"**; o resto segue a regra normal do tipo (o Conta Azul não tem "OUTROS").
 - **Costume cadastrado:** quem tem `centro_custo_sugerido` em `pessoas.json` (ex.: o gestor → LP administrativo) recebe esse centro como **sugestão** quando a mensagem não informa o projeto, com o botão "Usar sugestão". Não é decisão automática, porque nem toda nota dele é administrativa.
-- **Material de campo:** loja de ferragens ou de material de construção, e itens como parafuso, fita isolante e abraçadeira, viram tipo "Outros" com o fornecedor **"Materiais de Campo"**, antes da regra de restaurante. "Coca-Cola" não conta como material.
+- **Material de campo:** loja de ferragens ou de material de construção, e itens como parafuso, fita isolante e abraçadeira, viram fornecedor **"Materiais de Campo"** e categoria **MATERIAL DE CAMPO** (no Conta Azul: "Materiais Aplicados na Prestação de Serviços"), antes da regra de restaurante. "Coca-Cola" não conta como material.
 - O Azure classifica qualquer nota de varejo como `receipt.retailMeal`. Esse tipo sozinho não indica mais refeição: o programa só usa o campo ReceiptType.
 - **Fornecedor:** o campo tem uma lista de opções (Materiais de Campo, Loja de Ferragens, Restaurantes etc.), e ainda aceita digitar outro nome. A lista fica em `fornecedores_recorrentes.json` → `opcoes`.
 - **Cartão de crédito sem banco:** "Cartão de crédito" na mensagem vira a forma *Cartão de crédito (banco não informado)*, com uma pendência pedindo qual cartão. Quando o operador tem costume, o cartão dele aparece como sugestão.

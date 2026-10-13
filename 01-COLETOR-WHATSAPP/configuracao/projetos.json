@@ -18,7 +18,7 @@
         "VMAC LP DESPESAS ADMINISTRATIVAS",
         "LP administrativo"
       ],
-      "_nota": "Centro administrativo PADRAO (sede em Santa Branca, escritorio). Despesa administrativa: refeicao em 'Lanches e Refeições', o resto em 'OUTROS'."
+      "_nota": "Centro administrativo PADRAO (sede em Santa Branca, escritorio). Despesa administrativa: refeicao e mercado em 'Lanches e Refeições'; o resto segue a regra do tipo (nao existe OUTROS no Conta Azul)."
     },
     {
       "nome_oficial": "VMAC SN - DESPESAS ADMINISTRATIVAS",

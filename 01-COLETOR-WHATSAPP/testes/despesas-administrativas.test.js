@@ -27,6 +27,7 @@ test("loja de ferragens vira material de campo, nao restaurante", () => {
     const resultado = previa({ fornecedor: "CASA DAS FERRAGENS LTDA", itens: [{ descricao: "PARAFUSO SEXTAVADO" }], tipo_despesa_sugerido: null });
     assert.equal(resultado.campos.tipo.valor, "OUTROS");
     assert.equal(resultado.campos.fornecedor.valor, "Materiais de Campo");
+    assert.equal(resultado.campos.categoria.nome_interno, "MATERIAL DE CAMPO");
 });
 
 test("Coca-Cola nao e material de campo", () => {
@@ -61,4 +62,10 @@ test("'Cartão de crédito' sem banco vira CARTAO_CREDITO e pede o cartao", () =
 test("Azure: docType retailMeal sozinho nao diz que e refeicao", () => {
     assert.equal(azure.tipoSugeridoAzure({ docType: "receipt.retailMeal" }, {}), null);
     assert.equal(azure.tipoSugeridoAzure({ docType: "receipt.retailMeal" }, { ReceiptType: { valueString: "Meal" } }), "alimentacao");
+});
+
+test("centro administrativo nao inventa categoria OUTROS (nao existe no Conta Azul)", () => {
+    const resultado = previa({ fornecedor: "PAPELARIA CENTRAL", itens: [{ descricao: "CANETA" }] },
+        { tipos: ["OUTROS"], projeto_texto: "VMAC - LP - DESPESAS ADMINISTRATIVAS" });
+    assert.doesNotMatch(String(resultado.campos.categoria.nome || ""), /OUTROS/i);
 });
