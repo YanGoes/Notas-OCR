@@ -96,6 +96,10 @@ Tudo fica em `dados/central.db` (SQLite, fora do Git). As fotos importadas ficam
 | `correcoes` | Cada campo corrigido: antes, depois, motivo, explicação, autor e data |
 | `exemplos_treino` | Só despesas aprovadas: entrada (leitura do OCR, mensagem, prévia da IA) e rótulos (valores finais aprovados) |
 
+## Maturidade (aba Treino)
+
+No topo da aba Treino fica a **maturidade da IA**: estágio (1 Aprendendo, 2 Assistido, 3 Autônomo parcial, 4 Autônomo), notas inteiras certas e o **mínimo garantido**, que é o limite de confiança de 95%. Também aparece a situação de cada campo. Ela é medida pela versão **atual** reprocessando as notas aprovadas. Abaixo dela fica o **histórico**, que compara a prévia que a IA gerou **na época** com o que foi aprovado. Por isso o histórico mostra erros que versões novas já corrigiram.
+
 ## Treino com a planilha do Conta Azul
 
 `ATALHOS/14_TREINAR_CENTRAL.bat` (ou `npm run central:treinar`) lê a planilha `visao_contas_a_pagar` e mede como a categoria seria decidida.

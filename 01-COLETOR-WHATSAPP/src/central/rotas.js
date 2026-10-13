@@ -43,6 +43,16 @@ function situacaoAzure() {
     } catch (_) { return require("../cota-azure").situacao(); }
 }
 
+/** Ultima medicao da versao atual contra as notas aprovadas (ferramentas/medir-contra-aprovadas.js). */
+function resumoMaturidade() {
+    const arquivo = path.join(RAIZ, "dados", "aprendizado", "medicao-aprovadas.json");
+    try {
+        if (!fs.existsSync(arquivo)) return null;
+        const medicao = JSON.parse(fs.readFileSync(arquivo, "utf8"));
+        return { gerado_em: medicao.gerado_em, aprovadas: medicao.aprovadas, ...medicao.maturidade };
+    } catch (_) { return null; }
+}
+
 function localizarArquivo(nome) {
     if (!nome || path.basename(nome) !== nome) return null;
     for (const pasta of PASTAS_IMAGEM) {
@@ -83,7 +93,7 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.post("/despesas/:id/descartar", responder((req) => revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));
-    rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db(), { nomes: revisao.nomesDasPessoas(cad()) }), planilha: resumoPlanilha(), azure: situacaoAzure() })));
+    rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db(), { nomes: revisao.nomesDasPessoas(cad()) }), planilha: resumoPlanilha(), azure: situacaoAzure(), maturidade: resumoMaturidade() })));
     // Marca o numero conectado ao programa (quem mandou foi a propria conta).
     rotas.get("/remetentes", responder(() => {
         const conta = contaConectada() || {};

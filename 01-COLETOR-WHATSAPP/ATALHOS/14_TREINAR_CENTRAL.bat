@@ -24,5 +24,15 @@ if errorlevel 1 (
 )
 
 echo.
-echo Treino concluido. O resultado aparece na aba Treino da Central.
+echo Medindo a maturidade da IA nas notas aprovadas...
+node ferramentas\medir-contra-aprovadas.js
+if errorlevel 1 (
+  echo.
+  echo A medicao de maturidade nao foi concluida. Leia a mensagem acima.
+  pause
+  exit /b 1
+)
+
+echo.
+echo Treino concluido. O resultado e a maturidade aparecem na aba Treino da Central.
 pause

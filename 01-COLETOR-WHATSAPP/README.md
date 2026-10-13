@@ -117,6 +117,22 @@ Endereço: http://127.0.0.1:3211/central.html. O manual completo está em [docs/
 - A aba **Treino** da Central mostra os dois resultados e o uso do Azure no mês.
 - O Agendador de Tarefas do Windows pode rodar `ferramentas/treino-agendado.cmd`, que grava o resultado em `dados/logs/treino-agendado.log`.
 
+## Maturidade da IA e lançamento autônomo
+
+A aba **Treino** abre com a **maturidade**, medida pela versão atual da IA reprocessando todas as notas já aprovadas, sem gastar o Azure. Ela mostra:
+- **notas inteiras certas**, ou seja, todos os campos certos de uma vez, que é o que importa para lançar sem revisar;
+- o **mínimo garantido** de cada número: o pior acerto plausível com 95% de confiança. Com poucas notas ele fica baixo mesmo acertando tudo, o que evita confiar cedo demais;
+- a situação de cada campo: maduro, quase, aprendendo ou poucos dados.
+
+| Estágio | Quando | O que pode fazer |
+| --- | --- | --- |
+| 1 · Aprendendo | até atingir o estágio 2 | Revisar todas as notas |
+| 2 · Assistido | notas inteiras certas com mínimo garantido ≥ 80% em 50+ notas | Revisão rápida; aprovar em lote as notas sem pendência |
+| 3 · Autônomo parcial | ≥ 95% garantido em 150+ notas e campos críticos maduros | Lançar sozinha só as notas sem pendência; o resto continua em revisão |
+| 4 · Autônomo | ≥ 98% garantido em 300+ notas | Lançar sozinha; revisão por amostragem |
+
+O programa só **mede**. Ligar o lançamento autônomo continua sendo decisão da equipe, e depende também do plano do Conta Azul liberar a API. A maturidade é atualizada pelo atalho 14, pelo treino agendado ou por `npm run central:medir`.
+
 ## Cadastros (`configuracao/`)
 
 | Arquivo | Conteúdo |
@@ -181,7 +197,7 @@ O plano gratuito lê 500 páginas por mês. O programa para em 450, deixando fol
 
 ```powershell
 npm ci           # instala as bibliotecas
-npm test         # 258 testes automatizados
+npm test         # 263 testes automatizados
 npm run check    # confere a sintaxe de todos os arquivos
 npm start        # sobe o painel e a coleta (porta 3211)
 ```

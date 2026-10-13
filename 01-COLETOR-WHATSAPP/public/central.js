@@ -503,6 +503,8 @@ async function carregarTreino() {
     const pct = (valor) => (valor == null ? "—" : `${Math.round(valor * 100)}%`);
     const linhas = Object.values(m.por_campo).sort((a, b) => (a.acuracia ?? 1) - (b.acuracia ?? 1));
     $("#areaTreino").replaceChildren(
+        blocoMaturidade(m.maturidade, pct),
+        el("h3", { class: "titulo-historico" }, "Histórico das revisões (prévias como a IA gerou na época)"),
         el("div", { class: "cartoes-metricas" },
             el("article", {}, el("span", {}, "Exemplos validados"), el("strong", {}, m.exemplos_treino)),
             el("article", {}, el("span", {}, "Aprovadas sem nenhuma correção"), el("strong", {}, m.aprovadas ? pct(m.aprovadas_sem_correcao / m.aprovadas) : "—")),
@@ -520,7 +522,7 @@ async function carregarTreino() {
                     el("td", {}, pct(item.acuracia), el("span", { class: "barra" }, el("i", { style: `width:${Math.round((item.acuracia || 0) * 100)}%` }))),
                     el("td", {}, item.erros_leitura), el("td", {}, item.erros_classificacao), el("td", {}, item.nao_informado ?? 0), el("td", {}, item.outros ?? 0), el("td", {}, item.ia_vazia))))))
             : el("div", { class: "vazio" }, "Ainda não há despesas aprovadas. As métricas aparecem conforme você aprova as prévias."),
-        el("p", { class: "origem" }, "Só entram nas métricas e no treino as despesas que uma pessoa aprovou. Uma despesa reaberta ou descartada sai do treino."),
+        el("p", { class: "origem" }, "Esta parte compara a prévia que a IA gerou NA ÉPOCA com o que foi aprovado; erros já corrigidos nas versões novas continuam contando aqui. A maturidade (acima) mede a versão atual. Só entram despesas aprovadas; reaberta ou descartada sai do treino."),
         blocoPorOperador(m.por_operador, pct),
         blocoPlanilha(m.planilha, pct));
 }
@@ -529,6 +531,35 @@ async function carregarTreino() {
  * Uma linha por operador: notas enviadas, onde estao, acerto da IA nas
  * aprovadas e o que FALTOU informar (para orientar quem precisa).
  */
+const STATUS_CAMPO = { MADURO: ["maduro", "okk"], QUASE: ["quase", "pend"], APRENDENDO: ["aprendendo", "mau"], POUCOS_DADOS: ["poucos dados", ""] };
+
+/**
+ * Maturidade da IA: estagio atual, notas inteiras certas com o minimo
+ * garantido (intervalo de confianca) e a situacao de cada campo.
+ */
+function blocoMaturidade(mat, pct) {
+    if (!mat) return el("div", { class: "vazio" }, "Maturidade ainda não medida (rode o treino: atalho 14 ou npm run central:medir).");
+    const ni = mat.notas_inteiras;
+    return el("div", { class: "bloco maturidade" },
+        el("h3", {}, "Maturidade da IA"),
+        el("div", { class: "cartoes-metricas" },
+            el("article", {}, el("span", {}, "Estágio"), el("strong", {}, mat.rotulo), el("span", {}, mat.explicacao)),
+            el("article", {}, el("span", {}, "Notas inteiras certas"), el("strong", {}, `${ni.certas} / ${ni.de}`), el("span", {}, `${pct(ni.taxa)} · mínimo garantido ${pct(ni.minimo_garantido)}`)),
+            mat.proximo ? el("article", {}, el("span", {}, `Para chegar em ${mat.proximo.rotulo}`),
+                el("strong", {}, mat.proximo.notas_aprovadas_que_faltam == null ? "melhorar a IA" : `+${mat.proximo.notas_aprovadas_que_faltam} notas`),
+                el("span", {}, mat.proximo.precisa)) : null),
+        el("div", { class: "rolagem" }, el("table", { class: "tabela-metricas" },
+            el("thead", {}, el("tr", {}, ["Campo", "Certos", "Acerto", "Mínimo garantido", "Situação"].map((t) => el("th", {}, t)))),
+            el("tbody", {}, mat.campos.map((c) => {
+                const [nome, classe] = STATUS_CAMPO[c.status] || [c.status, ""];
+                return el("tr", {}, el("td", {}, c.rotulo, c.critico ? " *" : ""), el("td", {}, `${c.acertos}/${c.total}`), el("td", {}, pct(c.taxa)),
+                    el("td", {}, pct(c.minimo_garantido)), el("td", {}, el("span", { class: `etiqueta ${classe}` }, nome)));
+            })))),
+        el("p", { class: "origem" }, `Medido em ${dataHora(mat.gerado_em)} com a versão atual da IA reprocessando as ${mat.aprovadas} notas aprovadas (sem gastar o Azure). `
+            + "\"Mínimo garantido\" é o pior acerto plausível com 95% de confiança: com poucas notas ele fica baixo mesmo acertando tudo. * = campo que vai para o Conta Azul. "
+            + "Campos marcados como \"Não informado\" ficam fora da conta."));
+}
+
 function blocoPorOperador(linhas, pct) {
     if (!linhas?.length) return null;
     const faltou = (item) => {

@@ -136,3 +136,4 @@ details.leitura pre { max-height: 280px; overflow: auto; font-size: 12px; white-
 .chip-operador.sem-operador:not([aria-pressed="true"]) { border-style: dashed; }
 .chip-operador .n { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 99px; background: var(--surface-soft); color: var(--muted); font-size: 11px; text-align: center; }
 .tabela-metricas a { color: var(--brand); font-weight: 600; }
+.titulo-historico { margin: 8px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
