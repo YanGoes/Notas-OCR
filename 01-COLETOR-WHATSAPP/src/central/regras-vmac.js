@@ -591,17 +591,20 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     const declaradoPag = legenda?.pagamento || lote?.pagamento || null;
     const origemDeclarado = legenda?.pagamento ? "mensagem_da_foto" : lote?.pagamento ? "cabecalho_do_lote" : null;
     let pagamento = null;
-    // Sem politica do projeto, vale o cartao da orientacao da gerencia para o grupo.
+    // Sem politica do projeto, vale o cartao da orientacao da gerencia para o
+    // grupo; sem ela, o cartao cadastrado no proprio centro de custo.
     if (!politica?.cartao && orientacao?.cartao) politica = { cartao: orientacao.cartao, origem: "orientacao_da_gerencia" };
+    if (!politica?.cartao && projetoAchado?.cartao) politica = { cartao: projetoAchado.cartao, origem: "cartao_do_centro_de_custo" };
+    const fontePolitica = politica?.origem === "cartao_do_centro_de_custo" ? "o cartão cadastrado no centro de custo" : "a orientação da gerência para o projeto";
     if (declaradoPag?.cartao && politica?.cartao && declaradoPag.cartao !== politica.cartao) {
-        pendencias.push(`Cartão informado (${declaradoPag.rotulo}) diverge da orientação da gerência para o projeto (${politica.cartao}).`);
+        pendencias.push(`Cartão informado (${declaradoPag.rotulo}) diverge d${fontePolitica} (${politica.cartao}).`);
         pagamento = { forma: declaradoPag.forma, cartao: declaradoPag.cartao, origem: origemDeclarado, conflito_com_politica: politica };
     } else if (declaradoPag) {
         pagamento = { forma: declaradoPag.forma, cartao: declaradoPag.cartao, origem: origemDeclarado };
         if (!declaradoPag.cartao && politica?.cartao) avisos.push(`Pagamento excepcional declarado (${declaradoPag.rotulo}) num projeto com orientação de cartão ${politica.cartao}.`);
     } else if (politica?.cartao) {
         const cartao = cad.cartoes.find((item) => item.codigo === politica.cartao);
-        pagamento = { forma: cartao?.forma_pagamento || "CARTAO_CREDITO", cartao: politica.cartao, origem: "orientacao_da_gerencia" };
+        pagamento = { forma: cartao?.forma_pagamento || "CARTAO_CREDITO", cartao: politica.cartao, origem: politica.origem || "orientacao_da_gerencia" };
     }
     if (pagamento?.cartao) {
         const cartao = cad.cartoes.find((item) => item.codigo === pagamento.cartao);

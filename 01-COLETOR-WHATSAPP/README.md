@@ -55,8 +55,10 @@ O computador precisa ficar ligado e com internet para receber as notas. Em segun
 
 1. Abra o atalho 15. No painel, o card **"1 WhatsApp"** mostra o QR Code.
 2. No celular: *WhatsApp → Aparelhos conectados → Conectar aparelho* e leia o código. Se a câmera não funcionar, use "O QR Code não funcionou?" para entrar com um código de 8 letras.
-3. No card **"2 Grupos monitorados"**, clique em "Atualizar lista de grupos", marque os grupos de despesas e salve. **Só os grupos marcados são lidos.** Com nenhum marcado, nada é lido.
-4. No card **"3 Contatos no privado"**, marque quem pode mandar as notas direto no privado do número conectado. Para alguém que ainda não está no cadastro, use "Cadastrar pessoa nova" (nome + telefone). O que **você** escreve no privado nunca é lido como nota.
+3. No card **"2 Grupos e contatos monitorados"**, clique em "Atualizar lista". Grupos e pessoas ficam na **mesma lista**, com uma busca só. Marque os grupos de despesas e as pessoas que podem mandar notas **no privado** do número conectado, e salve. **Só o que estiver marcado é lido e aparece no painel.**
+   - Pessoa fora do cadastro: use "Cadastrar pessoa nova" (nome + telefone).
+   - O que **você** escreve no privado nunca é lido como nota.
+   - **"Buscar mensagens anteriores"** (ao lado de cada pessoa marcada) pede ao celular até 50 mensagens antigas daquela conversa. Precisa existir ao menos uma mensagem dessa conversa recebida com a pessoa já marcada; se não houver, mande um "ok" no privado e tente de novo.
 
 A sessão fica salva em `.baileys_sessao/`, então o QR só é pedido de novo se o aparelho for removido no celular.
 
@@ -218,7 +220,7 @@ O plano gratuito lê 500 páginas por mês. O programa para em 450, deixando fol
 
 ```powershell
 npm ci           # instala as bibliotecas
-npm test         # 299 testes automatizados
+npm test         # 301 testes automatizados
 npm run check    # confere a sintaxe de todos os arquivos
 npm start        # sobe o painel e a coleta (porta 3211)
 ```

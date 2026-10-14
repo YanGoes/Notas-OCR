@@ -25,6 +25,7 @@ Object.assign(ORIGENS, {
     hospedes_na_nota: "hóspedes na nota (confirme)", habito_do_operador: "costume do operador (confirme)", valor_da_diaria: "estimado pelo valor da diária (confirme)", nota_confirmada_pela_mensagem: "nota (confere com a mensagem)", texto_da_nota: "texto da nota", frota_por_semelhanca: "parecida com a frota",
     material_de_campo: "material de campo (pelos itens/loja)", template_material: "modelo de material de campo",
     costume_cadastrado: "costume cadastrado (confirme)", despesa_administrativa: "regra de despesa administrativa",
+    cartao_do_centro_de_custo: "cartão do centro de custo",
 });
 const nomeOrigem = (codigo) => ORIGENS[codigo] || String(codigo).replaceAll("_", " ");
 const MOTIVOS = { LEITURA: "leitura", CLASSIFICACAO: "classificação", NAO_INFORMADO: "não informado", OUTRO: "outro" };
@@ -666,6 +667,8 @@ function formularioProjeto(projeto, servicos, aoSalvar, aoCancelar) {
     const busca = el("input", { value: projeto?.busca_centro_conta_azul || "", maxlength: 160, placeholder: "Ex.: rota do pequi" });
     const situacao = el("select", {}, SITUACOES.map(([valor, rotulo]) => el("option", { value: valor, selected: String(projeto?.ativo ?? (projeto ? null : true)) === valor }, rotulo)));
     const servico = el("input", { value: projeto?.servico || "", list: "listaServicos", maxlength: 40, placeholder: "FWD, VDROD, IRI…" });
+    const cartao = el("select", {}, el("option", { value: "" }, "— não definido"),
+        (estado.opcoes?.cartoes || []).map((item) => el("option", { value: item.codigo, selected: item.codigo === (projeto?.cartao || "") }, item.rotulo)));
     const apelidos = el("textarea", { rows: 3, placeholder: "Um por linha. Ex.: Goinfra FWD" });
     apelidos.value = (projeto?.apelidos || []).join("\n");
     const formulario = el("form", { class: "form-centro" },
@@ -675,6 +678,7 @@ function formularioProjeto(projeto, servicos, aoSalvar, aoCancelar) {
             campo("ID no sistema de projetos", idSistema),
             campo("Situação", situacao, "Só projetos ativos são escolhidos automaticamente."),
             campo("Serviço", servico),
+            campo("Cartão usado no projeto", cartao, "As notas deste centro já saem com este cartão quando o operador não informar outro."),
             campo("Centro de custo no Conta Azul", centro, "Nome exato. Deixe vazio se for igual ao nome do projeto."),
             campo("…ou trecho do nome para achar", busca, "Usado só enquanto o nome exato estiver vazio; precisa achar um único centro."),
             campo("Como os operadores escrevem", apelidos, "Só um texto IGUAL a um destes resolve o projeto.")),
@@ -685,7 +689,7 @@ function formularioProjeto(projeto, servicos, aoSalvar, aoCancelar) {
         evento.preventDefault();
         const dados = {
             nome_oficial: nome.value, id_sistema_projetos: idSistema.value, centro_conta_azul: centro.value,
-            busca_centro_conta_azul: busca.value, ativo: JSON.parse(situacao.value), servico: servico.value,
+            busca_centro_conta_azul: busca.value, ativo: JSON.parse(situacao.value), servico: servico.value, cartao: cartao.value,
             apelidos: apelidos.value.split("\n"),
         };
         executar(() => aoSalvar(dados));
@@ -716,7 +720,8 @@ async function carregarCentros() {
         const linha = el("tr", {},
             el("td", {}, el("strong", {}, projeto.nome_oficial), projeto.id_sistema_projetos != null ? el("small", { class: "origem" }, ` · nº ${projeto.id_sistema_projetos}`) : null,
                 projeto.no_cadastro ? null : el("div", { class: "origem" }, "veio da sincronização com o Conta Azul")),
-            el("td", {}, el("span", { class: `etiqueta ${situacaoClasse(projeto.ativo)}` }, situacaoTexto(projeto.ativo))),
+            el("td", {}, el("span", { class: `etiqueta ${situacaoClasse(projeto.ativo)}` }, situacaoTexto(projeto.ativo)),
+                projeto.cartao ? el("div", { class: "origem" }, `cartão: ${projeto.cartao}`) : null),
             el("td", {}, !projeto.centro_conta_azul && projeto.busca_centro_conta_azul && !projeto.id_conta_azul
                 ? `procurando "${projeto.busca_centro_conta_azul}"` : projeto.centro_usado || "—",
             el("div", { class: "origem" }, projeto.id_conta_azul ? "ID do Conta Azul encontrado" : "sem ID (sincronize os centros)")),

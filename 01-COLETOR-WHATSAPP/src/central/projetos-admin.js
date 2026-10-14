@@ -20,7 +20,7 @@ const cadastros = require("./cadastros");
 const { normalizar } = require("./texto");
 
 const SERVICOS = ["FWD", "VDROD", "IRI", "ADMINISTRATIVO"];
-const CAMPOS_EDITAVEIS = ["nome_oficial", "id_sistema_projetos", "centro_conta_azul", "busca_centro_conta_azul", "ativo", "servico", "apelidos"];
+const CAMPOS_EDITAVEIS = ["nome_oficial", "id_sistema_projetos", "centro_conta_azul", "busca_centro_conta_azul", "ativo", "servico", "apelidos", "cartao"];
 
 function arquivo(pasta = cadastros.PASTA_PADRAO) { return path.join(pasta, "projetos.json"); }
 
@@ -44,8 +44,8 @@ const textoLimpo = (valor, maximo = 160) => {
     return texto;
 };
 
-/** Valida e normaliza os campos enviados pela tela. */
-function normalizarEntrada(entrada) {
+/** Valida e normaliza os campos enviados pela tela. `cartoes` = codigos validos (cartoes.json). */
+function normalizarEntrada(entrada, cartoes = null) {
     const saida = {};
     for (const chave of Object.keys(entrada || {})) {
         if (!CAMPOS_EDITAVEIS.includes(chave)) throw new Error(`Campo não editável: ${chave}.`);
@@ -69,6 +69,13 @@ function normalizarEntrada(entrada) {
     if ("servico" in entrada) {
         const servico = textoLimpo(entrada.servico, 40).toUpperCase();
         saida.servico = servico || null;
+    }
+    if ("cartao" in entrada) {
+        // Cartao usado no projeto: a nota desse centro ja sai com ele (se o
+        // operador nao informar outro). Vazio = nao definido.
+        const codigo = textoLimpo(entrada.cartao, 40).toUpperCase();
+        if (codigo && cartoes && !cartoes.includes(codigo)) throw new Error(`Cartão "${codigo}" não está no cadastro de cartões.`);
+        saida.cartao = codigo || null;
     }
     if ("apelidos" in entrada) {
         const lista = Array.isArray(entrada.apelidos) ? entrada.apelidos : String(entrada.apelidos || "").split(/[;\n]/);
@@ -130,6 +137,7 @@ function listar({ pasta } = {}) {
             ativo: projeto.ativo ?? null,
             servico: projeto.servico || null,
             apelidos: projeto.apelidos || [],
+            cartao: projeto.cartao || null,
             no_cadastro: doArquivo.has(normalizar(projeto.nome_oficial)),
             atencao: projeto._atencao || null,
         })),
@@ -139,7 +147,7 @@ function listar({ pasta } = {}) {
 
 function criar(db, entrada, autor, { pasta } = {}) {
     const quem = exigirAutor(autor);
-    const dados = normalizarEntrada(entrada);
+    const dados = normalizarEntrada(entrada, cadastros.carregar(pasta).cartoes.map((cartao) => cartao.codigo));
     if (!dados.nome_oficial) throw new Error("Informe o nome do projeto.");
     const conteudo = lerArquivo(pasta);
     const projetos = conteudo.projetos || [];
@@ -153,6 +161,7 @@ function criar(db, entrada, autor, { pasta } = {}) {
         apelidos: dados.apelidos || [],
     };
     if (dados.busca_centro_conta_azul) novo.busca_centro_conta_azul = dados.busca_centro_conta_azul;
+    if (dados.cartao) novo.cartao = dados.cartao;
     const lista = [...projetos, novo];
     verificarConflitos(lista, lista.length - 1);
     transacao(db, () => {
@@ -168,7 +177,7 @@ function criar(db, entrada, autor, { pasta } = {}) {
  */
 function editar(db, nomeAtual, alteracoes, autor, { pasta } = {}) {
     const quem = exigirAutor(autor);
-    const dados = normalizarEntrada(alteracoes);
+    const dados = normalizarEntrada(alteracoes, cadastros.carregar(pasta).cartoes.map((cartao) => cartao.codigo));
     if (!Object.keys(dados).length) throw new Error("Nenhuma alteração enviada.");
     const conteudo = lerArquivo(pasta);
     const projetos = [...(conteudo.projetos || [])];

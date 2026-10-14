@@ -77,7 +77,42 @@ function dataLocalIso(valor) {
     return `${data.getFullYear()}-${parte(data.getMonth() + 1)}-${parte(data.getDate())}`;
 }
 
+/**
+ * Comprovante vindo do WhatsApp so aparece no painel se for de um grupo
+ * marcado ou da conversa privada de uma pessoa liberada. Envio manual pelo
+ * painel sempre aparece.
+ */
+function filtroDeOrigem() {
+    const configuracao = whatsapp.obterConfiguracao();
+    const grupos = new Set(configuracao.grupos_permitidos || []);
+    const contatos = new Set(configuracao.contatos_permitidos || []);
+    let identificar = null;
+    const cache = new Map();
+    return (grupoId, origem) => {
+        const id = String(grupoId || "");
+        if (origem && origem !== "whatsapp" && !id) return true;
+        if (!id || id === "manual") return true;
+        if (id.endsWith("@g.us")) return grupos.has(id);
+        if (!/@(s\.whatsapp\.net|lid)$/.test(id) || !contatos.size) return false;
+        if (cache.has(id)) return cache.get(id);
+        try {
+            if (!identificar) {
+                const cadastros = require("./central/cadastros");
+                const cad = cadastros.carregar();
+                const db = require("./central/banco").banco();
+                const vinculos = new Map(db.prepare("SELECT whatsapp_id, pessoa_id FROM remetentes_vinculados").all().map((l) => [l.whatsapp_id, l.pessoa_id]));
+                identificar = (jid) => cadastros.identificarPessoa(cad, jid, { vinculos });
+            }
+            const achada = identificar(id);
+            const permitido = achada.status === "IDENTIFICADA" && contatos.has(achada.pessoa.id);
+            cache.set(id, permitido);
+            return permitido;
+        } catch (_) { return false; }
+    };
+}
+
 function documentosRecentes(dataFiltro = "") {
+    const permitido = filtroDeOrigem();
     const auditoria = path.join(RAIZ, "dados", "auditoria");
     const resultados = [];
     const filaContaAzul = new Map(listarFila().itens.map((item) => [item.base, item]));
@@ -85,6 +120,7 @@ function documentosRecentes(dataFiltro = "") {
         for (const nome of fs.readdirSync(auditoria).filter((n) => n.endsWith(".json") && n !== "indice-duplicidade.json" && !n.endsWith("_erro.json"))) {
             try {
                 const dados = JSON.parse(fs.readFileSync(path.join(auditoria, nome), "utf8"));
+                if (!permitido(dados.grupo_id, dados.origem)) continue;
                 const base = path.parse(dados.arquivo_imagem || nome).name;
                 const imagem = localizarImagem(base);
                 resultados.push({
@@ -107,6 +143,7 @@ function documentosRecentes(dataFiltro = "") {
             if (resultados.some((item) => item.base === base)) continue;
             const metaPath = path.join(entrada, `${base}.json`);
             const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, "utf8")) : {};
+            if (!permitido(meta.id_grupo, meta.id_grupo ? "whatsapp" : "manual")) continue;
             resultados.push({ base, arquivo: nome, status: "entrada", imagem_url: `/api/documentos/${encodeURIComponent(base)}/imagem`, legenda: meta.legenda || null, recebido_em: meta.timestamp ? new Date(Number(meta.timestamp) * 1000).toISOString() : new Date(fs.statSync(path.join(entrada, nome)).mtimeMs).toISOString(), ocr: {}, classificacao: {}, validacoes: { motivos: ["Processamento em andamento."] } });
         }
     }
@@ -302,6 +339,9 @@ app.put("/api/contatos", (req, res, next) => {
         whatsapp.salvarContatos(req.body.ids.map(String).filter((id) => existentes.has(id)));
         res.json({ ok: true, contatos: listarContatos() });
     } catch (erro) { next(erro); }
+});
+app.post("/api/contatos/:id/historico", async (req, res, next) => {
+    try { res.json(await whatsapp.buscarHistoricoPrivado(String(req.params.id || ""))); } catch (erro) { next(erro); }
 });
 app.post("/api/contatos/pessoa", (req, res, next) => {
     try {

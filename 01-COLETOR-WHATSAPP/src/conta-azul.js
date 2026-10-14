@@ -298,7 +298,7 @@ function iniciarMonitor(pastaEntrada, opcoes) {
 }
 
 module.exports = {
-    API_URL, TOKEN_URL, credenciais, trocarCodigo, tokenValido, requisicao,
+    API_URL, TOKEN_URL, credenciais, caminhoTokens, trocarCodigo, tokenValido, requisicao,
     empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
     buscarContasPagar, criarContaPagar, obterParcelaFinanceira, obterPessoaPorId,
     buscarParcelasDoEvento, patchParcela,

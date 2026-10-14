@@ -226,3 +226,17 @@ test("cadastrar pessoa grava em pessoas.json, recusa telefone repetido e so devo
     assert.throws(() => cadastrosMod.adicionarPessoa({ nome: "Sem telefone", telefone: "123" }, pasta), /Telefone inválido/);
     fs.rmSync(pasta, { recursive: true, force: true });
 });
+
+test("cartao cadastrado no centro de custo vale quando o operador nao informa outro", () => {
+    const cad = cadastros();
+    cad.projetos[0] = { ...cad.projetos[0], cartao: "C6" };
+    const semCartao = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 50, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: { tipos: ["JANTAR"], projeto_texto: "IMTRAFF CICLO II MT" }, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(semCartao.campos.pagamento.cartao, "C6");
+    assert.equal(semCartao.campos.pagamento.origem, "cartao_do_centro_de_custo");
+    const outroCartao = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 50, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: { tipos: ["JANTAR"], projeto_texto: "IMTRAFF CICLO II MT", pagamento: { forma: "CARTAO_CREDITO", cartao: "INTER", rotulo: "CRÉDITO INTER" } },
+        cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(outroCartao.campos.pagamento.cartao, "INTER");
+    assert.ok(outroCartao.pendencias.some((p) => /diverge do cartão cadastrado no centro de custo/.test(p)));
+});

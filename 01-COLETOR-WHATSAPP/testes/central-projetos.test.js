@@ -96,3 +96,16 @@ test("o projetos.json real passa na validacao de conflitos", () => {
         admin.editar(amb.db, primeiro.nome_oficial, { ativo: primeiro.ativo ?? null }, "Teste", { pasta: amb.pasta });
     } finally { amb.fim(); }
 });
+
+test("centro de custo guarda o cartao usado e recusa cartao fora do cadastro", () => {
+    const amb = ambiente();
+    try {
+        fs.writeFileSync(path.join(amb.pasta, "cartoes.json"), JSON.stringify([{ codigo: "INTER", rotulo: "CRÉDITO INTER", forma_pagamento: "CARTAO_CREDITO" }]));
+        admin.criar(amb.db, { nome_oficial: "IMTRAFF CICLO II MT", ativo: true, cartao: "inter" }, "Yan", { pasta: amb.pasta });
+        assert.equal(amb.ler().projetos[0].cartao, "INTER");
+        assert.equal(admin.listar({ pasta: amb.pasta }).projetos[0].cartao, "INTER");
+        assert.throws(() => admin.editar(amb.db, "IMTRAFF CICLO II MT", { cartao: "NUBANK" }, "Yan", { pasta: amb.pasta }), /não está no cadastro de cartões/);
+        admin.editar(amb.db, "IMTRAFF CICLO II MT", { cartao: "" }, "Yan", { pasta: amb.pasta });
+        assert.equal(amb.ler().projetos[0].cartao, null);
+    } finally { amb.fim(); }
+});

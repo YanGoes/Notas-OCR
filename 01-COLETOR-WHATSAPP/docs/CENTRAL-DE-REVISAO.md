@@ -150,3 +150,9 @@ Rode o treino de novo sempre que exportar uma planilha mais recente: a VMac muda
 - **Conversas no privado:** as pessoas marcadas no card "3 Contatos no privado" do painel podem mandar as notas no privado do número conectado.
 - **Mensagens perdidas:** antes, o que chegava com o programa desligado era descartado ao religar. Agora é lido, até 7 dias para trás.
 - **Backup automático:** uma cópia por dia do banco da Central e dos cadastros em `dados/backups/<data>/`, guardando 14 dias. Fica só neste computador, porque os cadastros têm telefones.
+
+## Cartão por centro de custo e painel filtrado (14/10/2026, tarde)
+
+- **Cartão do centro de custo:** ao cadastrar ou editar um centro na aba de centros, escolha o "Cartão usado no projeto". As notas desse centro saem com esse cartão quando o operador não informar outro (origem "cartão do centro de custo"). Prioridade: legenda da foto > resumo do dia > orientação da gerência > política de cartão do projeto > cartão do centro de custo. Cartão informado diferente do cadastrado vai para revisão.
+- **Painel (comprovantes em tempo real):** mostra só os comprovantes de grupos marcados e das conversas privadas de pessoas marcadas, além dos envios manuais pelo painel. Na Central nada some.
+- **Conta Azul:** os atalhos 04 (conectar) e o teste de conexão explicam o erro em português. "END_TRIAL" quer dizer que o login usado na autorização era de uma conta de teste já vencida. Autorize com o usuário do Conta Azul da empresa, numa janela anônima.

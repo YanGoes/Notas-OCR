@@ -156,6 +156,19 @@ let gruposPermitidos = new Set(config.grupos_permitidos);
 // Pessoas do cadastro cujas conversas no PRIVADO tambem sao lidas (ids de pessoas.json).
 let contatosPermitidos = new Set(Array.isArray(config.contatos_permitidos) ? config.contatos_permitidos : []);
 const nomesPrivados = new Map();
+// Mensagem mais antiga conhecida de cada conversa privada liberada: e o ponto
+// de partida para pedir ao celular as mensagens ANTERIORES (historico sob
+// demanda). Fica gravado para valer depois de religar.
+const ARQUIVO_ANCORAS = path.join(RAIZ, "dados", "privado-ancoras.json");
+const ancorasPrivado = (() => { try { return new Map(Object.entries(JSON.parse(fs.readFileSync(ARQUIVO_ANCORAS, "utf8")))); } catch (_) { return new Map(); } })();
+let historicoPedido = null; // { chats:Set, ate:ms }
+
+function guardarAncora(pessoaId, chave, timestampMs) {
+    const atual = ancorasPrivado.get(pessoaId);
+    if (atual && atual.timestampMs <= timestampMs) return;
+    ancorasPrivado.set(pessoaId, { key: { remoteJid: chave.remoteJid, id: chave.id, fromMe: Boolean(chave.fromMe) }, timestampMs });
+    try { fs.writeFileSync(ARQUIVO_ANCORAS, JSON.stringify(Object.fromEntries(ancorasPrivado), null, 2), "utf8"); } catch (_) { /* so atalho */ }
+}
 const eventos = new EventEmitter();
 const estado = { status: "parado", qr: null, erro: null, conectado_desde: null, codigo_pareamento: null };
 let socketAtual = null;
@@ -582,6 +595,22 @@ async function pessoaDaConversaPrivada(chave) {
     return achada.pessoa;
 }
 
+/**
+ * Pede ao celular as mensagens anteriores da conversa privada de uma pessoa
+ * liberada (ate 50). Elas chegam pelo evento de historico e passam pelos
+ * mesmos filtros; repetidas sao ignoradas.
+ */
+async function buscarHistoricoPrivado(pessoaId, quantidade = 50) {
+    if (!socketAtual || estado.status !== "conectado") throw new Error("Conecte o WhatsApp primeiro.");
+    if (!contatosPermitidos.has(pessoaId)) throw new Error("Marque e salve essa pessoa na lista antes de buscar.");
+    const ancora = ancorasPrivado.get(pessoaId);
+    if (!ancora) throw new Error("Ainda não conheço nenhuma mensagem dessa conversa. Mande (ou peça para a pessoa mandar) uma mensagem qualquer no privado e tente de novo.");
+    historicoPedido = { chats: new Set([ancora.key.remoteJid]), ate: Date.now() + 3 * 60 * 1000 };
+    await socketAtual.fetchMessageHistory(Math.min(Number(quantidade) || 50, 50), ancora.key, ancora.timestampMs);
+    conexao.registrarLog("historico_privado_pedido", { pessoa: pessoaId, quantidade });
+    return { pedido: true, mensagem: "Pedido enviado ao celular. As mensagens anteriores aparecem em até 1 minuto (o celular precisa estar com internet)." };
+}
+
 function salvarContatos(ids) {
     config.contatos_permitidos = [...new Set((ids || []).map(String).filter(Boolean))];
     contatosPermitidos = new Set(config.contatos_permitidos);
@@ -675,9 +704,11 @@ async function processar(socket, pacote) {
         } else if (/@(s\.whatsapp\.net|lid)$/.test(idGrupo)) {
             // Conversa no PRIVADO: so de pessoas liberadas no painel, e nunca o que
             // a propria conta escreveu (suas respostas ao operador nao sao notas).
-            if (pacote.key.fromMe || !contatosPermitidos.size) return;
+            if (!contatosPermitidos.size) return;
             const pessoa = await pessoaDaConversaPrivada(pacote.key);
             if (!pessoa || !contatosPermitidos.has(pessoa.id)) return;
+            guardarAncora(pessoa.id, pacote.key, timestampNumero(pacote.messageTimestamp) * 1000);
+            if (pacote.key.fromMe) return;
             nomesPrivados.set(idGrupo, `Privado - ${pessoa.nome}`);
         } else {
             return;
@@ -794,6 +825,16 @@ async function iniciar() {
         if (type === "append" && lista.length) conexao.registrarLog("mensagens_atrasadas", { quantidade: lista.length });
         for (const mensagem of lista) await processar(socket, mensagem);
     });
+    // Historico pedido sob demanda (botao "Buscar mensagens anteriores").
+    socket.ev.on("messaging-history.set", async ({ messages }) => {
+        if (!historicoPedido || Date.now() > historicoPedido.ate) return;
+        const daConversa = (messages || []).filter((mensagem) => historicoPedido.chats.has(String(mensagem?.key?.remoteJid || "")));
+        if (!daConversa.length) return;
+        conexao.registrarLog("historico_privado_recebido", { quantidade: daConversa.length });
+        for (const mensagem of daConversa.sort((a, b) => timestampNumero(a.messageTimestamp) - timestampNumero(b.messageTimestamp))) {
+            await processar(socket, mensagem);
+        }
+    });
     socket.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
         if (qr) {
             conexao.registrarLog("qr_gerado");
@@ -875,7 +916,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-    iniciar, desconectar, listarGrupos, salvarGrupos, salvarContatos, solicitarCodigoPareamento, identificarRemetentes, contaConectada,
+    iniciar, desconectar, listarGrupos, salvarGrupos, salvarContatos, buscarHistoricoPrivado, solicitarCodigoPareamento, identificarRemetentes, contaConectada,
     obterEstado: () => ({ ...estado }), eventos,
     obterConfiguracao: () => ({
         grupos_permitidos: [...gruposPermitidos],

@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let grupos = [];
+let contatos = [];
 let centrosCusto = [];
 let assinaturaDocumentos = "";
 let carregandoGrupos = false;
@@ -68,7 +69,7 @@ async function atualizar() {
     $("qrArea").classList.toggle("oculto", !w.qr_imagem); if (w.qr_imagem) $("qrImagem").src = w.qr_imagem;
     $("conectar").disabled = ["conectado", "conectando", "aguardando_qr", "reconectando"].includes(w.status); $("desconectar").disabled = !conectado;
     $("azureStatus").textContent = dados.azure.configurado ? "Azure configurado" : "Azure nao configurado"; $("azureStatus").className = `pill ${dados.azure.configurado ? "ok" : "erro"}`;
-    $("grupoTotal").textContent = dados.grupos.grupos_permitidos.length;
+    $("grupoTotal").textContent = dados.grupos.grupos_permitidos.length + (dados.grupos.contatos_permitidos || []).length;
     for (const [nome, valor] of Object.entries(dados.filas)) $("f" + nome[0].toUpperCase() + nome.slice(1)).textContent = valor;
     if (conectado && !gruposCarregadosAutomaticamente && !carregandoGrupos) {
       gruposCarregadosAutomaticamente = true;
@@ -266,18 +267,32 @@ function renderizarGrupos() {
   const termo = normalizarBusca($("buscarGrupo").value);
   const encontrados = grupos.map((grupo, indice) => ({ grupo, indice })).filter(({ grupo }) =>
     normalizarBusca(grupo.nome).includes(termo) || normalizarBusca(grupo.id).includes(termo));
+  // Contatos (conversa no privado) na mesma lista, depois dos grupos.
+  const contatosAchados = contatos.map((pessoa, indice) => ({ pessoa, indice })).filter(({ pessoa }) =>
+    normalizarBusca(pessoa.nome).includes(termo) || String(pessoa.telefone_final || "").includes(termo));
   const lista = $("listaGrupos");
-  if (!encontrados.length) {
-    lista.innerHTML = '<div class="empty">Nenhum grupo corresponde à pesquisa.</div>';
+  if (!encontrados.length && !contatosAchados.length) {
+    lista.innerHTML = '<div class="empty">Nenhum grupo ou contato corresponde à pesquisa.</div>';
     return;
   }
   const opcoesCentro = (selecionado) => [
     `<option value="">Sem centro padrao</option>`,
     ...centrosCusto.map((centro) => `<option value="${escapar(centro.id)}" ${String(selecionado || "") === String(centro.id) ? "selected" : ""}>${escapar(centro.nome)}</option>`),
   ].join("");
-  lista.innerHTML = `<div class="search-result-count">${encontrados.length} de ${grupos.length} grupo(s)</div>` + encontrados.map(({ grupo, indice }) =>
-    `<div class="group"><label class="group-main"><input type="checkbox" data-i="${indice}" ${grupo.selecionado ? "checked" : ""}><div><span>${escapar(grupo.nome)}</span><small>${escapar(grupo.id)}</small></div></label><label class="group-center"><span>Centro de custo padrao</span><select data-centro-i="${indice}" ${grupo.selecionado ? "" : "disabled"}>${opcoesCentro(grupo.centro_custo_id)}</select></label></div>`).join("");
-  lista.querySelectorAll("input[type=checkbox]").forEach((checkbox) => {
+  const semGrupos = grupos.length ? "" : '<div class="empty">Conecte o WhatsApp e clique em "Atualizar lista" para ver os grupos.</div>';
+  lista.innerHTML = `<div class="search-result-count">${encontrados.length} grupo(s) · ${contatosAchados.length} contato(s)</div>` + semGrupos + encontrados.map(({ grupo, indice }) =>
+    `<div class="group"><label class="group-main"><input type="checkbox" data-i="${indice}" ${grupo.selecionado ? "checked" : ""}><div><span>${escapar(grupo.nome)}</span><small>Grupo · ${escapar(grupo.id)}</small></div></label><label class="group-center"><span>Centro de custo padrao</span><select data-centro-i="${indice}" ${grupo.selecionado ? "" : "disabled"}>${opcoesCentro(grupo.centro_custo_id)}</select></label></div>`).join("")
+    + contatosAchados.map(({ pessoa, indice }) =>
+    `<div class="group"><label class="group-main"><input type="checkbox" data-contato="${indice}" ${pessoa.permitido ? "checked" : ""} ${pessoa.telefone_final ? "" : "disabled"}><div><span>${escapar(pessoa.nome)}</span><small>Contato (privado) · ${pessoa.telefone_final ? `telefone final …${escapar(pessoa.telefone_final)}` : "sem telefone no cadastro"}${pessoa.papel ? ` · ${escapar(pessoa.papel)}` : ""}</small></div></label>${pessoa.permitido ? `<button type="button" class="secondary" data-historico="${escapar(pessoa.id)}" title="Pede ao celular as mensagens anteriores desta conversa">Buscar mensagens anteriores</button>` : ""}</div>`).join("");
+  lista.querySelectorAll("button[data-historico]").forEach((botao) => {
+    botao.addEventListener("click", async () => {
+      try { const resposta = await api(`/api/contatos/${encodeURIComponent(botao.dataset.historico)}/historico`, { method: "POST" }); aviso(resposta.mensagem); } catch (erro) { aviso(erro.message, true); }
+    });
+  });
+  lista.querySelectorAll("input[data-contato]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => { contatos[Number(checkbox.dataset.contato)].permitido = checkbox.checked; });
+  });
+  lista.querySelectorAll("input[data-i]").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
       const indice = Number(checkbox.dataset.i);
       grupos[indice].selecionado = checkbox.checked;
@@ -304,36 +319,21 @@ async function carregarGrupos(mostrarMensagem = true) {
   finally { carregandoGrupos = false; }
 }
 
-let contatos = [];
-function renderizarContatos() {
-  const lista = $("listaContatos");
-  $("contatoTotal").textContent = contatos.filter((pessoa) => pessoa.permitido).length;
-  if (!contatos.length) { lista.innerHTML = '<div class="empty">Nenhuma pessoa no cadastro.</div>'; return; }
-  lista.innerHTML = contatos.map((pessoa, indice) =>
-    `<div class="group"><label class="group-main"><input type="checkbox" data-contato="${indice}" ${pessoa.permitido ? "checked" : ""} ${pessoa.telefone_final ? "" : "disabled"}><div><span>${escapar(pessoa.nome)}</span><small>${pessoa.telefone_final ? `telefone final …${escapar(pessoa.telefone_final)}` : "sem telefone no cadastro"}${pessoa.papel ? ` · ${escapar(pessoa.papel)}` : ""}</small></div></label></div>`).join("");
-  lista.querySelectorAll("input[data-contato]").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => { contatos[Number(checkbox.dataset.contato)].permitido = checkbox.checked; });
-  });
-}
-
 async function carregarContatos() {
-  try { contatos = await api("/api/contatos"); renderizarContatos(); } catch (erro) { $("listaContatos").innerHTML = `<div class="empty">${escapar(erro.message)}</div>`; }
-}
-
-$("salvarContatos").onclick = async () => {
   try {
-    const resposta = await api("/api/contatos", { method: "PUT", body: JSON.stringify({ ids: contatos.filter((pessoa) => pessoa.permitido).map((pessoa) => pessoa.id) }) });
-    contatos = resposta.contatos; renderizarContatos();
-    aviso("Contatos salvos. As próximas fotos dessas pessoas no seu privado serão lidas.");
+    contatos = await api("/api/contatos");
+    $("buscaArea").classList.remove("oculto");
+    $("salvarGrupos").classList.remove("oculto");
+    renderizarGrupos();
   } catch (erro) { aviso(erro.message, true); }
-};
+}
 
 $("cadastrarPessoa").onclick = async () => {
   try {
     const resposta = await api("/api/contatos/pessoa", { method: "POST", body: JSON.stringify({ nome: $("novaPessoaNome").value, telefone: $("novaPessoaTelefone").value }) });
     $("novaPessoaNome").value = ""; $("novaPessoaTelefone").value = "";
-    contatos = resposta.contatos; renderizarContatos();
-    aviso(`${resposta.pessoa.nome} cadastrado(a) e liberado(a) no privado.`);
+    contatos = resposta.contatos; renderizarGrupos();
+    aviso(`${resposta.pessoa.nome} cadastrado(a) e marcado(a) na lista (conversa no privado).`);
   } catch (erro) { aviso(erro.message, true); }
 };
 carregarContatos();
@@ -773,7 +773,14 @@ $("buscarGrupo").addEventListener("input", renderizarGrupos);
 $("limparBusca").onclick = () => { $("buscarGrupo").value = ""; renderizarGrupos(); $("buscarGrupo").focus(); };
 $("salvarGrupos").onclick = async () => {
   const selecionados = grupos.filter((grupo) => grupo.selecionado);
-  try { await api("/api/grupos", { method: "PUT", body: JSON.stringify({ grupos: selecionados }) }); aviso(`${selecionados.length} grupo(s) salvo(s). As notas existentes serão recalculadas.`); atualizar(); } catch (erro) { aviso(erro.message, true); }
+  const pessoas = contatos.filter((pessoa) => pessoa.permitido).map((pessoa) => pessoa.id);
+  try {
+    // Sem a lista de grupos carregada (WhatsApp desconectado), salva so os contatos.
+    if (grupos.length) await api("/api/grupos", { method: "PUT", body: JSON.stringify({ grupos: selecionados }) });
+    contatos = (await api("/api/contatos", { method: "PUT", body: JSON.stringify({ ids: pessoas }) })).contatos;
+    aviso(`${grupos.length ? `${selecionados.length} grupo(s) e ` : ""}${pessoas.length} contato(s) salvo(s).`);
+    renderizarGrupos(); atualizar();
+  } catch (erro) { aviso(erro.message, true); }
 };
 $("atualizarContaAzul").onclick = () => carregarContaAzul(true);
 $("confirmarEmpresa").onclick = confirmarEmpresaContaAzul;

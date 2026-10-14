@@ -42,10 +42,16 @@
         </details>
       </article>
       <article class="card">
-        <div class="card-title"><div><span class="step">2</span><h2>Grupos monitorados</h2></div><span id="grupoTotal" class="counter">0</span></div>
-        <p class="muted">Escolha exatamente de quais grupos as fotos serão processadas.</p><button id="carregarGrupos" class="secondary">Atualizar lista de grupos</button>
-        <div id="buscaArea" class="search-box oculto"><span aria-hidden="true">⌕</span><input id="buscarGrupo" type="search" placeholder="Pesquisar grupo por nome ou ID" autocomplete="off"><button id="limparBusca" type="button" title="Limpar pesquisa">×</button></div>
-        <div id="listaGrupos" class="group-list"><div class="empty">Conecte o WhatsApp para carregar os grupos.</div></div><button id="salvarGrupos" class="primary full oculto">Salvar grupos selecionados</button>
+        <div class="card-title"><div><span class="step">2</span><h2>Grupos e contatos monitorados</h2></div><span id="grupoTotal" class="counter">0</span></div>
+        <p class="muted">Marque os grupos e as pessoas (conversa no seu privado) de onde as fotos serão lidas. Só o que estiver marcado é lido e aparece no painel. O que você mesmo escreve no privado nunca é lido.</p><button id="carregarGrupos" class="secondary">Atualizar lista</button>
+        <div id="buscaArea" class="search-box oculto"><span aria-hidden="true">⌕</span><input id="buscarGrupo" type="search" placeholder="Pesquisar grupo ou contato" autocomplete="off"><button id="limparBusca" type="button" title="Limpar pesquisa">×</button></div>
+        <div id="listaGrupos" class="group-list"><div class="empty">Carregando…</div></div><button id="salvarGrupos" class="primary full oculto">Salvar grupos e contatos</button>
+        <details class="cost-admin">
+          <summary>Cadastrar pessoa nova (para conversa no privado)</summary>
+          <div class="cost-form"><label><span>Nome</span><input id="novaPessoaNome" maxlength="80" placeholder="Ex.: Gabriel Lorran"></label><label><span>Telefone (com DDD)</span><input id="novaPessoaTelefone" maxlength="20" inputmode="tel" placeholder="Ex.: 62 99999-9999"></label></div>
+          <div class="actions compact"><button id="cadastrarPessoa" class="primary" type="button">Cadastrar e marcar na lista</button></div>
+          <p class="safety-note">O telefone fica só no cadastro deste computador (pessoas.json) e aparece aqui apenas com os 4 últimos dígitos.</p>
+        </details>
         <details class="cost-admin">
           <summary>Gerenciar centros de custo</summary>
           <p class="muted">Cadastre um novo projeto diretamente no Conta Azul e use-o nos grupos sem copiar IDs.</p>
@@ -53,18 +59,6 @@
           <div class="actions compact"><button id="criarCentro" class="primary" type="button">Criar no Conta Azul</button><button id="sincronizarCentros" class="secondary" type="button">Sincronizar lista</button></div>
           <div id="centrosLista" class="centros-lista"><span class="muted">Conecte e confirme a empresa do Conta Azul para gerenciar.</span></div>
           <p class="safety-note">A API não oferece exclusão de centro de custo. O programa sempre pede confirmação e bloqueia nomes ou códigos repetidos.</p>
-        </details>
-      </article>
-      <article class="card">
-        <div class="card-title"><div><span class="step">3</span><h2>Contatos no privado</h2></div><span id="contatoTotal" class="counter">0</span></div>
-        <p class="muted">Pessoas que podem mandar as notas direto no seu privado, além dos grupos. Mensagens que você mesmo escreve no privado nunca são lidas.</p>
-        <div id="listaContatos" class="group-list"><div class="empty">Carregando…</div></div>
-        <button id="salvarContatos" class="primary full">Salvar contatos</button>
-        <details class="cost-admin">
-          <summary>Cadastrar pessoa nova</summary>
-          <div class="cost-form"><label><span>Nome</span><input id="novaPessoaNome" maxlength="80" placeholder="Ex.: Gabriel Lorran"></label><label><span>Telefone (com DDD)</span><input id="novaPessoaTelefone" maxlength="20" inputmode="tel" placeholder="Ex.: 62 99999-9999"></label></div>
-          <div class="actions compact"><button id="cadastrarPessoa" class="primary" type="button">Cadastrar e liberar no privado</button></div>
-          <p class="safety-note">O telefone fica só no cadastro deste computador (pessoas.json) e aparece aqui apenas com os 4 últimos dígitos.</p>
         </details>
       </article>
     </section>
@@ -86,7 +80,7 @@
       <div class="conta-links"><a href="https://app.contaazul.com/" target="_blank" rel="noreferrer">Abrir Conta Azul</a><span>Isto é apenas o caminho de conferência: prévia em Conta AI Captura; lançamento criado em Financeiro → Contas a pagar.</span></div>
     </section>
     <section class="card documentos-card">
-      <div class="card-title"><div><span class="step">4</span><h2>Comprovantes em tempo real</h2></div><div class="actions compact"><button id="encaminharTodosZap" class="primary" type="button">Encaminhar TODAS p/ Conta AI (Zap)</button><span class="live-indicator">● AO VIVO</span></div></div>
+      <div class="card-title"><div><span class="step">3</span><h2>Comprovantes em tempo real</h2></div><div class="actions compact"><button id="encaminharTodosZap" class="primary" type="button">Encaminhar TODAS p/ Conta AI (Zap)</button><span class="live-indicator">● AO VIVO</span></div></div>
       <p class="muted">Imagens, legendas, leitura automática e dúvidas aparecem aqui sem precisar atualizar a página.</p>
       <div class="date-filter"><label for="filtroData">Filtrar pelo dia recebido</label><input id="filtroData" type="date"><button id="filtrarHoje" class="secondary" type="button">Hoje</button><button id="mostrarTodos" class="ghost" type="button">Mostrar todos</button></div>
       <div id="documentosLista" class="documentos-lista"><div class="empty">Aguardando o primeiro comprovante do WhatsApp.</div></div>
