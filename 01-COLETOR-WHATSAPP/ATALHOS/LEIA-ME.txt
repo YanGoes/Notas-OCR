@@ -5,14 +5,16 @@ No dia a dia voce nao precisa desta pasta. Use os dois atalhos que estao na
 pasta principal do programa:
 
   INICIAR.bat           -> primeira instalacao (instala Node.js e bibliotecas)
-  ABRIR_APLICATIVO.bat  -> uso diario (abre na bandeja do Windows)
+  ABRIR_APLICATIVO.bat  -> uso diario: coleta em segundo plano (bolinha perto do
+                           relogio; religa sozinha se cair)
 
 Esta pasta guarda as tarefas ocasionais, na ordem em que costumam ser usadas.
 
 
 COMECAR
   01_INSTALAR_E_INICIAR.bat   Primeira vez: instala tudo e abre o programa.
-  02_ABRIR_APLICATIVO.bat     Abre o programa no dia a dia.
+  02_ABRIR_APLICATIVO.bat     Abre a coleta em segundo plano (recomendado).
+  09 / 10                     Liga / desliga a abertura junto com o Windows.
 
 CONFIGURAR (uma vez, ou quando algo mudar)
   03_CONFIGURAR_AZURE.bat            Endpoint e chave do Azure (leitura das notas).

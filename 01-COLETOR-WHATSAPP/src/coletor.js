@@ -23,6 +23,34 @@ const RAIZ = path.resolve(__dirname, "..");
 const ARQUIVO_CONFIG = path.join(RAIZ, "config.json");
 const ARQUIVO_CENTROS_CUSTO = path.join(RAIZ, "configuracao", "centros_custo.json");
 const PASTA_SESSAO = path.join(RAIZ, ".baileys_sessao");
+// Ultimo momento em que a coleta estava funcionando. Ao religar, as mensagens
+// que chegaram com o programa desligado (o WhatsApp entrega como "append")
+// sao lidas a partir daqui. Antes eram descartadas: foi assim que a orientacao
+// da Vanessa de 13/10 22:22 se perdeu.
+const ARQUIVO_ATIVIDADE = path.join(RAIZ, "dados", "coleta-ultima-atividade.json");
+const ATRASO_MAXIMO_MS = 7 * 24 * 3600 * 1000;
+const FOLGA_MS = 10 * 60 * 1000;
+
+function lerUltimaAtividade() {
+    try { return Number(JSON.parse(fs.readFileSync(ARQUIVO_ATIVIDADE, "utf8")).em_ms) || null; } catch (_) { return null; }
+}
+const retomarDesdeMs = (() => {
+    const ultima = lerUltimaAtividade();
+    const limite = Date.now() - ATRASO_MAXIMO_MS;
+    return ultima ? Math.max(ultima - FOLGA_MS, limite) : Date.now() - 24 * 3600 * 1000;
+})();
+function registrarAtividade() {
+    try {
+        fs.mkdirSync(path.dirname(ARQUIVO_ATIVIDADE), { recursive: true });
+        fs.writeFileSync(ARQUIVO_ATIVIDADE, JSON.stringify({ em: new Date().toISOString(), em_ms: Date.now() }), "utf8");
+    } catch (_) { /* so serve para a proxima retomada */ }
+}
+
+/** Mensagem atrasada (entregue ao religar) que ainda nao foi lida? */
+function mensagemAtrasadaParaLer(mensagem) {
+    const quando = timestampNumero(mensagem?.messageTimestamp) * 1000;
+    return quando >= retomarDesdeMs && quando <= Date.now() + 60 * 1000;
+}
 const logger = pino({ level: "silent" });
 const extensoes = {
     "image/jpeg": ".jpg",
@@ -125,6 +153,9 @@ async function tratarComandoCentroCusto(socket, idGrupo, texto) {
 
 const config = carregarConfig();
 let gruposPermitidos = new Set(config.grupos_permitidos);
+// Pessoas do cadastro cujas conversas no PRIVADO tambem sao lidas (ids de pessoas.json).
+let contatosPermitidos = new Set(Array.isArray(config.contatos_permitidos) ? config.contatos_permitidos : []);
+const nomesPrivados = new Map();
 const eventos = new EventEmitter();
 const estado = { status: "parado", qr: null, erro: null, conectado_desde: null, codigo_pareamento: null };
 let socketAtual = null;
@@ -523,7 +554,40 @@ function registrarComentarioSeparado(idGrupo, remetente, idMensagem, timestampMs
 }
 
 function nomeGrupo(id) {
-    return config.nomes_dos_grupos[id] || id || "grupo_nao_identificado";
+    return config.nomes_dos_grupos[id] || nomesPrivados.get(id) || id || "grupo_nao_identificado";
+}
+
+/**
+ * De quem e uma conversa no privado: pelo telefone/codigo do WhatsApp
+ * (vinculos ja confirmados) ou perguntando ao WhatsApp o telefone do LID.
+ */
+async function pessoaDaConversaPrivada(chave) {
+    if (!centralHabilitada()) return null;
+    const { db, cad } = central();
+    const cadastros = require("./central/cadastros");
+    const vinculos = new Map(db.prepare("SELECT whatsapp_id, pessoa_id FROM remetentes_vinculados").all().map((linha) => [linha.whatsapp_id, linha.pessoa_id]));
+    const jids = [chave.remoteJid, chave.remoteJidAlt, chave.senderPn, chave.participantAlt].filter(Boolean).map(String);
+    for (const jid of jids) {
+        const achada = cadastros.identificarPessoa(cad, jid, { vinculos });
+        if (achada.status === "IDENTIFICADA") return achada.pessoa;
+    }
+    const lid = jids.find((jid) => jid.endsWith("@lid"));
+    const mapa = socketAtual?.signalRepository?.lidMapping;
+    if (!lid || !mapa?.getPNForLID) return null;
+    const telefone = await Promise.resolve(mapa.getPNForLID(lid)).catch(() => null);
+    if (!telefone) return null;
+    const achada = cadastros.identificarPessoa(cad, String(telefone));
+    if (achada.status !== "IDENTIFICADA") return null;
+    try { require("./central/identificacao-whatsapp").vincularPorTelefone(db, cad, lid, String(telefone)); } catch (_) { /* vinculo e so atalho */ }
+    return achada.pessoa;
+}
+
+function salvarContatos(ids) {
+    config.contatos_permitidos = [...new Set((ids || []).map(String).filter(Boolean))];
+    contatosPermitidos = new Set(config.contatos_permitidos);
+    const persistido = JSON.parse(fs.readFileSync(ARQUIVO_CONFIG, "utf8"));
+    persistido.contatos_permitidos = config.contatos_permitidos;
+    fs.writeFileSync(ARQUIVO_CONFIG, JSON.stringify(persistido, null, 2) + "\n", "utf8");
 }
 
 function atualizarEstado(alteracoes) {
@@ -602,10 +666,22 @@ async function desconectar() {
 async function processar(socket, pacote) {
     try {
         const idGrupo = String(pacote.key?.remoteJid || "");
-        if (!idGrupo.endsWith("@g.us") || !pacote.message) return;
-        // So grupos marcados no painel. Nenhum marcado = nenhum processado (antes,
-        // lista vazia processava TODOS os grupos do numero e gastava o Azure).
-        if (!gruposPermitidos.has(idGrupo)) return;
+        if (!pacote.message) return;
+        const ehGrupo = idGrupo.endsWith("@g.us");
+        if (ehGrupo) {
+            // So grupos marcados no painel. Nenhum marcado = nenhum processado (antes,
+            // lista vazia processava TODOS os grupos do numero e gastava o Azure).
+            if (!gruposPermitidos.has(idGrupo)) return;
+        } else if (/@(s\.whatsapp\.net|lid)$/.test(idGrupo)) {
+            // Conversa no PRIVADO: so de pessoas liberadas no painel, e nunca o que
+            // a propria conta escreveu (suas respostas ao operador nao sao notas).
+            if (pacote.key.fromMe || !contatosPermitidos.size) return;
+            const pessoa = await pessoaDaConversaPrivada(pacote.key);
+            if (!pessoa || !contatosPermitidos.has(pessoa.id)) return;
+            nomesPrivados.set(idGrupo, `Privado - ${pessoa.nome}`);
+        } else {
+            return;
+        }
 
         const timestamp = timestampNumero(pacote.messageTimestamp);
         const timestampMs = timestamp * 1000;
@@ -623,7 +699,7 @@ async function processar(socket, pacote) {
                 grupoId: idGrupo, mensagemId: idMensagem, remetenteId: remetente, remetenteNome: nomeRemetente,
                 enviadaEm: new Date(timestampMs).toISOString(), texto: texto.texto, citadoId: texto.citadoId,
             });
-            if (await tratarComandoCentroCusto(socket, idGrupo, texto.texto)) return;
+            if (ehGrupo && await tratarComandoCentroCusto(socket, idGrupo, texto.texto)) return;
             registrarComentarioSeparado(idGrupo, remetente, idMensagem, timestampMs, texto.texto, texto.citadoId);
             return;
         }
@@ -711,8 +787,12 @@ async function iniciar() {
     socketAtual = socket;
     socket.ev.on("creds.update", saveCreds);
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
-        if (type !== "notify") return;
-        for (const mensagem of messages) await processar(socket, mensagem);
+        // "notify" = chegou agora; "append" = entregue ao religar (so as que
+        // chegaram enquanto o programa estava parado). Repetidas sao ignoradas
+        // adiante (mesmo id de mensagem / mesmo arquivo de foto).
+        const lista = type === "notify" ? messages : type === "append" ? messages.filter(mensagemAtrasadaParaLer) : [];
+        if (type === "append" && lista.length) conexao.registrarLog("mensagens_atrasadas", { quantidade: lista.length });
+        for (const mensagem of lista) await processar(socket, mensagem);
     });
     socket.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
         if (qr) {
@@ -722,6 +802,8 @@ async function iniciar() {
             qrcode.generate(qr, { small: true });
         }
         if (connection === "open") {
+            registrarAtividade();
+            if (!global.__vmacAtividade) global.__vmacAtividade = setInterval(() => { if (estado.status === "conectado") registrarAtividade(); }, 60 * 1000);
             reconectando = false;
             tentativasReconexao = 0;
             qrSeguidos = 0;
@@ -793,10 +875,11 @@ if (require.main === module) {
 }
 
 module.exports = {
-    iniciar, desconectar, listarGrupos, salvarGrupos, solicitarCodigoPareamento, identificarRemetentes, contaConectada,
+    iniciar, desconectar, listarGrupos, salvarGrupos, salvarContatos, solicitarCodigoPareamento, identificarRemetentes, contaConectada,
     obterEstado: () => ({ ...estado }), eventos,
     obterConfiguracao: () => ({
         grupos_permitidos: [...gruposPermitidos],
+        contatos_permitidos: [...contatosPermitidos],
         nomes_dos_grupos: { ...config.nomes_dos_grupos },
         centros_custo_por_grupo: { ...config.centros_custo_por_grupo },
         numero_conta_ai: config.numero_conta_ai || "",

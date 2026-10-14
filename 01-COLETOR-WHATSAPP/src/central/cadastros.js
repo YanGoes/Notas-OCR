@@ -299,8 +299,39 @@ function categoriaPorNome(cad, nomeInterno) {
     return { nome: categoria.nome_conta_azul || categoria.nome, nome_interno: categoria.nome, id: idValido ? categoria.id : null };
 }
 
+/** "Gabriel Lorran" -> "gabriel_lorran" (sem repetir um id que ja existe). */
+function idDaPessoa(nome, existentes) {
+    const baseId = normalizar(nome).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "pessoa";
+    let id = baseId;
+    for (let n = 2; existentes.has(id); n += 1) id = `${baseId}_${n}`;
+    return id;
+}
+
+/**
+ * Cadastra uma pessoa nova em pessoas.json (o unico lugar onde ficam
+ * telefones; o arquivo nao vai para o Git). Devolve so o final do telefone.
+ */
+function adicionarPessoa({ nome, telefone, papel = "OPERADOR" } = {}, pasta = PASTA_PADRAO) {
+    const nomeLimpo = String(nome || "").replace(/\s+/g, " ").trim();
+    if (nomeLimpo.length < 2) throw new Error("Informe o nome da pessoa.");
+    let digitos = somenteDigitos(telefone);
+    if (digitos.length === 10 || digitos.length === 11) digitos = `55${digitos}`;
+    if (!/^55\d{10,11}$/.test(digitos)) throw new Error("Telefone inválido. Use DDD + número, ex.: 62 99999-9999.");
+    const papelLimpo = ["OPERADOR", "GESTOR", "ADMINISTRATIVO"].includes(String(papel).toUpperCase()) ? String(papel).toUpperCase() : "OPERADOR";
+    const arquivo = path.join(pasta, "pessoas.json");
+    const atual = fs.existsSync(arquivo) ? lerJson(arquivo, { pessoas: [] }) : { pessoas: [] };
+    const pessoas = Array.isArray(atual.pessoas) ? atual.pessoas : [];
+    const variantes = new Set(variantesTelefone(digitos));
+    const repetida = pessoas.find((pessoa) => variantesTelefone(pessoa.telefone).some((tel) => variantes.has(tel)));
+    if (repetida) throw new Error(`Esse telefone já é de ${repetida.nome}.`);
+    const pessoa = { id: idDaPessoa(nomeLimpo, new Set(pessoas.map((item) => item.id))), nome: nomeLimpo, telefone: digitos, papel: papelLimpo, pasta_drive: nomeLimpo.split(" ")[0] };
+    pessoas.push(pessoa);
+    fs.writeFileSync(arquivo, JSON.stringify({ ...atual, pessoas }, null, 2) + "\n", "utf8");
+    return { id: pessoa.id, nome: pessoa.nome, papel: pessoa.papel, telefone_final: digitos.slice(-4) };
+}
+
 module.exports = {
-    carregar, identificarPessoa, variantesTelefone,
+    carregar, identificarPessoa, variantesTelefone, adicionarPessoa,
     resolverProjeto, pareceProjeto, projetosComId, nomeCentro,
     resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, veiculoAproximado, veiculoPorSosia, placaCanonica, placaComparavel,
     resolverFornecedor, categoriaPorNome, PASTA_PADRAO,

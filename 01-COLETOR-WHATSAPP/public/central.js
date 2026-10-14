@@ -47,6 +47,32 @@ function el(tag, atributos = {}, ...filhos) {
     return no;
 }
 
+/**
+ * Aviso no topo quando a coleta para (programa fora do ar) ou o WhatsApp cai.
+ * Confere a cada 30 s; a bandeja do Windows religa o programa sozinha.
+ */
+function vigiarColeta() {
+    const faixa = document.getElementById("statusColeta");
+    const mostrar = (texto, parada) => {
+        faixa.textContent = texto;
+        faixa.classList.toggle("parada", Boolean(parada));
+        faixa.classList.toggle("oculto", !texto);
+    };
+    const conferir = async () => {
+        try {
+            const resposta = await fetch("/api/status", { cache: "no-store" });
+            const status = await resposta.json();
+            const whats = status?.whatsapp?.status;
+            if (whats === "conectado") mostrar("");
+            else mostrar(`WhatsApp ${whats || "desconectado"}: notas novas NÃO estão chegando. Abra o Painel principal para reconectar.`);
+        } catch (_) {
+            mostrar("A coleta do WhatsApp está PARADA. Ela religa sozinha em até 1 minuto; se não voltar, use 'Reiniciar coleta' no ícone perto do relógio.", true);
+        }
+    };
+    conferir();
+    setInterval(conferir, 30000);
+}
+
 const moeda = (valor) => (valor == null ? "—" : Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 const dataBr = (iso) => (iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 const dataHora = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); };
@@ -737,6 +763,7 @@ async function iniciar() {
         try { localStorage.setItem("vmac-tema", novo); } catch (_) { /* sem armazenamento */ }
     });
     for (const botao of document.querySelectorAll(".abas button")) botao.addEventListener("click", () => trocarAba(botao.dataset.aba));
+    vigiarColeta();
     try {
         estado.opcoes = await api("/opcoes");
         document.body.append(el("datalist", { id: "listaCategorias" }, estado.opcoes.categorias.map((categoria) =>

@@ -284,6 +284,34 @@ app.post("/api/documentos/encaminhar-todos-conta-ai", async (req, res, next) => 
         res.json({ ok: true, quantidade: contagem, mensagem: `${contagem} comprovante(s) encaminhado(s) ao Conta AI no WhatsApp.` });
     } catch (erro) { next(erro); }
 });
+// Conversas no privado: pessoas do cadastro (telefone so com os 4 ultimos digitos).
+function listarContatos() {
+    const permitidos = new Set(whatsapp.obterConfiguracao().contatos_permitidos || []);
+    return require("./central/cadastros").carregar().pessoas.map((pessoa) => ({
+        id: pessoa.id, nome: pessoa.nome, papel: pessoa.papel || null,
+        telefone_final: pessoa.telefone ? String(pessoa.telefone).slice(-4) : null, permitido: permitidos.has(pessoa.id),
+    })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+app.get("/api/contatos", (_req, res, next) => {
+    try { res.json(listarContatos()); } catch (erro) { next(erro); }
+});
+app.put("/api/contatos", (req, res, next) => {
+    try {
+        if (!Array.isArray(req.body?.ids)) throw new Error("Lista de contatos invalida.");
+        const existentes = new Set(listarContatos().map((pessoa) => pessoa.id));
+        whatsapp.salvarContatos(req.body.ids.map(String).filter((id) => existentes.has(id)));
+        res.json({ ok: true, contatos: listarContatos() });
+    } catch (erro) { next(erro); }
+});
+app.post("/api/contatos/pessoa", (req, res, next) => {
+    try {
+        const pessoa = require("./central/cadastros").adicionarPessoa(req.body || {});
+        // Ja libera o privado de quem acabou de ser cadastrado aqui.
+        whatsapp.salvarContatos([...(whatsapp.obterConfiguracao().contatos_permitidos || []), pessoa.id]);
+        res.json({ ok: true, pessoa, contatos: listarContatos() });
+    } catch (erro) { erro.status = 400; next(erro); }
+});
+
 app.put("/api/grupos", (req, res, next) => {
     try {
         if (!Array.isArray(req.body?.grupos)) throw new Error("Lista de grupos invalida.");
@@ -394,6 +422,8 @@ const servidor = app.listen(porta, "127.0.0.1", () => {
         whatsapp.iniciar().catch((erro) => console.error("WhatsApp:", erro.message));
     }
     if (process.platform === "win32" && process.env.NAO_ABRIR_NAVEGADOR !== "1") execFile("explorer.exe", [url], () => {});
+    // Copia diaria do banco da Central e dos cadastros (dados/backups, 14 dias).
+    require("./backup").agendarBackups(() => require("./central/banco").banco());
 });
 
 // Trava de instancia unica. Duas copias abertas ao mesmo tempo compartilham a

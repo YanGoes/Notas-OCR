@@ -55,6 +55,18 @@
           <p class="safety-note">A API não oferece exclusão de centro de custo. O programa sempre pede confirmação e bloqueia nomes ou códigos repetidos.</p>
         </details>
       </article>
+      <article class="card">
+        <div class="card-title"><div><span class="step">3</span><h2>Contatos no privado</h2></div><span id="contatoTotal" class="counter">0</span></div>
+        <p class="muted">Pessoas que podem mandar as notas direto no seu privado, além dos grupos. Mensagens que você mesmo escreve no privado nunca são lidas.</p>
+        <div id="listaContatos" class="group-list"><div class="empty">Carregando…</div></div>
+        <button id="salvarContatos" class="primary full">Salvar contatos</button>
+        <details class="cost-admin">
+          <summary>Cadastrar pessoa nova</summary>
+          <div class="cost-form"><label><span>Nome</span><input id="novaPessoaNome" maxlength="80" placeholder="Ex.: Gabriel Lorran"></label><label><span>Telefone (com DDD)</span><input id="novaPessoaTelefone" maxlength="20" inputmode="tel" placeholder="Ex.: 62 99999-9999"></label></div>
+          <div class="actions compact"><button id="cadastrarPessoa" class="primary" type="button">Cadastrar e liberar no privado</button></div>
+          <p class="safety-note">O telefone fica só no cadastro deste computador (pessoas.json) e aparece aqui apenas com os 4 últimos dígitos.</p>
+        </details>
+      </article>
     </section>
     <section class="grid stats">
       <article><span>Entrada</span><strong id="fEntrada">0</strong></article><article><span>Simulação aprovada</span><strong id="fSimulacao">0</strong></article><article><span>Precisa de revisão</span><strong id="fRevisao">0</strong></article><article><span>Bloqueados</span><strong id="fBloqueados">0</strong></article><article><span>Erros</span><strong id="fErros">0</strong></article><article><span>Enviados</span><strong id="fEnviados">0</strong></article>

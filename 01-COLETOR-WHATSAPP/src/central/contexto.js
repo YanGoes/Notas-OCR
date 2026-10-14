@@ -59,11 +59,11 @@ function registrarMensagem(db, cad, msg) {
     }
 
     const identificacao = identificar(db, cad, msg.remetenteId, msg.remetenteNome);
+    const enviadaEm = new Date(msg.enviadaEm || Date.now()).toISOString();
     const interpretacao = interpretar(cad, {
         texto: msg.texto, temMidia: Boolean(msg.temMidia),
-        pessoa: identificacao.pessoa, nomeRemetente: msg.remetenteNome,
+        pessoa: identificacao.pessoa, nomeRemetente: msg.remetenteNome, referencia: enviadaEm,
     });
-    const enviadaEm = new Date(msg.enviadaEm || Date.now()).toISOString();
 
     return transacao(db, () => {
         const { lastInsertRowid: mensagemRef } = db.prepare(`
@@ -106,6 +106,13 @@ function registrarMensagem(db, cad, msg) {
                 // Instrucao de cartao de quem nao tem autoridade fica registrada, mas nao vale.
                 status: interpretacao.autorizada ? "VALIDO" : "SEM_AUTORIDADE",
                 dados: { resolucao_projeto: projeto.resolucao.status },
+            });
+        } else if (interpretacao.intencao === INTENCOES.ORIENTACAO_GERENCIA) {
+            // Vale para o GRUPO (o grupo e do operador), nao so para quem escreveu.
+            const projeto = dados.projeto_texto ? chaveProjeto(cad, dados.projeto_texto, identificacao.pessoa) : null;
+            evento("ORIENTACAO_GERENCIA", {
+                projetoTexto: dados.projeto_texto || null, projetoChave: projeto?.chave || null, cartao: dados.pagamento?.cartao || null,
+                dados: { periodo: dados.periodo || null, citado_id: msg.citadoId || null },
             });
         } else if (msg.temMidia && dados.projeto_texto) {
             // Projeto escrito na legenda de uma foto tambem passa a ser o projeto atual do operador.
@@ -156,7 +163,16 @@ function contextoPara(db, cad, { grupoId, remetenteId, momento }, { horasLote = 
         origem: lote && lote.projeto_texto === projetoEvento.projeto_texto ? "cabecalho_do_lote" : "mensagem_anterior_do_operador",
     } : null;
 
-    return { lote, projeto, momento: ate };
+    // Orientacoes da gerencia para este grupo (a mais recente primeiro). Quem
+    // escolhe qual vale e a regra, pela data da nota (ver orientacaoVigente).
+    const orientacoes = db.prepare(`
+        SELECT * FROM eventos_contexto WHERE tipo = 'ORIENTACAO_GERENCIA' AND status = 'VALIDO' AND grupo_id = ?
+        ORDER BY valido_desde DESC, id DESC`).all(String(grupoId)).map((linha) => ({
+        projeto_texto: linha.projeto_texto, cartao: linha.cartao, desde: linha.valido_desde,
+        periodo: lerJson(linha.dados, {})?.periodo || null, autor: linha.autor_pessoa_id, evento_id: linha.id,
+    }));
+
+    return { lote, projeto, orientacoes, momento: ate };
 }
 
 /** Politica de cartao da gerencia valida para o projeto naquele momento (ultima instrucao vence). */

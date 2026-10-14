@@ -35,7 +35,8 @@ PROGRAMA OCR/
 
 | Atalho | Para quê |
 | --- | --- |
-| `15_COLETAR_WHATSAPP.bat` | Liga a coleta dos grupos (painel em http://127.0.0.1:3211). Deixe a janela aberta |
+| `02_ABRIR_APLICATIVO.bat` | Liga a coleta em segundo plano (ícone perto do relógio; religa sozinha). O 09 faz abrir junto com o Windows |
+| `15_COLETAR_WHATSAPP.bat` | A mesma coleta numa janela visível (painel em http://127.0.0.1:3211) |
 | `13_ABRIR_CENTRAL_REVISAO.bat` | Abre a Central de revisão (http://127.0.0.1:3211/central.html) |
 | `14_TREINAR_CENTRAL.bat` | Treina e mede a IA com a planilha do Conta Azul e as notas aprovadas |
 
@@ -74,4 +75,4 @@ Todos esses arquivos ficam fora do Git (`.gitignore`). Para mandar o projeto a a
 
 - **Código:** Node.js 22.5 ou superior; o banco da Central é o SQLite embutido no Node (`node:sqlite`).
 - **Versões:** controle de versão com Git (veja [COMO-SUBIR-NO-GIT](01-COLETOR-WHATSAPP/docs/COMO-SUBIR-NO-GIT.md)).
-- **Testes:** `npm test` roda os 279 testes automatizados; `npm run check` confere a sintaxe de todos os arquivos.
+- **Testes:** `npm test` roda os 299 testes automatizados; `npm run check` confere a sintaxe de todos os arquivos.

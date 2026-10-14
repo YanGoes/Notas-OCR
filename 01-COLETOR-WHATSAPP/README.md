@@ -33,23 +33,30 @@ Na primeira vez, rode `ATALHOS/01_INSTALAR_E_INICIAR.bat`. Ele instala o Node.js
 
 | Atalho (`ATALHOS/`) | Para quê |
 | --- | --- |
-| **15_COLETAR_WHATSAPP.bat** | Liga a coleta e abre o painel em http://127.0.0.1:3211. **Deixe a janela aberta**: fechar para a coleta |
+| **02_ABRIR_APLICATIVO.bat** | **Coleta em segundo plano** (recomendado): bolinha perto do relógio do Windows, religa sozinha se cair |
 | **13_ABRIR_CENTRAL_REVISAO.bat** | Abre a Central de revisão. Com a coleta aberta, só abre o navegador |
 | **14_TREINAR_CENTRAL.bat** | Treina e mede a IA (planilha do Conta Azul + notas aprovadas) |
-| 02_ABRIR_APLICATIVO.bat | Mesmo programa, minimizado no ícone da bandeja do Windows |
-| 09 / 10 | Liga ou desliga a abertura automática com o Windows |
+| 15_COLETAR_WHATSAPP.bat | A mesma coleta numa janela visível (útil para ver erros). Fechar a janela para a coleta |
+| 09 / 10 | Liga ou desliga a abertura automática com o Windows (em segundo plano) |
 | 11_GERAR_PACOTE_PARA_ENVIO.bat | Gera um `.zip` do projeto **sem** sessões, chaves, telefones e fotos |
 | 03 a 08, 12 | Configuração e testes do Azure e do Conta Azul (ver `ATALHOS/LEIA-ME.txt`) |
 
 O programa só pode estar aberto **uma vez** no computador. Uma segunda cópia se recusa a subir e avisa qual janela já está coletando, porque duas cópias na mesma sessão derrubam a conexão uma da outra.
 
-O computador precisa ficar ligado, com internet e sem suspensão para receber as notas.
+O computador precisa ficar ligado e com internet para receber as notas. Em segundo plano (atalho 02, ou automático com o Windows pelo 09):
+- **Cor da bolinha:** verde = WhatsApp conectado; amarela = programa aberto, mas WhatsApp desconectado; vermelha = programa parado.
+- **Religa sozinho:** a cada 30 segundos confere se a coleta está de pé e, se parou, abre de novo (no máximo 5 vezes em 10 minutos; depois avisa).
+- **PC sem suspender:** enquanto a bolinha estiver aberta, o Windows não entra em suspensão (a tela ainda apaga).
+- **Botão direito:** abrir a Central, abrir o painel, reiniciar a coleta, ver os registros ou sair.
+- **Aviso na Central:** uma faixa no topo avisa quando a coleta ou o WhatsApp estão parados.
+- **Mensagens atrasadas:** o que chegou com o programa desligado é lido ao religar (até 7 dias), a partir do último momento em que ele estava funcionando.
 
 ### Conectar o WhatsApp
 
 1. Abra o atalho 15. No painel, o card **"1 WhatsApp"** mostra o QR Code.
 2. No celular: *WhatsApp → Aparelhos conectados → Conectar aparelho* e leia o código. Se a câmera não funcionar, use "O QR Code não funcionou?" para entrar com um código de 8 letras.
 3. No card **"2 Grupos monitorados"**, clique em "Atualizar lista de grupos", marque os grupos de despesas e salve. **Só os grupos marcados são lidos.** Com nenhum marcado, nada é lido.
+4. No card **"3 Contatos no privado"**, marque quem pode mandar as notas direto no privado do número conectado. Para alguém que ainda não está no cadastro, use "Cadastrar pessoa nova" (nome + telefone). O que **você** escreve no privado nunca é lido como nota.
 
 A sessão fica salva em `.baileys_sessao/`, então o QR só é pedido de novo se o aparelho for removido no celular.
 
@@ -61,21 +68,34 @@ Como o programa evita falhas no pareamento:
 
 ## Mensagem padrão do operador
 
-A nota é a fonte da **data**, do **valor**, do **fornecedor**, dos **litros**, do **hodômetro** e da **placa**. O que só a mensagem pode dizer é o **projeto**, o **cartão** e as **pessoas**:
+A nota é a fonte da **data**, do **valor**, do **fornecedor**, dos **litros**, do **hodômetro** e da **placa** (placa e km **só** saem da nota). O que só a mensagem pode dizer é o **centro de custo**, o **cartão** e as **pessoas**. Padrão combinado em 14/10/2026:
 
 ```text
-Jantar
-Pessoas: 3
-Projeto: Rota do Pequi
+Despesas 14/10/2026          <- 1 mensagem antes das fotos (data das notas)
+Centro de custo: Goinfra GO
 Cartão: Inter
 ```
 
-Também são entendidos:
-- **formatos curtos:** "Jantar 3 pessoas / Rota do Pequi / Crédito Inter";
-- **cabeçalho do dia:** "Despesas 11/10/2026" seguido do projeto, que vale para as fotos seguintes do mesmo operador;
-- **mensagem separada da foto:** enviada até 45 segundos antes ou depois, ou como resposta à foto.
+Depois, **uma foto por nota** com a legenda **tipo + número de pessoas**:
 
-O projeto informado vale para as próximas notas daquele operador, mesmo em outros dias, até ele informar outro.
+| Legenda | Entendido como |
+| --- | --- |
+| `Almoço 3` / `Janta 2` / `Café 2` / `Hospedagem 3` | tipo e **pessoas** (o número é sempre pessoas) |
+| `Abastecimento` / `Pedágio` / `Estacionamento` | só o tipo |
+| `Material - parafusos` | material de campo, com a descrição |
+| `Água e gelo para o trecho` | descrição livre do que foi comprado |
+| `Almoço 3 - Pix Murilo` / `Janta 2 - Cartão C6` | pagamento diferente do cartão do dia (Pix com o nome de quem pagou) |
+| `Sem nota - exame médico - R$ 90,00 - Pix` | despesa **sem comprovante** com descrição, valor e pagamento |
+| `Correção: Janta 2` respondendo à foto | refaz a prévia daquela nota com o que foi corrigido |
+
+Também são entendidos:
+- o resumo do jeito do Almir: "Qtd 3 almoço" = almoço de 3 pessoas;
+- formatos antigos: "Jantar 3 pessoas / Rota do Pequi / Crédito Inter";
+- mensagem separada da foto, enviada até 45 segundos antes ou depois, ou como resposta à foto.
+
+O centro informado vale para as próximas notas daquele operador, mesmo em outros dias, até ele informar outro.
+
+**Orientação da gerência:** quando a Vanessa (ou outra pessoa com `autoridade_financeira` no cadastro) escreve no grupo do operador algo como "Despesas do dia 08/10 ao dia 15/10: / Centro de Custo: X / Cartão de Crédito: Inter", isso vale para as notas **daquele grupo** com data no período, inclusive as que já tinham chegado. Sem período, vale da mensagem em diante. Se o operador tiver informado outro centro que exista no cadastro, a nota vai para revisão com os dois. Mensagens de acerto de contas ("Pix…", "Saldo…", "Reembolso…") não mudam nada.
 
 ## Como a nota é lida e montada
 
@@ -198,7 +218,7 @@ O plano gratuito lê 500 páginas por mês. O programa para em 450, deixando fol
 
 ```powershell
 npm ci           # instala as bibliotecas
-npm test         # 279 testes automatizados
+npm test         # 299 testes automatizados
 npm run check    # confere a sintaxe de todos os arquivos
 npm start        # sobe o painel e a coleta (porta 3211)
 ```

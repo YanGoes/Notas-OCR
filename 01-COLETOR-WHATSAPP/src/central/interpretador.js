@@ -33,21 +33,29 @@ const INTENCOES = Object.freeze({
     CONFIRMACAO: "CONFIRMACAO",
     CONVERSA_IRRELEVANTE: "CONVERSA_IRRELEVANTE",
     MENSAGEM_AMBIGUA: "MENSAGEM_AMBIGUA",
+    // Gerencia (Vanessa) informa centro e/ou cartao do grupo, as vezes para um periodo.
+    ORIENTACAO_GERENCIA: "ORIENTACAO_GERENCIA",
+    // Conta de adiantamento/reembolso ("Pix Murillo... Saldo"): nao muda contexto.
+    ACERTO_FINANCEIRO: "ACERTO_FINANCEIRO",
 });
 
 // Tipos de despesa reconhecidos no texto do operador (palavra inteira).
 const TIPOS_TEXTO = [
-    { tipo: "CAFE_DA_MANHA", termos: ["cafe da manha", "cafe", "desjejum"] },
+    { tipo: "CAFE_DA_MANHA", termos: ["cafe da manha", "cafe", "cafes", "desjejum"] },
     { tipo: "ALMOCO", termos: ["almoco", "almocos"] },
-    { tipo: "JANTAR", termos: ["jantar", "janta", "jantas"] },
+    { tipo: "JANTAR", termos: ["jantar", "janta", "jantas", "jantares"] },
     { tipo: "LANCHE", termos: ["lanche", "lanches"] },
     { tipo: "ABASTECIMENTO", termos: ["abastecimento", "abastecimentos", "combustivel", "gasolina", "etanol", "diesel"] },
-    { tipo: "HOSPEDAGEM", termos: ["hospedagem", "hotel", "pousada", "diaria", "diarias"] },
+    { tipo: "HOSPEDAGEM", termos: ["hospedagem", "hospedagens", "hotel", "hoteis", "pousada", "diaria", "diarias"] },
     { tipo: "PEDAGIO", termos: ["pedagio", "pedagios"] },
-    { tipo: "ESTACIONAMENTO", termos: ["estacionamento"] },
+    { tipo: "ESTACIONAMENTO", termos: ["estacionamento", "estacionamentos"] },
     // Refeicao sem dizer qual: o tipo exato sai da nota (horario/lote).
     { tipo: "REFEICAO", termos: ["restaurante", "refeicao", "refeicoes", "alimentacao", "lanchonete", "comida", "marmita", "self service"] },
 ];
+
+// Tipos em que o numero junto do tipo e a quantidade de PESSOAS ("Almoço 3",
+// "Qtd 3 almoço"), como combinado com os operadores em 14/10/2026.
+const TIPOS_COM_PESSOAS = new Set(["CAFE_DA_MANHA", "ALMOCO", "JANTAR", "LANCHE", "HOSPEDAGEM", "REFEICAO"]);
 
 function tipoDoTexto(texto) {
     for (const { tipo, termos } of TIPOS_TEXTO) if (termos.some((termo) => contemTermo(texto, termo))) return tipo;
@@ -63,8 +71,36 @@ const RE_PESSOAS = /(\d{1,3})\s*(?:pessoas?|pessoa|pax|funcionarios?|colaborador
 const RE_PESSOAS_ROTULO = /^\s*(?:(?:qtd\.?|qtde\.?|quantidade|n[ºo°]?)\s*(?:de\s*)?)?(?:pessoas?|pax|funcionarios?|colaboradores?)\s*[:\-=]\s*(\d{1,3})\b/i;
 const RE_VALOR = /^\s*valor\s*[:\-]?\s*(?:r\$)?\s*([\d.,]+)/i;
 const RE_OBS = /^\s*(?:observa[cç](?:[aã]o|[oõ]es)|obs\.?)\s*[:,\-]?\s*(.*)$/i;
-const RE_PAGAMENTO = /^\s*(?:pagamento|forma\s*de\s*pagamento|conta\/?cart[aã]o|cart[aã]o|conta)\s*[:\-]\s*(.+)$/i;
+const RE_PAGAMENTO = /^\s*(?:pagamento|forma\s*de\s*pagamento|conta\/?cart[aã]o|cart[aã]o(?:\s+de\s+(?:cr[eé]dito|d[eé]bito))?|conta)\s*[:\-]\s*(.+)$/i;
+// Legenda no padrao novo: "Almoço 3" (tipo + pessoas).
+const RE_TIPO_NUMERO = /^([^\d]+?)\s*[:\-x]?\s*(\d{1,2})$/i;
+const RE_DINHEIRO = /^\s*r\$\s*([\d.,]+)\s*$/i;
+const RE_MATERIAL = /^\s*(?:materia(?:l|is)|ferragens?|ferramentas?)\b\s*(?:de\s+campo\b)?\s*[:\-]?\s*(.*)$/i;
+const RE_PREFIXO_CORRECAO = /^\s*corre[cç][aã]o\s*[:\-]?\s*/i;
+// "do dia 08/10 ao dia 15/10", "de 08/10 a 15/10", "08/10 até 15/10/2026".
+const RE_PERIODO = /(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s*(?:a|ao|at[eé])\s*(?:o\s+)?(?:dia\s+)?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i;
+// Separador de partes na mesma linha: "Almoço 3 - Pix Murilo".
+const RE_SEPARADOR = /\s+[-–—]\s+/;
 const RE_SEM_COMPROVANTE = /\b(perdi|perdeu|sem)\s+(a\s+)?(nota|notinha|comprovante|cupom|recibo)\b|\bnota\s+perdida\b/i;
+
+/** "08/10" sem ano: usa o ano da mensagem (ex.: nota de dezembro mandada em janeiro = ano anterior). */
+function dataComAno(texto, referencia) {
+    const completa = dataIso(texto);
+    if (completa) return completa;
+    const achado = String(texto || "").match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (!achado) return null;
+    const ref = new Date(referencia || Date.now());
+    let ano = ref.getUTCFullYear();
+    if (Number(achado[2]) - (ref.getUTCMonth() + 1) > 6) ano -= 1;
+    return dataIso(achado[1] + "/" + achado[2] + "/" + ano);
+}
+
+/** "Pix Murilo", "Pix (Murilo)", "Pix do Murilo" -> "Murilo". */
+function pagadorDoPix(segmento) {
+    const resto = String(segmento || "").replace(/\bpix\b/i, "").replace(/[()]/g, " ")
+        .replace(/^\s*(?:de|do|da|via|pelo|pela)\s+/i, "").replace(/\s+/g, " ").trim();
+    return resto && !/\d/.test(resto) && resto.split(" ").length <= 3 ? resto : null;
+}
 
 function metodoExcepcional(texto) {
     if (contemTermo(texto, "pix")) return "PIX";
@@ -87,13 +123,32 @@ function pagamentoDaLinha(cad, linha) {
  * Le cada linha da mensagem e extrai o que ela diz.
  * @returns {object} dados extraidos, com `linhas_nao_entendidas` para auditoria
  */
-function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
+function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = null } = {}) {
     const dados = {
         data_declarada: null, projeto_texto: null, pagamento: null, valor_declarado: null,
         tipos: [], quantidades: [], pessoas: null, observacoes: [], itens_citados: [],
         sem_comprovante: false, placa: null, litros: null, odometro: null, linhas_nao_entendidas: [],
     };
-    const linhas = String(texto || "").split(/\r?\n/).map((linha) => linha.trim()).filter(Boolean);
+    const linhas = [];
+    for (const bruta of String(texto || "").split(/\r?\n/)) {
+        let linha = bruta.trim();
+        if (RE_PREFIXO_CORRECAO.test(linha)) {
+            dados.correcao = true;
+            linha = linha.replace(RE_PREFIXO_CORRECAO, "").trim();
+        }
+        if (!linha) continue;
+        const periodo = linha.match(RE_PERIODO);
+        if (periodo) {
+            const de = dataComAno(periodo[1], referencia);
+            const ate = dataComAno(periodo[2], referencia);
+            if (de && ate) {
+                dados.periodo = { de, ate };
+                continue;
+            }
+        }
+        // "Almoço 3 - Pix Murilo": cada parte e lida como uma linha.
+        linhas.push(...linha.split(RE_SEPARADOR).map((parte) => parte.trim()).filter(Boolean));
+    }
     let aguardandoProjeto = false;
 
     for (const linha of linhas) {
@@ -125,7 +180,23 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
             continue;
         }
 
-        if (RE_SEM_COMPROVANTE.test(linha)) dados.sem_comprovante = true;
+        if (RE_SEM_COMPROVANTE.test(linha)) {
+            dados.sem_comprovante = true;
+            if (!normalizar(linha.replace(RE_SEM_COMPROVANTE, ""))) continue;
+        }
+
+        const dinheiro = linha.match(RE_DINHEIRO);
+        if (dinheiro) {
+            dados.valor_declarado = numeroMonetario(dinheiro[1]);
+            continue;
+        }
+
+        const material = linha.match(RE_MATERIAL);
+        if (material) {
+            dados.material = true;
+            if (material[1].trim()) dados.observacoes.push(material[1].trim());
+            continue;
+        }
 
         // Dados de abastecimento digitados (opcionais): so complementam a leitura da nota.
         const placa = placaDaLegenda(linha);
@@ -154,8 +225,13 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
         const pagamento = pagamentoDaLinha(cad, pagamentoRotulado ? pagamentoRotulado[1] : linha);
         if (pagamento && (pagamentoRotulado || /^(cr[eé]dito|pix|dinheiro|d[eé]bito)/i.test(linha) || normal.split(" ").length <= 3)) {
             dados.pagamento = pagamento;
+            const pagador = pagamento.forma === "PIX" ? pagadorDoPix(pagamentoRotulado ? pagamentoRotulado[1] : linha) : null;
+            if (pagador) dados.pagamento.pagador = pagador;
             continue;
         }
+        // Pix no meio da frase ("foi pago no Pix que o Murilo fez"): vale o Pix
+        // e a frase continua sendo lida (vira observacao).
+        if (!dados.pagamento && contemTermo(linha, "pix")) dados.pagamento = { forma: "PIX", cartao: null, rotulo: "PIX" };
 
         const pessoas = linha.match(RE_PESSOAS) || linha.match(RE_PESSOAS_ROTULO);
         if (pessoas) {
@@ -169,8 +245,9 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
         if (quantidade) {
             const tipo = tipoDoTexto(quantidade[2]);
             if (tipo) {
-                // "Qtd 3 almoço" pode ser 3 pessoas OU 3 notas: nunca decide sozinho.
-                dados.quantidades.push({ tipo, quantidade: Number(quantidade[1]), semantica: "INDETERMINADA", texto: linha });
+                // "Qtd 3 almoço" = 3 PESSOAS (definido pela VMac em 14/10/2026).
+                // Em abastecimento/pedagio o numero nao diz pessoas.
+                dados.quantidades.push({ tipo, quantidade: Number(quantidade[1]), semantica: TIPOS_COM_PESSOAS.has(tipo) ? "PESSOAS" : "QUANTIDADE", texto: linha });
             } else {
                 dados.itens_citados.push({ descricao: quantidade[2].trim(), quantidade: Number(quantidade[1]), texto: linha });
             }
@@ -187,6 +264,16 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
         if (veiculo.status !== "DESCONHECIDO") {
             dados.veiculo_texto = linha;
             if (veiculo.veiculo && !dados.placa) dados.placa = veiculo.veiculo.placa;
+            continue;
+        }
+
+        const tipoNumero = linha.match(RE_TIPO_NUMERO);
+        const tipoComNumero = tipoNumero && normalizar(tipoNumero[1]).split(" ").length <= 4 ? tipoDoTexto(tipoNumero[1]) : null;
+        if (tipoComNumero) {
+            if (!dados.tipos.includes(tipoComNumero)) dados.tipos.push(tipoComNumero);
+            if (TIPOS_COM_PESSOAS.has(tipoComNumero)) {
+                dados.pessoas = { quantidade: Number(tipoNumero[2]), tipo: tipoComNumero, semantica: "PESSOAS", origem: "texto" };
+            }
             continue;
         }
 
@@ -230,6 +317,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null } = {}) {
 const RE_AGRADECIMENTO = /^(ok+|okay|blz|beleza|obrigad[oa]s?|obg|valeu|vlw|show|perfeito|certo|top|bom dia|boa tarde|boa noite|👍|🙏|✅)\b/i;
 const RE_COBRANCA = /\b(falta(m|ram)?|cad[eê]|mand(a|em|ar)|envi(a|em|ar)|aguardando)\b.*\b(nota|notas|notinha|comprovante|comprovantes|cupom|cupons|recibo)/i;
 const RE_VIGENCIA = /\b(a\s+partir\s+de|daqui\s+(pra|para)\s+frente|agora|sempre|utiliz(ar|em)|us(ar|em)|passa(r|m)?\s+a)\b/i;
+const RE_ACERTO = /\b(saldo|reembolso|adiantamento|total\s+das\s+despesas|acerto\s+de\s+contas)\b/i;
 const RE_CORRECAO = /\b(era|e)\s+(.+?)\s+e\s+n[aã]o\s+(.+)|\bn[aã]o\s+(era|e)\s+(.+?),?\s+(era|e|mas)\s+(.+)|\bcorrig|\berrad[oa]\b/i;
 
 /**
@@ -242,9 +330,15 @@ const RE_CORRECAO = /\b(era|e)\s+(.+?)\s+e\s+n[aã]o\s+(.+)|\bn[aã]o\s+(era|e)\
  * @param {object} [mensagem.pessoa] — pessoa identificada (pode ser null)
  * @param {string} [mensagem.nomeRemetente]
  */
-function interpretar(cad, { texto = "", temMidia = false, pessoa = null, nomeRemetente = "" } = {}) {
+function interpretar(cad, { texto = "", temMidia = false, pessoa = null, nomeRemetente = "", referencia = null } = {}) {
     const bruto = String(texto || "").trim();
-    const dados = extrair(cad, bruto, { nomeRemetente: pessoa?.nome || nomeRemetente, pessoa });
+    const dados = extrair(cad, bruto, { nomeRemetente: pessoa?.nome || nomeRemetente, pessoa, referencia });
+    // Na legenda da foto (ou numa despesa sem nota / correcao) o texto livre e a
+    // descricao do que foi comprado: "Água e gelo para o trecho".
+    if ((temMidia || dados.sem_comprovante || dados.correcao) && dados.linhas_nao_entendidas.length) {
+        dados.observacoes.push(...dados.linhas_nao_entendidas);
+        dados.linhas_nao_entendidas = [];
+    }
     const normal = normalizar(bruto);
     const autoridade = Boolean(pessoa?.autoridade_financeira);
     const resultado = (intencao, extra = {}) => ({ intencao, dados, autoridade_financeira: autoridade, ...extra });
@@ -262,7 +356,15 @@ function interpretar(cad, { texto = "", temMidia = false, pessoa = null, nomeRem
         }
     }
 
-    if (RE_CORRECAO.test(bruto) && !temMidia && bruto.length < 400) return resultado(INTENCOES.CORRECAO_DESPESA);
+    if (!temMidia && !dados.sem_comprovante && RE_ACERTO.test(bruto)) return resultado(INTENCOES.ACERTO_FINANCEIRO);
+    if ((dados.correcao || RE_CORRECAO.test(bruto)) && !temMidia && bruto.length < 400) return resultado(INTENCOES.CORRECAO_DESPESA);
+
+    // Gerencia informando centro e/ou cartao no grupo do operador (ex.: Vanessa:
+    // "Despesas do dia 08/10 ao dia 15/10: Centro de Custo: X / Cartão: Inter").
+    if (!temMidia && autoridade && (dados.projeto_texto || dados.pagamento?.cartao)
+        && !dados.quantidades.length && dados.valor_declarado === null && !dados.sem_comprovante) {
+        return resultado(INTENCOES.ORIENTACAO_GERENCIA);
+    }
     if (!temMidia && RE_COBRANCA.test(bruto)) return resultado(INTENCOES.COBRANCA_COMPROVANTE);
     if (!temMidia && RE_AGRADECIMENTO.test(normal) && normal.split(" ").length <= 6) {
         return resultado(/^(ok|okay|blz|beleza|certo|perfeito|✅|👍)/i.test(normal) ? INTENCOES.CONFIRMACAO : INTENCOES.CONVERSA_IRRELEVANTE);

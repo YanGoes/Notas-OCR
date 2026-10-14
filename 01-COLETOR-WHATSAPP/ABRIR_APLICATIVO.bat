@@ -1,4 +1,4 @@
 @echo off
-setlocal
-cd /d "%~dp0"
-start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0scripts\aplicativo-bandeja.ps1"
+rem Abre a coleta em segundo plano (icone perto do relogio do Windows).
+rem A bandeja religa a coleta se ela cair e mostra o estado do WhatsApp.
+start "" wscript.exe "%~dp0ferramentasandeja.vbs"

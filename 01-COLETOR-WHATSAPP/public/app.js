@@ -304,6 +304,40 @@ async function carregarGrupos(mostrarMensagem = true) {
   finally { carregandoGrupos = false; }
 }
 
+let contatos = [];
+function renderizarContatos() {
+  const lista = $("listaContatos");
+  $("contatoTotal").textContent = contatos.filter((pessoa) => pessoa.permitido).length;
+  if (!contatos.length) { lista.innerHTML = '<div class="empty">Nenhuma pessoa no cadastro.</div>'; return; }
+  lista.innerHTML = contatos.map((pessoa, indice) =>
+    `<div class="group"><label class="group-main"><input type="checkbox" data-contato="${indice}" ${pessoa.permitido ? "checked" : ""} ${pessoa.telefone_final ? "" : "disabled"}><div><span>${escapar(pessoa.nome)}</span><small>${pessoa.telefone_final ? `telefone final …${escapar(pessoa.telefone_final)}` : "sem telefone no cadastro"}${pessoa.papel ? ` · ${escapar(pessoa.papel)}` : ""}</small></div></label></div>`).join("");
+  lista.querySelectorAll("input[data-contato]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => { contatos[Number(checkbox.dataset.contato)].permitido = checkbox.checked; });
+  });
+}
+
+async function carregarContatos() {
+  try { contatos = await api("/api/contatos"); renderizarContatos(); } catch (erro) { $("listaContatos").innerHTML = `<div class="empty">${escapar(erro.message)}</div>`; }
+}
+
+$("salvarContatos").onclick = async () => {
+  try {
+    const resposta = await api("/api/contatos", { method: "PUT", body: JSON.stringify({ ids: contatos.filter((pessoa) => pessoa.permitido).map((pessoa) => pessoa.id) }) });
+    contatos = resposta.contatos; renderizarContatos();
+    aviso("Contatos salvos. As próximas fotos dessas pessoas no seu privado serão lidas.");
+  } catch (erro) { aviso(erro.message, true); }
+};
+
+$("cadastrarPessoa").onclick = async () => {
+  try {
+    const resposta = await api("/api/contatos/pessoa", { method: "POST", body: JSON.stringify({ nome: $("novaPessoaNome").value, telefone: $("novaPessoaTelefone").value }) });
+    $("novaPessoaNome").value = ""; $("novaPessoaTelefone").value = "";
+    contatos = resposta.contatos; renderizarContatos();
+    aviso(`${resposta.pessoa.nome} cadastrado(a) e liberado(a) no privado.`);
+  } catch (erro) { aviso(erro.message, true); }
+};
+carregarContatos();
+
 function renderizarCentrosContaAzul() {
   const lista = $("centrosLista");
   const centros = estadoContaAzul?.centros_custo || [];

@@ -141,3 +141,12 @@ Rode o treino de novo sempre que exportar uma planilha mais recente: a VMac muda
 - O Azure classifica qualquer nota de varejo como `receipt.retailMeal`. Esse tipo sozinho não indica mais refeição: o programa só usa o campo ReceiptType.
 - **Fornecedor:** o campo tem uma lista de opções (Materiais de Campo, Loja de Ferragens, Restaurantes etc.), e ainda aceita digitar outro nome. A lista fica em `fornecedores_recorrentes.json` → `opcoes`.
 - **Cartão de crédito sem banco:** "Cartão de crédito" na mensagem vira a forma *Cartão de crédito (banco não informado)*, com uma pendência pedindo qual cartão. Quando o operador tem costume, o cartão dele aparece como sugestão.
+
+## Padrão dos operadores, orientação da gerência e coleta contínua (14/10/2026)
+
+- **Padrão de envio:** resumo do dia (data, centro de custo, cartão) + uma foto por nota com "tipo + pessoas" ("Almoço 3"). O número junto do tipo é **sempre** pessoas, e a nota fica com "pessoas informadas", não "estimadas". O padrão completo está no README do coletor.
+- **"Correção: …" respondendo à foto:** a prévia daquela nota é refeita com o que foi corrigido, se ninguém a revisou ainda. Se a foto ainda estiver na fila de leitura, a correção é aplicada quando ela for lida.
+- **Orientação da gerência (Vanessa):** centro e cartão informados no grupo do operador, com ou sem período, valem para as notas daquele grupo. O centro aparece com a origem "orientação da gerência". Acerto de contas ("Pix…", "Saldo…") é ignorado.
+- **Conversas no privado:** as pessoas marcadas no card "3 Contatos no privado" do painel podem mandar as notas no privado do número conectado.
+- **Mensagens perdidas:** antes, o que chegava com o programa desligado era descartado ao religar. Agora é lido, até 7 dias para trás.
+- **Backup automático:** uma cópia por dia do banco da Central e dos cadastros em `dados/backups/<data>/`, guardando 14 dias. Fica só neste computador, porque os cadastros têm telefones.

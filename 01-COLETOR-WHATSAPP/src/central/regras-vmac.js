@@ -225,8 +225,12 @@ function decidirPessoas({ tipo, legenda, lote, ocr = null, habitos = null }) {
         return { valor: declarado.quantidade, origem: "cabecalho_do_lote", confirmado: true };
     }
     const qtdLote = (lote?.quantidades?.refeicoes_e_tipos || []).find((item) => item.tipo === tipo);
+    if (qtdLote?.semantica === "PESSOAS") {
+        // "Qtd 3 almoço" = 3 pessoas (padrao combinado com os operadores).
+        return { valor: qtdLote.quantidade, origem: "cabecalho_do_lote", confirmado: true };
+    }
     if (qtdLote) {
-        // "Qtd 3 almoço": pode ser 3 pessoas ou 3 notas. Vira estimativa a confirmar.
+        // Mensagens antigas (antes do padrao): pode ser pessoas ou notas, a confirmar.
         return { valor: qtdLote.quantidade, origem: "quantidade_do_lote_semantica_indeterminada", confirmado: false };
     }
     // Habito do operador (ex.: o Lorran viaja sozinho: todas as refeicoes
@@ -350,14 +354,21 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         ? decidirTipo({ ocr, legenda, lote })
         : { tipo: (legenda?.tipos || [])[0] || "OUTROS", origem: legenda?.tipos?.length ? "mensagem" : null };
     if (decisaoTipo.pendencia) pendencias.push(decisaoTipo.pendencia);
-    const tipo = decisaoTipo.tipo;
+    let tipo = decisaoTipo.tipo;
+    // "Material - parafusos" na legenda: material de campo, salvo tipos que a
+    // nota identifica sem duvida (posto, hotel, pedagio, estacionamento).
+    if (legenda?.material && !TIPOS_COM_NOTA_PROPRIA.includes(tipo)) {
+        tipo = "OUTROS";
+        decisaoTipo.origem = "mensagem_da_foto";
+        decisaoTipo.material = true;
+    }
     campos.tipo = { valor: tipo, origem: decisaoTipo.origem };
     if (ocr?.hora) campos.hora_da_nota = { valor: ocr.hora, origem: "nota", uso: "somente_pista" };
 
     // Fornecedor
     // Material de campo (ferragens, parafuso, cola de contato...): fornecedor generico "Materiais de Campo".
     const itensDaNota = (ocr?.itens || []).map((item) => item.descricao).filter(Boolean);
-    const material = tipo === "OUTROS" && (decisaoTipo.material || ehMaterialDeCampo(textoDoEstabelecimento(ocr), itensDaNota.join(" ")));
+    const material = tipo === "OUTROS" && (decisaoTipo.material || legenda?.material || ehMaterialDeCampo(textoDoEstabelecimento(ocr), itensDaNota.join(" ")));
     const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, material ? "MATERIAL_DE_CAMPO" : tipo);
     campos.fornecedor = { valor: fornecedor.nome, origem: fornecedor.origem, nome_lido: fornecedor.nome_lido || ocr?.fornecedor || null, cnpj_lido: ocr?.cnpj || null };
     if (ocr && !fornecedor.nome) pendencias.push("Fornecedor não foi lido na nota.");
@@ -504,9 +515,21 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     }
     campos.descricao = descricao;
 
-    // Projeto / centro de custo: regra especial > legenda da foto > contexto do operador
-    const projetoInformado = legenda?.projeto_texto || contexto.projeto?.texto || null;
+    // Projeto / centro de custo: regra especial > orientacao da gerencia (Vanessa,
+    // para o grupo/periodo) > legenda da foto > contexto do operador
+    const orientacao = orientacaoVigente(contexto.orientacoes, ocr?.data || legenda?.data_declarada || lote?.data_declarada, contexto.momento);
+    const projetoDoOperador = legenda?.projeto_texto || contexto.projeto?.texto || null;
+    const projetoInformado = orientacao?.projeto_texto || projetoDoOperador;
     const projetoTexto = centroDaRegra || projetoInformado;
+    if (!centroDaRegra && orientacao?.projeto_texto && projetoDoOperador && normalizar(projetoDoOperador) !== normalizar(orientacao.projeto_texto)) {
+        const doOperador = cadastros.resolverProjeto(cad, projetoDoOperador, pessoa);
+        const daGerencia = cadastros.resolverProjeto(cad, orientacao.projeto_texto, pessoa);
+        if (doOperador.status === "RESOLVIDO" && daGerencia.projeto && doOperador.projeto.nome_oficial !== daGerencia.projeto.nome_oficial) {
+            pendencias.push(`Operador informou "${projetoDoOperador}", mas a gerência orientou "${orientacao.projeto_texto}" para este período; confirme o centro de custo.`);
+        } else {
+            avisos.push(`Centro de custo da orientação da gerência ("${orientacao.projeto_texto}") usado no lugar de "${projetoDoOperador}".`);
+        }
+    }
     if (centroDaRegra && projetoInformado && normalizar(projetoInformado) !== normalizar(centroDaRegra)) {
         avisos.push(`Centro de custo da regra especial (${centroDaRegra}) prevaleceu sobre o projeto do operador (${projetoInformado}).`);
     }
@@ -514,7 +537,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     const projetoAchado = resolucao?.projeto || null;
     campos.centro_custo = {
         texto_informado: projetoTexto,
-        origem: centroDaRegra ? "regra_especial" : legenda?.projeto_texto ? "mensagem_da_foto" : contexto.projeto?.origem || null,
+        origem: centroDaRegra ? "regra_especial" : orientacao?.projeto_texto ? "orientacao_da_gerencia" : legenda?.projeto_texto ? "mensagem_da_foto" : contexto.projeto?.origem || null,
         nome: projetoAchado ? cadastros.nomeCentro(projetoAchado) : null,
         projeto: projetoAchado?.nome_oficial || null,
         id: resolucao?.status === "RESOLVIDO" ? projetoAchado.id_conta_azul || null : null,
@@ -568,6 +591,8 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     const declaradoPag = legenda?.pagamento || lote?.pagamento || null;
     const origemDeclarado = legenda?.pagamento ? "mensagem_da_foto" : lote?.pagamento ? "cabecalho_do_lote" : null;
     let pagamento = null;
+    // Sem politica do projeto, vale o cartao da orientacao da gerencia para o grupo.
+    if (!politica?.cartao && orientacao?.cartao) politica = { cartao: orientacao.cartao, origem: "orientacao_da_gerencia" };
     if (declaradoPag?.cartao && politica?.cartao && declaradoPag.cartao !== politica.cartao) {
         pendencias.push(`Cartão informado (${declaradoPag.rotulo}) diverge da orientação da gerência para o projeto (${politica.cartao}).`);
         pagamento = { forma: declaradoPag.forma, cartao: declaradoPag.cartao, origem: origemDeclarado, conflito_com_politica: politica };
@@ -618,6 +643,21 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     };
 }
 
+const TIPOS_COM_NOTA_PROPRIA = ["ABASTECIMENTO", "HOSPEDAGEM", "PEDAGIO", "ESTACIONAMENTO"];
+
+/**
+ * Orientacao da gerencia que vale para a nota: com periodo, a data da nota
+ * precisa estar dentro dele (vale mesmo para notas enviadas ANTES da
+ * mensagem); sem periodo, vale a partir da mensagem. A mais recente vence.
+ */
+function orientacaoVigente(orientacoes, dataNota, momento) {
+    const lista = Array.isArray(orientacoes) ? orientacoes : [];
+    const data = dataNota || (momento ? String(momento).slice(0, 10) : null);
+    return lista.find((item) => (item.periodo
+        ? Boolean(data) && data >= item.periodo.de && data <= item.periodo.ate
+        : !momento || !item.desde || item.desde <= momento)) || null;
+}
+
 const ehCentroAdministrativo = (nome) => /despesas\s+administrativas/i.test(String(nome || ""));
 const iguaisTexto = (a, b) => Boolean(a) && Boolean(b) && normalizar(a) === normalizar(b);
 
@@ -642,7 +682,7 @@ function categoriaLivre(cad, nome, idInformado = null) {
 }
 
 module.exports = {
-    montarPrevia, decidirTipo, decidirPessoas, refeicaoPeloHorario,
+    montarPrevia, decidirTipo, decidirPessoas, refeicaoPeloHorario, orientacaoVigente,
     descricaoAbastecimento, descricaoRefeicao, litrosBr, milharBr, TIPOS,
     TIPO_ANEXO_FISCAL, TIPO_ANEXO_OUTROS,
 };

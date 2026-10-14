@@ -100,8 +100,9 @@ test("cabecalho de lote do Almir e entendido sem rotulos padronizados", () => {
     assert.equal(resultado.dados.data_declarada, "2026-09-29");
     assert.equal(resultado.dados.projeto_texto, "Goinfra G.O");
     assert.deepEqual(resultado.dados.quantidades.map((item) => [item.tipo, item.quantidade, item.semantica]), [
-        ["ALMOCO", 3, "INDETERMINADA"], ["JANTAR", 3, "INDETERMINADA"], ["HOSPEDAGEM", 2, "INDETERMINADA"],
-        ["ABASTECIMENTO", 4, "INDETERMINADA"], ["CAFE_DA_MANHA", 1, "INDETERMINADA"],
+        // "Qtd N <refeicao/hospedagem>" = N pessoas (definido pela VMac em 14/10/2026).
+        ["ALMOCO", 3, "PESSOAS"], ["JANTAR", 3, "PESSOAS"], ["HOSPEDAGEM", 2, "PESSOAS"],
+        ["ABASTECIMENTO", 4, "QUANTIDADE"], ["CAFE_DA_MANHA", 1, "PESSOAS"],
     ]);
     assert.deepEqual(resultado.dados.itens_citados.map((item) => item.descricao), ["Coca-Cola"]);
 });
@@ -197,13 +198,14 @@ test("data da nota vale mesmo quando a foto chega no dia seguinte, e valor da no
     assert.equal(despesa.campos.pessoas.confirmado, true);
 });
 
-test("'Qtd 3 janta' no lote nao vira 3 pessoas sem confirmacao", () => {
+test("'Qtd 3 janta' no lote = 3 pessoas informadas pelo operador", () => {
     const db = novoBanco();
     lote(db, ALMIR, "Despesas 30/09/2026\nCentro de custo\nGoinfra G.O\nCRÉDITO C6\nQtd 3 janta");
     const [despesa] = foto(db, { bruto: azure([JANTAR]) }).lidas;
-    assert.equal(despesa.campos.pessoas.confirmado, false);
-    assert.equal(despesa.campos.descricao.estimada, true);
-    assert.equal(despesa.estado, "AGUARDANDO_REVISAO");
+    assert.equal(despesa.campos.pessoas.valor, 3);
+    assert.equal(despesa.campos.pessoas.confirmado, true);
+    assert.equal(despesa.campos.pessoas.origem, "cabecalho_do_lote");
+    assert.equal(despesa.campos.descricao.valor, "JANTAR - 3 PESSOAS");
 });
 
 test("horario da nota so e pista: refeicao sem lote que confirme vai para revisao", () => {

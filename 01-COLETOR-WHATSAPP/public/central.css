@@ -8,6 +8,8 @@ main.central { max-width: 1440px; padding: 22px 20px 60px; }
 .voltar:hover { color: var(--brand); border-color: var(--brand); }
 .faixa-segura { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; background: var(--success-soft); color: var(--success); font-size: 14px; }
 .aviso { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid; font-size: 14px; }
+.status-coleta { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; font-size: 14px; background: var(--warning-soft); color: var(--warning); }
+.status-coleta.parada { background: var(--danger-soft, var(--warning-soft)); color: var(--danger); font-weight: 600; }
 .aviso.ok-msg { background: var(--success-soft); color: var(--success); border-color: transparent; }
 
 .remetentes { margin-bottom: 14px; padding: 12px 14px; border-radius: 12px; background: var(--warning-soft); color: var(--warning); font-size: 14px; }

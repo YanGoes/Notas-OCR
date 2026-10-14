@@ -48,6 +48,44 @@ function legendaInterpretada(registro, textoLegenda) {
     return { ...(registro?.interpretacao?.dados || {}), texto: textoLegenda || "" };
 }
 
+// Campos que uma "Correção: ..." respondendo a foto substitui na legenda.
+const CAMPOS_CORRIGIVEIS = ["tipos", "pessoas", "pagamento", "projeto_texto", "valor_declarado", "data_declarada", "material", "observacoes"];
+
+/**
+ * Aplica sobre a legenda as correcoes que o PROPRIO operador mandou
+ * respondendo a foto ("Correção: Janta 2"), na ordem em que chegaram.
+ */
+function aplicarCorrecoes(db, cad, legenda, { grupoId, mensagemId, remetenteId, pessoa = null }) {
+    if (!mensagemId) return legenda;
+    const correcoes = db.prepare(`
+        SELECT texto, enviada_em FROM mensagens WHERE grupo_id = ? AND citado_id = ? AND remetente_id = ? AND intencao = ?
+        ORDER BY enviada_em, id`).all(String(grupoId), String(mensagemId), String(remetenteId), INTENCOES.CORRECAO_DESPESA);
+    let resultado = legenda;
+    for (const correcao of correcoes) {
+        const dados = interpretar(cad, { texto: correcao.texto || "", temMidia: true, pessoa, referencia: correcao.enviada_em }).dados || {};
+        const novo = { ...resultado };
+        for (const campo of CAMPOS_CORRIGIVEIS) {
+            const valor = dados[campo];
+            if (valor === null || valor === undefined || valor === false || (Array.isArray(valor) && !valor.length)) continue;
+            novo[campo] = valor;
+        }
+        // Trocou o tipo sem dizer pessoas: as pessoas antigas eram do outro tipo.
+        if (dados.tipos?.length && !dados.pessoas && resultado.pessoas?.tipo && !dados.tipos.includes(resultado.pessoas.tipo)) novo.pessoas = null;
+        novo.corrigida_pelo_operador = true;
+        resultado = novo;
+    }
+    return resultado;
+}
+
+/** Refaz as previas ainda sem revisao humana (ignora as que nao podem ser refeitas). */
+function regenerarVarias(db, cad, ids, opcoes) {
+    const refeitas = [];
+    for (const id of ids) {
+        try { regenerarPrevia(db, cad, id, opcoes); refeitas.push(id); } catch (_) { /* revisada por pessoa ou fora de revisao */ }
+    }
+    return refeitas;
+}
+
 /**
  * Processa uma foto ja lida pelo OCR.
  *
@@ -90,7 +128,8 @@ function processarFoto(db, cad, { arquivo, sha256, meta = {}, brutoAzure = null,
         const midiaId = Number(lastInsertRowid);
         if (anterior) return { midiaId, repetida: true, repete_midia_id: anterior.id, despesas: [] };
 
-        const legenda = legendaInterpretada(registro, meta.legenda);
+        const legenda = aplicarCorrecoes(db, cad, legendaInterpretada(registro, meta.legenda),
+            { grupoId, mensagemId: meta.id_mensagem, remetenteId, pessoa: registro.pessoa?.pessoa });
         const politica = (texto) => contexto.politicaCartao(db, texto ? contexto.chaveProjeto(cad, texto).chave : null, momento);
         const politicaVigente = politica(legenda.projeto_texto || ctx.projeto?.texto);
         // obterHabitos: a medicao passa os habitos de OUTRO banco (sem a propria nota).
@@ -154,7 +193,22 @@ function processarFoto(db, cad, { arquivo, sha256, meta = {}, brutoAzure = null,
 function processarMensagemTexto(db, cad, msg, { regras = {}, hoje = new Date() } = {}) {
     const registro = contexto.registrarMensagem(db, cad, { ...msg, temMidia: false });
     const dados = registro.interpretacao?.dados || {};
-    if (!registro.nova || registro.interpretacao?.intencao !== INTENCOES.INFORMACAO_DESPESA || !dados.sem_comprovante) {
+    const intencao = registro.interpretacao?.intencao;
+    if (registro.nova && intencao === INTENCOES.ORIENTACAO_GERENCIA) {
+        // Vale tambem para as notas do periodo que ja chegaram.
+        const ids = db.prepare(`
+            SELECT d.id FROM despesas d JOIN mensagens m ON m.id = d.mensagem_ref
+            WHERE m.grupo_id = ? AND d.estado IN ('AGUARDANDO_REVISAO', 'CLASSIFICADO')`).all(String(msg.grupoId)).map((linha) => linha.id);
+        return { ...registro, despesa: null, refeitas: regenerarVarias(db, cad, ids, { regras, hoje }) };
+    }
+    if (registro.nova && intencao === INTENCOES.CORRECAO_DESPESA && msg.citadoId) {
+        const ids = db.prepare(`
+            SELECT d.id FROM despesas d JOIN midias md ON md.id = d.midia_id
+            WHERE md.grupo_id = ? AND md.mensagem_id = ? AND md.remetente_id = ?`).all(String(msg.grupoId), String(msg.citadoId), String(msg.remetenteId))
+            .map((linha) => linha.id);
+        return { ...registro, despesa: null, refeitas: regenerarVarias(db, cad, ids, { regras, hoje }) };
+    }
+    if (!registro.nova || intencao !== INTENCOES.INFORMACAO_DESPESA || !dados.sem_comprovante) {
         return { ...registro, despesa: null };
     }
     const ctx = contexto.contextoPara(db, cad, { grupoId: msg.grupoId, remetenteId: msg.remetenteId, momento: msg.enviadaEm });
@@ -202,8 +256,10 @@ function regenerarPrevia(db, cad, despesaId, { regras = {}, hoje = new Date() } 
     const momento = midia?.recebida_em || mensagem.enviada_em;
 
     const identificacao = contexto.identificar(db, cad, mensagem.remetente_id, mensagem.remetente_nome);
-    const interpretacao = interpretar(cad, { texto: mensagem.texto || "", temMidia: Boolean(midia), pessoa: identificacao.pessoa, nomeRemetente: mensagem.remetente_nome });
-    const legenda = { ...(interpretacao.dados || {}), texto: mensagem.texto || "" };
+    const interpretacao = interpretar(cad, { texto: mensagem.texto || "", temMidia: Boolean(midia), pessoa: identificacao.pessoa,
+        nomeRemetente: mensagem.remetente_nome, referencia: mensagem.enviada_em });
+    const legenda = aplicarCorrecoes(db, cad, { ...(interpretacao.dados || {}), texto: mensagem.texto || "" },
+        { grupoId: mensagem.grupo_id, mensagemId: midia?.mensagem_id, remetenteId: mensagem.remetente_id, pessoa: identificacao.pessoa });
     const ctx = contexto.contextoPara(db, cad, { grupoId: mensagem.grupo_id, remetenteId: mensagem.remetente_id, momento });
     const projetoTexto = legenda.projeto_texto || ctx.projeto?.texto;
     const politica = contexto.politicaCartao(db, projetoTexto ? contexto.chaveProjeto(cad, projetoTexto, identificacao.pessoa).chave : null, momento);
