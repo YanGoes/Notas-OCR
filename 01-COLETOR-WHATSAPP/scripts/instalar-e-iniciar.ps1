@@ -2,6 +2,14 @@ $ErrorActionPreference = "Stop"
 $raizProjeto = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $raizProjeto
 
+# Coleta ja aberta (em segundo plano ou noutra janela): nao reinstala nada
+# por baixo dela nem abre uma segunda copia; so mostra o painel.
+if (Get-NetTCPConnection -LocalPort 3211 -State Listen -ErrorAction SilentlyContinue) {
+    Write-Host "A coleta ja esta aberta neste computador (icone perto do relogio). Abrindo o painel..." -ForegroundColor Green
+    Start-Process "http://127.0.0.1:3211/"
+    exit 0
+}
+
 function Atualizar-Path {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -35,9 +43,10 @@ if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
 
 Write-Host "Verificando bibliotecas do projeto..." -ForegroundColor Cyan
 if (Test-Path -LiteralPath (Join-Path $raizProjeto "package-lock.json")) {
-    & npm.cmd ci --omit=dev
+    # Inclui as bibliotecas de desenvolvimento: o treino da IA (atalho 14) usa o exceljs.
+    & npm.cmd ci
 } else {
-    & npm.cmd install --omit=dev
+    & npm.cmd install
 }
 if ($LASTEXITCODE -ne 0) {
     throw "Nao foi possivel instalar as bibliotecas (codigo $LASTEXITCODE)."
