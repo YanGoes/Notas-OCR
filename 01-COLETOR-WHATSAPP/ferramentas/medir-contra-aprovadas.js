@@ -24,7 +24,7 @@ const fs = require("fs");
 const path = require("path");
 const banco = require("../src/central/banco");
 const cadastros = require("../src/central/cadastros");
-const { processarFoto, lerDespesa } = require("../src/central/orquestrador");
+const { processarFoto, processarMensagemTexto, lerDespesa } = require("../src/central/orquestrador");
 const { CAMPOS, valorDoCampo } = require("../src/central/revisao");
 const { normalizar } = require("../src/central/texto");
 const maturidade = require("../src/central/maturidade");
@@ -75,7 +75,22 @@ function executar() {
     for (const v of real.prepare("SELECT * FROM remetentes_vinculados").all()) copiarVinculo.run(v.whatsapp_id, v.pessoa_id, v.origem, v.vinculado_em);
     const novasPorArquivo = new Map();
     let semLeitura = 0;
-    for (const linha of real.prepare("SELECT * FROM midias ORDER BY recebida_em, id").all()) {
+    // Fotos e mensagens de texto (resumo do dia, orientacao da gerencia,
+    // correcoes) intercaladas pela hora: sem os textos, centro e cartao que
+    // vieram do resumo apareciam como erro na medicao.
+    const fotos = real.prepare("SELECT * FROM midias").all().map((linha) => ({ quando: linha.recebida_em, foto: linha }));
+    const textos = real.prepare("SELECT * FROM mensagens WHERE tem_midia = 0 AND texto IS NOT NULL").all().map((linha) => ({ quando: linha.enviada_em, texto: linha }));
+    const eventos = [...fotos, ...textos].sort((a, b) => String(a.quando).localeCompare(String(b.quando)) || (a.texto ? -1 : 1));
+    for (const evento of eventos) {
+        if (evento.texto) {
+            const msg = evento.texto;
+            processarMensagemTexto(temporario, cad, {
+                grupoId: msg.grupo_id, mensagemId: msg.mensagem_id, remetenteId: msg.remetente_id, remetenteNome: msg.remetente_nome,
+                enviadaEm: msg.enviada_em, texto: msg.texto, citadoId: msg.citado_id,
+            }, { regras, hoje: new Date() });
+            continue;
+        }
+        const linha = evento.foto;
         const bruto = respostaAzure(linha.arquivo);
         if (!bruto) { semLeitura += 1; continue; }
         // Habitos do operador vem do banco REAL, sem as despesas desta foto

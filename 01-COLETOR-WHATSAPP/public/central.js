@@ -202,7 +202,9 @@ function controle(campo, valor, desabilitado) {
     switch (campo.tipo) {
         case "data": return el("input", { ...comum, type: "date", value: valor || "" });
         case "numero": return el("input", { ...comum, inputmode: "decimal", value: numeroBr(valor) });
-        case "inteiro": return el("input", { ...comum, inputmode: "numeric", value: valor ?? "" });
+        // Hodometro com ponto de milhar, como na descricao ("184.428"); ao salvar o ponto e ignorado.
+        case "inteiro": return el("input", { ...comum, inputmode: "numeric",
+            value: campo.chave === "odometro" && valor != null && valor !== "" ? Number(valor).toLocaleString("pt-BR") : valor ?? "" });
         case "tipo": return el("select", comum, el("option", { value: "" }, "—"),
             opcoes.tipos.map((tipo) => el("option", { value: tipo.codigo, selected: tipo.codigo === valor }, tipo.rotulo)));
         case "categoria": return el("input", { ...comum, list: "listaCategorias", value: valor || "", placeholder: "Escolha ou digite a categoria" });
@@ -359,7 +361,7 @@ function blocoLeitura(detalhe) {
     const leitura = detalhe.documento.leitura;
     const linhas = [["Fornecedor", leitura.fornecedor], ["CNPJ", leitura.cnpj], ["Data", dataBr(leitura.data)], ["Hora", leitura.hora],
         ["Valor", leitura.valor != null ? moeda(leitura.valor) : null], ["Confiança", leitura.confianca != null ? `${Math.round(leitura.confianca * 100)}%` : null],
-        ["Placa", leitura.placa], ["Litros", leitura.litragem], ["Hodômetro", leitura.odometro], ["Pagamento no cupom", leitura.forma_pagamento], ["Produto", leitura.produto_principal]]
+        ["Placa", leitura.placa], ["Litros", leitura.litragem], ["Hodômetro", leitura.odometro != null && leitura.odometro !== "" ? Number(leitura.odometro).toLocaleString("pt-BR") : leitura.odometro], ["Pagamento no cupom", leitura.forma_pagamento], ["Produto", leitura.produto_principal]]
         .filter(([, valor]) => valor !== null && valor !== undefined && valor !== "" && valor !== "—");
     return el("div", { class: "bloco" },
         el("h3", {}, `O que o OCR leu${detalhe.documento.indice ? ` (comprovante ${detalhe.documento.indice + 1} da foto)` : ""}`),
