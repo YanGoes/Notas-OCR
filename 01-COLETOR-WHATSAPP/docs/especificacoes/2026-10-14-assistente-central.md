@@ -1,6 +1,6 @@
 # Assistente da Central (chatbot): especificação
 
-Data: 14/10/2026 · Situação: **aguardando aprovação** · Nada foi construído ainda.
+Data: 14/10/2026 · Situação: **aguardando a escolha do motor gratuito** · Nada foi construído ainda.
 
 ## 1. Objetivo
 
@@ -44,7 +44,7 @@ O assistente não lê o banco diretamente: ele pede dados ao programa por **ferr
 | Ferramenta | Como funciona |
 | --- | --- |
 | `registrar_sugestao` | Grava a ideia ou o problema na lista "Sugestões" (quem pediu, quando, texto). O Yan vê numa área da aba. |
-| `preparar_lancamento` | **Só quando a pessoa pede para lançar.** O assistente monta a lista de notas que seriam lançadas e o resumo (valor, fornecedor, categoria, centro, cartão). **Ele não lança.** A tela mostra um botão **"Confirmar lançamento"**, e só o clique de uma pessoa executa, pelo mesmo caminho de lançamento que o programa já tem. |
+| `preparar_lancamento` | **Só quando a pessoa pede para lançar.** O assistente monta a lista de notas que seriam lançadas e o resumo (valor, fornecedor, categoria, centro, cartão). **Ele não lança.** A tela mostra um botão **"Confirmar lançamento"**, e só o clique do Yan, do Jhonathan ou da Vanessa executa, pelo mesmo caminho de lançamento que o programa já tem. |
 
 Regras do lançamento:
 - só notas **aprovadas** na Central;
@@ -53,30 +53,33 @@ Regras do lançamento:
 
 Ele não corrige notas, não aprova, não descarta e não muda cadastros. Para isso continua sendo a Central.
 
-## 4. Modelo de IA e custo
+## 4. Modelo de IA (sem custo de API)
 
-- **Modelo escolhido na própria aba** (e salvo em `config.json`):
-  - **Claude Opus 5.5** (padrão; o mais inteligente): US$ 4 de entrada / US$ 20 de saída por milhão de tokens;
-  - **Claude Sonnet 5.5** (intermediário): US$ 2 / US$ 10;
-  - **Claude Haiku 5.5** (mais barato): US$ 0,10 / US$ 0,50.
-- **Painel de gasto na aba:** tokens e custo estimado do mês, por pessoa e por modelo.
-- **Limite mensal em dólares** (definido por você em `config.json`). Ao chegar nele, o assistente para e avisa. O limite no site da Anthropic continua valendo como segunda trava.
-- **Economia automática:** as instruções fixas e a lista de ferramentas ficam em cache (prompt caching), e as respostas usam o nível de raciocínio "médio" por padrão.
-- **Plano B automático:** se o modelo principal recusar uma pergunta legítima por engano, a Anthropic responde com um modelo alternativo (fallback do lado do servidor).
+Decisão de 14/10: **não pagar API**. O programa terá um "motor" trocável, escolhido na própria aba e salvo em `config.json`, para mudar de serviço sem refazer o assistente:
+
+| Motor | Custo | Onde a conversa é processada | Situação |
+| --- | --- | --- | --- |
+| **Gemini (Google AI Studio), plano gratuito** | grátis, com limite diário de uso | servidores do Google | candidato principal; confirmar com o Jhonathan se é o que ele usa |
+| **Modelo local (Ollama)** | grátis | neste computador; nada sai daqui | inviável neste PC agora (pouco disco livre e sem placa de vídeo dedicada); bom para o servidor futuro |
+| Claude (API da Anthropic) | pago por uso | servidores da Anthropic | fica disponível, desligado |
+
+- **Contador de uso na aba:** perguntas e tokens do mês, por pessoa. No plano gratuito, ao bater o limite diário do serviço, a aba avisa e volta a funcionar no dia seguinte.
+- **Atenção à privacidade no plano gratuito do Gemini:** nos planos gratuitos, o Google pode usar o conteúdo das conversas para melhorar os produtos dele. Por isso as ferramentas mandam só o necessário (totais, nomes de operadores e de projetos, fornecedores) e nunca telefones nem fotos.
 
 ## 5. Segurança e privacidade
 
-- A chave fica no `.env` (`ANTHROPIC_API_KEY`), que nunca vai para o Git. Sem chave, a aba mostra como configurar e nada é enviado.
+- A chave do serviço escolhido fica no `.env` (ex.: `GEMINI_API_KEY`), que nunca vai para o Git. Sem chave, a aba mostra como configurar e nada é enviado.
 - **Telefones nunca são enviados.** As ferramentas devolvem só nomes e, quando preciso, os 4 últimos dígitos.
-- O que vai para a Anthropic: a pergunta, as instruções do assistente e os resultados das ferramentas daquela conversa (valores, fornecedores, nomes de operadores e de projetos).
+- O que vai para o serviço: a pergunta, as instruções do assistente e os resultados das ferramentas daquela conversa.
 - As conversas ficam no banco local da Central, que entra no backup diário.
 
 ## 6. Como fica no programa
 
 - `src/assistente/`:
   - `ferramentas.js`: cada ferramenta é uma função pura sobre o banco e os cadastros, fácil de testar;
-  - `conversa.js`: ciclo de pergunta → ferramentas → resposta, com o SDK oficial `@anthropic-ai/sdk`;
-  - `custos.js`: tokens, custo e limite mensal.
+  - `conversa.js`: ciclo de pergunta → ferramentas → resposta, igual para qualquer motor;
+  - `motores/`: um arquivo por serviço (gemini, ollama, anthropic) com a mesma interface;
+  - `uso.js`: contagem de perguntas e tokens por pessoa.
 - **Banco:** migração nova com as tabelas `assistente_conversas`, `assistente_mensagens`, `assistente_sugestoes` e `assistente_uso`.
 - **Rotas:** `/api/central/assistente/*` (enviar mensagem, histórico, sugestões, uso, modelo, confirmar lançamento).
 - **Tela:** aba "Assistente" com a conversa, um seletor de modelo, o painel de gasto e a lista de sugestões. Indicação de "consultando…" enquanto as ferramentas rodam.
@@ -89,15 +92,15 @@ Ele não corrige notas, não aprova, não descarta e não muda cadastros. Para i
   - Drive numa pasta temporária;
   - telefone nunca presente na saída.
 - O ciclo da conversa com um **cliente falso** (sem chamar a API nem gastar).
-- O limite mensal bloqueia.
+- O limite de uso bloqueia com aviso claro.
 - `preparar_lancamento` nunca lança sem a confirmação, e a confirmação recusa notas não aprovadas e o modo teste.
 
 ## 8. Fora desta versão
 
 Acesso pelo WhatsApp ou pela rede, voz, edição de notas pelo chat, relatórios em PDF ou Excel (dá para incluir depois) e lançamento sem confirmação humana.
 
-## 9. Perguntas em aberto
+## 9. Decisões
 
-1. **Quem pode confirmar lançamentos** no botão: só você (Yan), ou também Jhonathan e Vanessa?
-2. **Limite mensal inicial:** sugiro US$ 20 por mês para a fase de testes.
-3. **Relatórios de meses anteriores:** posso usar a planilha do Conta Azul como fonte? Ela só é atualizada quando alguém exporta de novo.
+1. **Confirmam lançamentos no botão:** Yan, Jhonathan e Vanessa. O Cauã só consulta.
+2. **Sem custo de API:** motor gratuito (seção 4). Falta confirmar qual serviço o Jhonathan usa no chatbot dele.
+3. **Relatórios de meses anteriores:** usam a planilha do Conta Azul (`visao_contas_a_pagar`), com a fonte indicada em cada número.
