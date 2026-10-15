@@ -240,3 +240,48 @@ test("cartao cadastrado no centro de custo vale quando o operador nao informa ou
     assert.equal(outroCartao.campos.pagamento.cartao, "INTER");
     assert.ok(outroCartao.pendencias.some((p) => /diverge do cartão cadastrado no centro de custo/.test(p)));
 });
+
+// --- Padrao do dia: pessoas informadas antes valem para as notas seguintes ----
+
+function refeicaoEm(data, hora, total) {
+    return { analyzeResult: { content: `RESTAURANTE SABOR LTDA\n${data} ${hora}\nTOTAL R$ ${total}\n`, documents: [{ docType: "receipt", confidence: 0.99,
+        spans: [{ offset: 0, length: 60 }], fields: { MerchantName: { valueString: "RESTAURANTE SABOR LTDA", confidence: 0.99 },
+            Total: { type: "currency", valueCurrency: { amount: total }, confidence: 0.99 },
+            TransactionDate: { type: "date", valueDate: data, confidence: 0.99 }, TransactionTime: { type: "time", valueTime: `${hora}:00` } } }] } };
+}
+
+function fotoEm(db, cad, { id, remetente = LORRAN, legendaFoto, data, hora, total = 60 }) {
+    return orquestrador.processarFoto(db, cad, {
+        arquivo: `f-${id}.jpg`, sha256: `h-${id}`, brutoAzure: refeicaoEm(data, hora, total), hoje: new Date("2026-10-16T12:00:00Z"),
+        meta: { id_mensagem: id, id_grupo: GRUPO, remetente, legenda: legendaFoto, recebido_em_ms: Date.parse(`${data}T${hora}:00-03:00`) },
+    }).despesas[0];
+}
+
+test("pessoas informadas mais cedo no MESMO dia valem para as refeicoes seguintes, sem pendencia", () => {
+    const db = banco.abrir(":memory:");
+    const cad = cadastros();
+    fotoEm(db, cad, { id: "a1", legendaFoto: "Almoço 2\nIMTRAFF CICLO II MT", data: "2026-10-14", hora: "12:10" });
+    const janta = orquestrador.lerDespesa(db, fotoEm(db, cad, { id: "a2", legendaFoto: "Janta", data: "2026-10-14", hora: "20:05" }));
+    assert.equal(janta.campos.pessoas.valor, 2);
+    assert.equal(janta.campos.pessoas.origem, "pessoas_do_mesmo_dia");
+    assert.equal(janta.campos.descricao.valor, "JANTAR - 2 PESSOAS");
+    assert.ok(!janta.pendencias.some((p) => /pessoas/i.test(p)), "nao vira pendencia");
+});
+
+test("pessoas de dias anteriores (ate 3) viram estimativa a confirmar", () => {
+    const db = banco.abrir(":memory:");
+    const cad = cadastros();
+    fotoEm(db, cad, { id: "b1", legendaFoto: "Almoço 2", data: "2026-10-13", hora: "12:10" });
+    const janta = orquestrador.lerDespesa(db, fotoEm(db, cad, { id: "b2", legendaFoto: "Janta", data: "2026-10-14", hora: "20:05" }));
+    assert.equal(janta.campos.pessoas.valor, 2);
+    assert.equal(janta.campos.pessoas.origem, "pessoas_de_dias_anteriores");
+    assert.ok(janta.pendencias.some((p) => /13\/10/.test(p) && /confirme/i.test(p)));
+});
+
+test("o padrao de um operador nunca vale para outro", () => {
+    const db = banco.abrir(":memory:");
+    const cad = cadastros();
+    fotoEm(db, cad, { id: "c1", legendaFoto: "Almoço 4", data: "2026-10-14", hora: "12:10" });
+    const outro = orquestrador.lerDespesa(db, fotoEm(db, cad, { id: "c2", remetente: VANESSA, legendaFoto: "Janta", data: "2026-10-14", hora: "20:05" }));
+    assert.notEqual(outro.campos.pessoas.origem, "pessoas_do_mesmo_dia");
+});

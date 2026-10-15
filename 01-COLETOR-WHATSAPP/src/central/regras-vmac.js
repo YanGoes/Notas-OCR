@@ -218,7 +218,7 @@ function pessoasPelaNota(ocr, tipo) {
     return maior >= 1 ? { valor: maior, origem: "itens_da_nota" } : null;
 }
 
-function decidirPessoas({ tipo, legenda, lote, ocr = null, habitos = null }) {
+function decidirPessoas({ tipo, legenda, lote, ocr = null, habitos = null, recentes = null }) {
     if (legenda?.pessoas?.quantidade) return { valor: legenda.pessoas.quantidade, origem: "mensagem_da_foto", confirmado: true };
     const declarado = lote?.quantidades?.pessoas;
     if (declarado?.quantidade && (!declarado.tipo || declarado.tipo === tipo)) {
@@ -232,6 +232,13 @@ function decidirPessoas({ tipo, legenda, lote, ocr = null, habitos = null }) {
     if (qtdLote) {
         // Mensagens antigas (antes do padrao): pode ser pessoas ou notas, a confirmar.
         return { valor: qtdLote.quantidade, origem: "quantidade_do_lote_semantica_indeterminada", confirmado: false };
+    }
+    // Padrao do proprio operador nos ultimos dias: o que ele disse no mesmo
+    // dia vale como informado; de dias anteriores, so estimativa.
+    if (recentes?.valor) {
+        return recentes.mesmo_dia
+            ? { valor: recentes.valor, origem: "pessoas_do_mesmo_dia", confirmado: true, referencia: recentes.despesa_id }
+            : { valor: recentes.valor, origem: "pessoas_de_dias_anteriores", confirmado: false, data_referencia: recentes.data, referencia: recentes.despesa_id };
     }
     // Habito do operador (ex.: o Lorran viaja sozinho: todas as refeicoes
     // aprovadas sao de 1 pessoa). Vale mais que contar itens da nota, que
@@ -288,7 +295,7 @@ function corrigirLitros(litros, valor) {
     return { litros, corrigido: false };
 }
 
-function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo, habitos = null }) {
+function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo, habitos = null, pessoasRecentes = null }) {
     const pendencias = [];
     const avisos = [];
     const campos = {};
@@ -460,10 +467,15 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         descricao = { valor: descricaoAbastecimento({ litros, odometro, placa: campos.abastecimento.placa.valor }), origem: "template_abastecimento" };
     } else if (TIPOS[tipo]?.refeicao || tipo === "HOSPEDAGEM") {
         // Refeicao e hospedagem: descricao "JANTAR - 3 PESSOAS" / "HOSPEDAGEM - 1 PESSOA".
-        const pessoas = decidirPessoas({ tipo, legenda, lote, ocr, habitos });
+        const recentes = pessoasRecentes ? pessoasRecentes(tipo, ocr?.data || legenda?.data_declarada || lote?.data_declarada || null) : null;
+        const pessoas = decidirPessoas({ tipo, legenda, lote, ocr, habitos, recentes });
         campos.pessoas = pessoas;
         if (!pessoas.valor) pendencias.push(`Quantidade de pessoas ${tipo === "HOSPEDAGEM" ? "hospedadas" : "da refeição"} não informada.`);
-        else if (pessoas.origem === "habito_do_operador") {
+        else if (pessoas.origem === "pessoas_do_mesmo_dia") {
+            avisos.push(`Pessoas não informadas nesta foto; ${pessoas.valor} como nas outras notas do dia.`);
+        } else if (pessoas.origem === "pessoas_de_dias_anteriores") {
+            pendencias.push(`Pessoas não informadas; estimado ${pessoas.valor} como na nota de ${pessoas.data_referencia.split("-").reverse().slice(0, 2).join("/")}. Confirme.`);
+        } else if (pessoas.origem === "habito_do_operador") {
             pendencias.push(`Pessoas não informadas; estimado ${pessoas.valor} pelo costume de ${pessoa?.nome || "deste operador"} (${pessoas.amostras} notas aprovadas). Confirme.`);
         } else if (pessoas.origem === "itens_da_nota") {
             pendencias.push(`${pessoas.valor} ${pessoas.valor === 1 ? "pessoa estimada" : "pessoas estimadas"} pelos itens da nota; confirme.`);

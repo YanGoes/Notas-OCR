@@ -26,6 +26,7 @@ Object.assign(ORIGENS, {
     material_de_campo: "material de campo (pelos itens/loja)", template_material: "modelo de material de campo",
     costume_cadastrado: "costume cadastrado (confirme)", despesa_administrativa: "regra de despesa administrativa",
     cartao_do_centro_de_custo: "cartão do centro de custo",
+    pessoas_do_mesmo_dia: "como nas outras notas do dia", pessoas_de_dias_anteriores: "como em notas dos dias anteriores (confirme)",
 });
 const nomeOrigem = (codigo) => ORIGENS[codigo] || String(codigo).replaceAll("_", " ");
 const MOTIVOS = { LEITURA: "leitura", CLASSIFICACAO: "classificação", NAO_INFORMADO: "não informado", OUTRO: "outro" };

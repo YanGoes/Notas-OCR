@@ -60,4 +60,44 @@ function habitosDoOperador(db, pessoaId, { excluirDespesas = [] } = {}) {
     };
 }
 
-module.exports = { habitosDoOperador, MINIMO_AMOSTRAS, MINIMO_PARTICIPACAO };
+const DIAS_PARA_TRAS = 3;
+const somarDias = (dataIso, dias) => new Date(Date.parse(`${dataIso}T12:00:00Z`) + dias * 86400000).toISOString().slice(0, 10);
+
+/**
+ * Pessoas que o PROPRIO operador ja informou (ou que alguem confirmou na
+ * revisao) em notas recentes do mesmo grupo de tipo: refeicoes entre si,
+ * hospedagem com hospedagem. Ex.: o Lorran escreveu "Almoço 2" ao meio-dia;
+ * a janta sem numero sai com 2. Vale o mesmo dia; se nao houver, ate 3 dias
+ * antes (ai e so estimativa).
+ *
+ * @returns {{valor:number, data:string, mesmo_dia:boolean, despesa_id:number}|null}
+ */
+function pessoasDeclaradasRecentes(db, { pessoaId = null, remetenteId = null, data, tipo, excluirDespesas = [] }) {
+    const grupoDoTipo = REFEICOES.has(tipo) ? "REFEICAO" : tipo === "HOSPEDAGEM" ? "HOSPEDAGEM" : null;
+    if (!grupoDoTipo || !data || (!pessoaId && !remetenteId)) return null;
+    const excluir = new Set(excluirDespesas.map(Number));
+    const desde = somarDias(data, -DIAS_PARA_TRAS);
+    const linhas = db.prepare(`
+        SELECT d.id, d.campos FROM despesas d JOIN mensagens m ON m.id = d.mensagem_ref
+        WHERE d.estado <> 'DESCARTADO' AND (m.pessoa_id = ? OR m.remetente_id = ?)`).all(String(pessoaId || ""), String(remetenteId || ""));
+    let melhor = null;
+    for (const linha of linhas) {
+        if (excluir.has(Number(linha.id))) continue;
+        const campos = lerJson(linha.campos, {});
+        const pessoas = campos.pessoas || {};
+        const valor = Number(pessoas.valor);
+        // So o que foi DITO (mensagem, resumo do dia) ou corrigido por pessoa;
+        // estimativas nao geram outras estimativas.
+        const informado = pessoas.confirmado === true || pessoas.origem === "correcao_humana";
+        const dataNota = campos.data_competencia?.valor;
+        const tipoNota = campos.tipo?.valor;
+        const mesmoGrupo = grupoDoTipo === "REFEICAO" ? REFEICOES.has(tipoNota) : tipoNota === "HOSPEDAGEM";
+        if (!informado || !Number.isInteger(valor) || valor <= 0 || !mesmoGrupo || !dataNota || dataNota > data || dataNota < desde) continue;
+        if (!melhor || dataNota > melhor.data || (dataNota === melhor.data && linha.id > melhor.despesa_id)) {
+            melhor = { valor, data: dataNota, despesa_id: Number(linha.id) };
+        }
+    }
+    return melhor ? { ...melhor, mesmo_dia: melhor.data === data } : null;
+}
+
+module.exports = { habitosDoOperador, pessoasDeclaradasRecentes, MINIMO_AMOSTRAS, MINIMO_PARTICIPACAO };

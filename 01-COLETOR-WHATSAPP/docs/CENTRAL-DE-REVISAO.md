@@ -156,3 +156,9 @@ Rode o treino de novo sempre que exportar uma planilha mais recente: a VMac muda
 - **Cartão do centro de custo:** ao cadastrar ou editar um centro na aba de centros, escolha o "Cartão usado no projeto". As notas desse centro saem com esse cartão quando o operador não informar outro (origem "cartão do centro de custo"). Prioridade: legenda da foto > resumo do dia > orientação da gerência > política de cartão do projeto > cartão do centro de custo. Cartão informado diferente do cadastrado vai para revisão.
 - **Painel (comprovantes em tempo real):** mostra só os comprovantes de grupos marcados e das conversas privadas de pessoas marcadas, além dos envios manuais pelo painel. Na Central nada some.
 - **Conta Azul:** os atalhos 04 (conectar) e o teste de conexão explicam o erro em português. "END_TRIAL" quer dizer que o login usado na autorização era de uma conta de teste já vencida. Autorize com o usuário do Conta Azul da empresa, numa janela anônima.
+
+## Padrão do operador: pessoas (14/10/2026, noite)
+
+- Foto sem número de pessoas: a IA usa o que o **próprio operador** informou mais cedo no **mesmo dia** (legenda, resumo do dia ou correção na revisão). Refeições valem entre si; hospedagem só com hospedagem. Nesse caso não fica pendência, só um aviso ("como nas outras notas do dia").
+- Sem nada no mesmo dia, usa o último número informado nos **3 dias anteriores**, como estimativa a confirmar.
+- Só conta o que foi **dito** ou **corrigido por pessoa**; estimativa não gera outra estimativa. O número de um operador nunca vale para outro.

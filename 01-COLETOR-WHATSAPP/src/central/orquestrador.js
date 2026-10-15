@@ -16,7 +16,11 @@ const { agora, json, lerJson, transacao } = require("./banco");
 const contexto = require("./contexto");
 const { dividirDocumentos, chaveNfce, impressaoDigital } = require("./documentos");
 const { montarPrevia } = require("./regras-vmac");
-const { habitosDoOperador } = require("./habitos");
+const { habitosDoOperador, pessoasDeclaradasRecentes } = require("./habitos");
+
+/** Callback para a regra perguntar "quantas pessoas este operador disse recentemente?". */
+const consultaPessoas = (db, { pessoaId, remetenteId, excluir = [] }) =>
+    (tipo, data) => pessoasDeclaradasRecentes(db, { pessoaId, remetenteId, data, tipo, excluirDespesas: excluir });
 const { INTENCOES, interpretar } = require("./interpretador");
 
 function momentoDaMeta(meta = {}) {
@@ -134,7 +138,8 @@ function processarFoto(db, cad, { arquivo, sha256, meta = {}, brutoAzure = null,
         const politicaVigente = politica(legenda.projeto_texto || ctx.projeto?.texto);
         // obterHabitos: a medicao passa os habitos de OUTRO banco (sem a propria nota).
         const habitos = obterHabitos ? obterHabitos(registro.pessoa?.pessoa?.id) : habitosDoOperador(db, registro.pessoa?.pessoa?.id);
-        const base = { legenda, contexto: ctx, politica: politicaVigente, identificacao: registro.pessoa, cad, regras, hoje, habitos };
+        const base = { legenda, contexto: ctx, politica: politicaVigente, identificacao: registro.pessoa, cad, regras, hoje, habitos,
+            pessoasRecentes: consultaPessoas(db, { pessoaId: registro.pessoa?.pessoa?.id, remetenteId }) };
 
         if (!brutoAzure) {
             const previa = montarPrevia({ ...base, ocr: { erro_leitura: erroLeitura } });
@@ -267,6 +272,7 @@ function regenerarPrevia(db, cad, despesaId, { regras = {}, hoje = new Date() } 
     const ocr = documento ? lerJson(documento.ocr, {}) : leituraFalhou ? { erro_leitura: true } : null;
 
     const previa = montarPrevia({ ocr, legenda, contexto: ctx, politica, identificacao, cad, regras, hoje,
+        pessoasRecentes: consultaPessoas(db, { pessoaId: identificacao.pessoa?.id, remetenteId: mensagem.remetente_id, excluir: [despesaId] }),
         habitos: habitosDoOperador(db, identificacao.pessoa?.id) });
     if (leituraFalhou) previa.pendencias.unshift("Leitura automática falhou. Leia a imagem manualmente.");
     if (despesa.duplicada_de) previa.pendencias.push(`Possível duplicidade com a despesa #${despesa.duplicada_de} (mesmo emissor, data, valor e hora). Confirme se são compras diferentes.`);
