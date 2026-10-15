@@ -5,7 +5,9 @@ cd /d "%~dp0.."
 rem Treina e mede a categoria com a planilha do Conta Azul (somente leitura).
 rem Para usar outra planilha, arraste o .xls/.xlsx sobre este arquivo.
 
-set "PLANILHA=C:\Users\vmac_\Desktop\APRENDIZADO DE IA - DESPESAS\visao_contas_a_pagar (1).xls"
+rem Exportacao mais recente do Conta Azul (pasta acima do programa); sem ela, a antiga.
+set "PLANILHA=%~dp0..\..\visao_contas_a_pagar (3).xlsx"
+if not exist "%PLANILHA%" set "PLANILHA=C:\Users\vmac_\Desktop\APRENDIZADO DE IA - DESPESAS\visao_contas_a_pagar (1).xls"
 if not "%~1"=="" set "PLANILHA=%~1"
 
 if not exist "%PLANILHA%" (
@@ -15,6 +17,8 @@ if not exist "%PLANILHA%" (
   exit /b 1
 )
 
+rem Catalogo completo (centros, categorias, fornecedores) com os nomes exatos do Conta Azul.
+node ferramentas\importar-catalogo-conta-azul.js "%PLANILHA%"
 node ferramentas\treinar-central.js "%PLANILHA%"
 if errorlevel 1 (
   echo.

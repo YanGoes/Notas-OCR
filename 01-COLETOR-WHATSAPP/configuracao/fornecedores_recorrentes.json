@@ -12,9 +12,75 @@
   },
   "fornecedor_generico_mercado": "SUPERMERCADO",
   "_opcoes_leia_me": "Fornecedores oferecidos na lista do campo Fornecedor da Central (pode digitar outro).",
-  "opcoes": ["POSTOS DE COMBUSTÍVEL", "RESTAURANTES", "HOTÉIS", "SUPERMERCADO", "Materiais de Campo", "Loja de Ferragens", "PADARIA", "FARMÁCIA", "AUTO PEÇAS", "MANUTENÇÃO VEÍCULOS"],
+  "opcoes": [
+    "POSTOS DE COMBUSTÍVEL",
+    "RESTAURANTES",
+    "HOTÉIS",
+    "SUPERMERCADO",
+    "Materiais de Campo",
+    "Loja de Ferragens",
+    "PADARIA",
+    "FARMÁCIA",
+    "AUTO PEÇAS",
+    "MANUTENÇÃO VEÍCULOS"
+  ],
   "recorrentes": [
-    { "nome": "BELLAVIA SUPERMERCADO", "apelidos": ["bellavia", "bella via"] },
-    { "nome": "BOM DIA SUPERMERCADOS", "apelidos": ["bom dia supermercado", "bom dia supermercados", "supermercado bom dia"] }
-  ]
+    {
+      "nome": "BELLAVIA SUPERMERCADO",
+      "apelidos": [
+        "bellavia",
+        "bella via"
+      ]
+    },
+    {
+      "nome": "BOM DIA SUPERMERCADOS",
+      "apelidos": [
+        "bom dia supermercado",
+        "bom dia supermercados",
+        "supermercado bom dia"
+      ]
+    },
+    {
+      "nome": "SUPERBOM SUPERMERCADO",
+      "apelidos": [
+        "superbom",
+        "super bom supermercado"
+      ]
+    },
+    {
+      "nome": "DELLA VIA PNEUS LTDA",
+      "apelidos": [
+        "della via",
+        "dellavia"
+      ]
+    },
+    {
+      "nome": "OFICINA PÉ NA TÁBUA",
+      "apelidos": [
+        "pe na tabua"
+      ]
+    },
+    {
+      "nome": "LAVA JATO - TIAGO TOMAZ DA SILVA",
+      "apelidos": [
+        "tiago tomaz"
+      ]
+    },
+    {
+      "nome": "QUASAR SOLUÇÕES EM TRANSPORTES",
+      "apelidos": [
+        "quasar solucoes",
+        "quasar"
+      ]
+    },
+    {
+      "nome": "MERCADO LIVRE",
+      "apelidos": [
+        "mercado livre",
+        "mercadolivre",
+        "mercadopago"
+      ]
+    }
+  ],
+  "_recorrentes_leia_me": "Estabelecimentos que o Conta Azul usa com o nome próprio (planilha de 15/10/2026, 3+ usos). Posto, restaurante e hotel continuam com o fornecedor genérico do tipo."
 }

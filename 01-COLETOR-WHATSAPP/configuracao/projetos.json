@@ -230,12 +230,13 @@
     {
       "nome_oficial": "CTVM-IRI-ATR-IGG HOUER MT - ROTA DO PEQUI",
       "id_sistema_projetos": 43,
-      "centro_conta_azul": "CTVM - LP/SN - HOUER / YVY - ROTA DO PEQUI",
+      "centro_conta_azul": "HOUER / YVY - ROTA DO PEQUI",
       "id_conta_azul": null,
       "ativo": true,
       "servico": "IRI",
       "apelidos": [
-        "Rota do Pequi"
+        "Rota do Pequi",
+        "CTVM - LP/SN - HOUER / YVY - ROTA DO PEQUI"
       ],
       "_atencao": "Nome exato do centro no Conta Azul ainda nao informado. Enquanto centro_conta_azul for null, a sincronizacao usa o UNICO centro cujo nome contenha 'rota do pequi'."
     },

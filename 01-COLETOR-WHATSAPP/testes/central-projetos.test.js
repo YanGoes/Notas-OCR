@@ -109,3 +109,22 @@ test("centro de custo guarda o cartao usado e recusa cartao fora do cadastro", (
         assert.equal(amb.ler().projetos[0].cartao, null);
     } finally { amb.fim(); }
 });
+
+test("catalogo do Conta Azul entra nos cadastros sem sobrescrever o que ja existe", () => {
+    const amb = ambiente({ projetos: [{ nome_oficial: "Rota do Pequi", centro_conta_azul: "HOUER / YVY - ROTA DO PEQUI", ativo: true, apelidos: [] }] });
+    try {
+        fs.writeFileSync(path.join(amb.pasta, "categorias.json"), JSON.stringify([{ nome: "JANTAR", nome_conta_azul: "Refeição - Jantar", id: "id-jantar" }]));
+        fs.writeFileSync(path.join(amb.pasta, "catalogo_conta_azul.json"), JSON.stringify({
+            centros: [{ nome: "HOUER / YVY - ROTA DO PEQUI", usos: 51 }, { nome: "ETEL FWD/VIGA - GO", usos: 224, ultimo_uso: "2026-09-16" }],
+            categorias: [{ nome: "Refeição - Jantar", usos: 9 }, { nome: "GERADOR", usos: 105 }],
+            fornecedores: [{ nome: "SUPERBOM SUPERMERCADO", usos: 22 }],
+        }));
+        const cad = cadastros.carregar(amb.pasta);
+        const nomes = cadastros.projetosComId(cad).map((p) => p.nome_oficial);
+        assert.deepEqual(nomes.filter((n) => /ROTA DO PEQUI/i.test(n)), ["Rota do Pequi"], "centro ja ligado a um projeto nao duplica");
+        assert.ok(nomes.includes("ETEL FWD/VIGA - GO"));
+        assert.equal(cad.categorias.filter((c) => c.nome_conta_azul === "Refeição - Jantar").length, 1);
+        assert.equal(cad.categorias.find((c) => c.nome === "GERADOR").id, null, "sem ID ate a sincronizacao");
+        assert.ok(cad.fornecedores.opcoes.includes("SUPERBOM SUPERMERCADO"));
+    } finally { amb.fim(); }
+});

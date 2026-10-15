@@ -27,7 +27,7 @@ function lerJson(arquivo, padrao) {
 function carregar(pasta = PASTA_PADRAO) {
     const arquivo = (nome) => path.join(pasta, nome);
     const pessoasArquivo = fs.existsSync(arquivo("pessoas.json")) ? "pessoas.json" : "pessoas.exemplo.json";
-    return {
+    const cad = {
         pessoas: lerJson(arquivo(pessoasArquivo), { pessoas: [] }).pessoas || [],
         projetos: lerJson(arquivo("projetos.json"), { projetos: [] }).projetos || [],
         centros: lerJson(arquivo("centros_custo.json"), []),
@@ -36,6 +36,39 @@ function carregar(pasta = PASTA_PADRAO) {
         categorias: lerJson(arquivo("categorias.json"), []),
         fornecedores: lerJson(arquivo("fornecedores_recorrentes.json"), { recorrentes: [] }),
     };
+    juntarCatalogo(cad, lerJson(arquivo("catalogo_conta_azul.json"), null));
+    return cad;
+}
+
+/**
+ * Tudo o que existe no Conta Azul (catalogo_conta_azul.json, tirado da
+ * planilha exportada) entra nos cadastros SEM sobrescrever nada: centros e
+ * categorias que o programa ainda nao conhecia aparecem com o nome exato do
+ * Conta Azul e sem ID (o ID vem da API); fornecedores entram na lista de
+ * opcoes. A IA so escolhe sozinha o que tem regra; o resto ela aprende com
+ * as revisoes.
+ */
+function juntarCatalogo(cad, catalogo) {
+    if (!catalogo) return;
+    const conhecidos = (lista) => new Set(lista.filter(Boolean).map(normalizar));
+    const centros = conhecidos(cad.centros.map((centro) => centro?.nome));
+    for (const centro of catalogo.centros || []) {
+        if (centros.has(normalizar(centro.nome))) continue;
+        cad.centros.push({ nome: centro.nome, id: null, origem: "planilha_conta_azul", usos: centro.usos, ultimo_uso: centro.ultimo_uso });
+    }
+    const categorias = conhecidos([
+        ...cad.categorias.flatMap((categoria) => [categoria.nome, categoria.nome_conta_azul]),
+        ...cad.veiculos.flatMap((veiculo) => [veiculo.categoria_nome_conta_azul, veiculo.manutencao_categoria_nome]),
+    ]);
+    for (const categoria of catalogo.categorias || []) {
+        if (categorias.has(normalizar(categoria.nome))) continue;
+        cad.categorias.push({ nome: categoria.nome, nome_conta_azul: categoria.nome, id: null, origem: "planilha_conta_azul", usos: categoria.usos, ultimo_uso: categoria.ultimo_uso });
+    }
+    const fornecedores = cad.fornecedores || (cad.fornecedores = { recorrentes: [] });
+    const opcoes = fornecedores.opcoes || [];
+    const jaTem = conhecidos(opcoes);
+    for (const fornecedor of catalogo.fornecedores || []) if (!jaTem.has(normalizar(fornecedor.nome))) opcoes.push(fornecedor.nome);
+    fornecedores.opcoes = opcoes;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +152,8 @@ function projetosComId(cad) {
         .filter(Boolean).map(normalizar));
     for (const centro of cad.centros) {
         if (!centro?.nome || conhecidos.has(normalizar(centro.nome))) continue;
-        projetos.push({ nome_oficial: centro.nome, id_conta_azul: centro.id || null, ativo: null, servico: null, apelidos: centro.apelidos || [], origem: "centros_custo_sincronizados" });
+        projetos.push({ nome_oficial: centro.nome, id_conta_azul: centro.id || null, ativo: null, servico: null, apelidos: centro.apelidos || [],
+            origem: centro.origem === "planilha_conta_azul" ? "planilha_conta_azul" : "centros_custo_sincronizados", ultimo_uso: centro.ultimo_uso || null, usos: centro.usos || null });
     }
     return projetos;
 }

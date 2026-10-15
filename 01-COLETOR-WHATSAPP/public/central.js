@@ -722,7 +722,9 @@ async function carregarCentros() {
     const linhas = visiveis.map((projeto) => {
         const linha = el("tr", {},
             el("td", {}, el("strong", {}, projeto.nome_oficial), projeto.id_sistema_projetos != null ? el("small", { class: "origem" }, ` · nº ${projeto.id_sistema_projetos}`) : null,
-                projeto.no_cadastro ? null : el("div", { class: "origem" }, "veio da sincronização com o Conta Azul")),
+                projeto.no_cadastro ? null : el("div", { class: "origem" }, projeto.origem === "planilha_conta_azul"
+                    ? `existe no Conta Azul (planilha)${projeto.ultimo_uso ? ` · último uso ${dataBr(projeto.ultimo_uso)}` : ""}${projeto.usos ? ` · ${projeto.usos} lançamentos` : ""}`
+                    : "veio da sincronização com o Conta Azul")),
             el("td", {}, el("span", { class: `etiqueta ${situacaoClasse(projeto.ativo)}` }, situacaoTexto(projeto.ativo)),
                 projeto.cartao ? el("div", { class: "origem" }, `cartão: ${projeto.cartao}`) : null),
             el("td", {}, !projeto.centro_conta_azul && projeto.busca_centro_conta_azul && !projeto.id_conta_azul

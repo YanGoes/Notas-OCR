@@ -138,6 +138,7 @@ function listar({ pasta } = {}) {
             servico: projeto.servico || null,
             apelidos: projeto.apelidos || [],
             cartao: projeto.cartao || null,
+            origem: projeto.origem || null, ultimo_uso: projeto.ultimo_uso || null, usos: projeto.usos || null,
             no_cadastro: doArquivo.has(normalizar(projeto.nome_oficial)),
             atencao: projeto._atencao || null,
         })),

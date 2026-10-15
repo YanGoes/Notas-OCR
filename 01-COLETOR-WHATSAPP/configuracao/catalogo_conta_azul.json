@@ -1,0 +1,1477 @@
+{
+  "_leia_me": "Gerado por ferramentas/importar-catalogo-conta-azul.js a partir da exportação do Conta Azul. Não edite à mão: exporte de novo e rode a ferramenta.",
+  "gerado_em": "2026-10-15T03:30:34.440Z",
+  "fonte": "visao_contas_a_pagar (3).xlsx",
+  "lancamentos": 14073,
+  "centros": [
+    {
+      "nome": "DESPESAS ADMINISTRATIVAS",
+      "usos": 4922,
+      "ultimo_uso": "2026-10-15"
+    },
+    {
+      "nome": "53.655.381/0001-03",
+      "usos": 643,
+      "ultimo_uso": "2026-10-10"
+    },
+    {
+      "nome": "INVESTIMENTO",
+      "usos": 594,
+      "ultimo_uso": "2026-10-13"
+    },
+    {
+      "nome": "DYNATEST INVT. NORDESTE",
+      "usos": 529,
+      "ultimo_uso": "2025-12-08"
+    },
+    {
+      "nome": "PENTÁGONO SP",
+      "usos": 487,
+      "ultimo_uso": "2026-03-04"
+    },
+    {
+      "nome": "CONSOL MG-050",
+      "usos": 454,
+      "ultimo_uso": "2026-07-27"
+    },
+    {
+      "nome": "CTVM - SN - ETEL PR",
+      "usos": 421,
+      "ultimo_uso": "2025-04-09"
+    },
+    {
+      "nome": "DYNA GOINFRA CICLO III - FWD",
+      "usos": 413,
+      "ultimo_uso": "2026-10-07"
+    },
+    {
+      "nome": "CTVM - SN - SISCON SC",
+      "usos": 346,
+      "ultimo_uso": "2025-05-19"
+    },
+    {
+      "nome": "IRI/IGG DYNA GO",
+      "usos": 320,
+      "ultimo_uso": "2026-03-31"
+    },
+    {
+      "nome": "ESTRATÉGICA FWD NORDESTE",
+      "usos": 306,
+      "ultimo_uso": "2025-10-21"
+    },
+    {
+      "nome": "INFRA - ECOSUL",
+      "usos": 305,
+      "ultimo_uso": "2026-03-31"
+    },
+    {
+      "nome": "DYNA GOINFRA CICLO III - VDROD",
+      "usos": 239,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "ETEL FWD/VIGA - GO",
+      "usos": 224,
+      "ultimo_uso": "2026-09-16"
+    },
+    {
+      "nome": "IMTRAFF EPR IGUAÇU/PR",
+      "usos": 210,
+      "ultimo_uso": "2026-05-18"
+    },
+    {
+      "nome": "IMTRAFF VC/TM",
+      "usos": 205,
+      "ultimo_uso": "2026-04-12"
+    },
+    {
+      "nome": "IMTRAFF ECO RIO MINAS/FWD E ADE",
+      "usos": 192,
+      "ultimo_uso": "2026-09-22"
+    },
+    {
+      "nome": "IMTRAFF - MT FWD",
+      "usos": 185,
+      "ultimo_uso": "2026-06-27"
+    },
+    {
+      "nome": "IMTRAFF BR 153/SP-TBR",
+      "usos": 181,
+      "ultimo_uso": "2026-08-06"
+    },
+    {
+      "nome": "DYNA BR 020 e BR 242",
+      "usos": 169,
+      "ultimo_uso": "2026-03-31"
+    },
+    {
+      "nome": "IMTRAFF BR 251/116 MG",
+      "usos": 167,
+      "ultimo_uso": "2026-03-08"
+    },
+    {
+      "nome": "ETEL OAEs PR",
+      "usos": 162,
+      "ultimo_uso": "2025-10-13"
+    },
+    {
+      "nome": "33.229.221/0001-95",
+      "usos": 141,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "FWD GOIÁS",
+      "usos": 141,
+      "ultimo_uso": "2026-07-20"
+    },
+    {
+      "nome": "PÁTRIA - PR",
+      "usos": 141,
+      "ultimo_uso": "2025-08-31"
+    },
+    {
+      "nome": "ETEL OAEs PR/2026",
+      "usos": 129,
+      "ultimo_uso": "2026-08-19"
+    },
+    {
+      "nome": "DYNATEST - GO/DF",
+      "usos": 127,
+      "ultimo_uso": "2025-05-31"
+    },
+    {
+      "nome": "Despesas Variáveis",
+      "usos": 113,
+      "ultimo_uso": "2026-10-10"
+    },
+    {
+      "nome": "HOUER FWD BR116/324BA",
+      "usos": 98,
+      "ultimo_uso": "2026-04-13"
+    },
+    {
+      "nome": "DYNA BR-116 E 251/MG",
+      "usos": 85,
+      "ultimo_uso": "2026-01-16"
+    },
+    {
+      "nome": "SISCON SC",
+      "usos": 82,
+      "ultimo_uso": "2025-05-20"
+    },
+    {
+      "nome": "IMTRAFF MG",
+      "usos": 80,
+      "ultimo_uso": "2025-02-21"
+    },
+    {
+      "nome": "LWD MROSCOE - MG",
+      "usos": 74,
+      "ultimo_uso": "2026-04-20"
+    },
+    {
+      "nome": "FWD IMTRAFF GO-010",
+      "usos": 72,
+      "ultimo_uso": "2026-04-10"
+    },
+    {
+      "nome": "IMTRAFF - MT ADERENCIA",
+      "usos": 68,
+      "ultimo_uso": "2026-06-29"
+    },
+    {
+      "nome": "IMTRAFF - MT VDROD",
+      "usos": 62,
+      "ultimo_uso": "2026-06-25"
+    },
+    {
+      "nome": "FWD PR",
+      "usos": 59,
+      "ultimo_uso": "2025-05-29"
+    },
+    {
+      "nome": "APORTE / RETIRADA",
+      "usos": 57,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "DYNATEST BR-040/GO E 070/DF",
+      "usos": 56,
+      "ultimo_uso": "2026-07-02"
+    },
+    {
+      "nome": "FWD DYNA RJ",
+      "usos": 56,
+      "ultimo_uso": "2026-02-07"
+    },
+    {
+      "nome": "IMTRAFF EPR IGUAÇU PÊNDULO",
+      "usos": 56,
+      "ultimo_uso": "2026-05-13"
+    },
+    {
+      "nome": "ETEL ROD. GO",
+      "usos": 55,
+      "ultimo_uso": "2025-06-05"
+    },
+    {
+      "nome": "VDROD HOUER RS",
+      "usos": 52,
+      "ultimo_uso": "2026-04-28"
+    },
+    {
+      "nome": "HOUER / YVY - ROTA DO PEQUI",
+      "usos": 51,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "HOUER / YVY - MT",
+      "usos": 49,
+      "ultimo_uso": "2026-09-09"
+    },
+    {
+      "nome": "IMTRAFF ECO PONTE - RJ",
+      "usos": 46,
+      "ultimo_uso": "2026-06-09"
+    },
+    {
+      "nome": "HOUER VDRod BR116/324BA",
+      "usos": 41,
+      "ultimo_uso": "2026-04-15"
+    },
+    {
+      "nome": "IMTRAFF LT 4/5 - PR",
+      "usos": 39,
+      "ultimo_uso": "2025-08-24"
+    },
+    {
+      "nome": "CLC - PR 460",
+      "usos": 38,
+      "ultimo_uso": "2025-08-31"
+    },
+    {
+      "nome": "CONSÓRCIO GO 241/244",
+      "usos": 34,
+      "ultimo_uso": "2026-01-15"
+    },
+    {
+      "nome": "DYNA BR 040 DF",
+      "usos": 33,
+      "ultimo_uso": "2026-05-20"
+    },
+    {
+      "nome": "FWD ESTEIO SP",
+      "usos": 25,
+      "ultimo_uso": "2026-02-02"
+    },
+    {
+      "nome": "IMTRAFF / SYSTRA - BR-135/MG",
+      "usos": 25,
+      "ultimo_uso": "2025-07-23"
+    },
+    {
+      "nome": "ITAX EPR PR - IRI",
+      "usos": 22,
+      "ultimo_uso": "2026-06-02"
+    },
+    {
+      "nome": "AQUISIÇÃO FWD03",
+      "usos": 21,
+      "ultimo_uso": "2025-01-10"
+    },
+    {
+      "nome": "CONSÓRCIO SUPERVISOR GO",
+      "usos": 20,
+      "ultimo_uso": "2026-01-19"
+    },
+    {
+      "nome": "INFRACONSULT - MG VDROD DER",
+      "usos": 20,
+      "ultimo_uso": "2026-04-28"
+    },
+    {
+      "nome": "CONSÓRIO GO 173/151 - IRI/RETRO",
+      "usos": 17,
+      "ultimo_uso": "2026-08-15"
+    },
+    {
+      "nome": "HOUER / YVY - BR 163 MT/PA",
+      "usos": 16,
+      "ultimo_uso": "2026-09-14"
+    },
+    {
+      "nome": "Despesa Fixa",
+      "usos": 15,
+      "ultimo_uso": "2026-07-31"
+    },
+    {
+      "nome": "IMTRAFF BR 356/MG",
+      "usos": 14,
+      "ultimo_uso": "2025-07-20"
+    },
+    {
+      "nome": "ITAX EPR IGUAÇU/PR - IRI",
+      "usos": 12,
+      "ultimo_uso": "2026-08-08"
+    },
+    {
+      "nome": "CONSOL MG-259",
+      "usos": 11,
+      "ultimo_uso": "2026-05-26"
+    },
+    {
+      "nome": "ETEL VDROD - GO",
+      "usos": 9,
+      "ultimo_uso": "2026-07-20"
+    },
+    {
+      "nome": "FWD RJ",
+      "usos": 5,
+      "ultimo_uso": "2025-05-09"
+    },
+    {
+      "nome": "CONSÓRCIO GO RODOVIAS - 070",
+      "usos": 4,
+      "ultimo_uso": "2026-01-15"
+    },
+    {
+      "nome": "CTVM - LP - ETEL OAEs GO",
+      "usos": 4,
+      "ultimo_uso": "2025-03-24"
+    },
+    {
+      "nome": "Etel DF OAE's",
+      "usos": 3,
+      "ultimo_uso": "2025-03-21"
+    },
+    {
+      "nome": "IMTRAFF - MOTIVA RIO/SP (FWD/ADE)",
+      "usos": 3,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "Despesas Ocasionais",
+      "usos": 1,
+      "ultimo_uso": "2025-07-15"
+    },
+    {
+      "nome": "INFRA - ECOSUL RS",
+      "usos": 1,
+      "ultimo_uso": "2026-04-15"
+    },
+    {
+      "nome": "MANUTENÇÃO FWD",
+      "usos": 1,
+      "ultimo_uso": "2025-06-20"
+    }
+  ],
+  "categorias": [
+    {
+      "nome": "Lanches e Refeições",
+      "usos": 1932,
+      "ultimo_uso": "2026-10-06"
+    },
+    {
+      "nome": "HOSPEDAGEM",
+      "usos": 1016,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "Refeição - Almoço",
+      "usos": 981,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "Salários",
+      "usos": 812,
+      "ultimo_uso": "2026-10-07"
+    },
+    {
+      "nome": "Refeição - jantar",
+      "usos": 711,
+      "ultimo_uso": "2026-10-07"
+    },
+    {
+      "nome": "Diversos",
+      "usos": 487,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "Alimentação",
+      "usos": 386,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "Seguro de Vida",
+      "usos": 362,
+      "ultimo_uso": "2026-10-11"
+    },
+    {
+      "nome": "MATERIAL DE CAMPO",
+      "usos": 345,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "Empréstimos de Bancos",
+      "usos": 279,
+      "ultimo_uso": "2026-10-11"
+    },
+    {
+      "nome": "Pedágios",
+      "usos": 262,
+      "ultimo_uso": "2026-10-10"
+    },
+    {
+      "nome": "Honorários Contábeis",
+      "usos": 249,
+      "ultimo_uso": "2026-10-10"
+    },
+    {
+      "nome": "GOL - RLQ4C16",
+      "usos": 244,
+      "ultimo_uso": "2026-08-31"
+    },
+    {
+      "nome": "HILUX - OVN5J98",
+      "usos": 228,
+      "ultimo_uso": "2026-10-06"
+    },
+    {
+      "nome": "ETIOS - OVN1505",
+      "usos": 223,
+      "ultimo_uso": "2026-09-29"
+    },
+    {
+      "nome": "FIAT SCUDO - SGR4B54",
+      "usos": 210,
+      "ultimo_uso": "2026-09-29"
+    },
+    {
+      "nome": "ETIOS - JKM0I96",
+      "usos": 202,
+      "ultimo_uso": "2026-09-29"
+    },
+    {
+      "nome": "SAVEIRO - RBT2E25",
+      "usos": 193,
+      "ultimo_uso": "2026-09-25"
+    },
+    {
+      "nome": "Telefonia e Internet",
+      "usos": 192,
+      "ultimo_uso": "2026-10-15"
+    },
+    {
+      "nome": "Café da Manhã",
+      "usos": 180,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "Veículos",
+      "usos": 168,
+      "ultimo_uso": "2026-10-10"
+    },
+    {
+      "nome": "S10 - REP7B39",
+      "usos": 164,
+      "ultimo_uso": "2026-08-28"
+    },
+    {
+      "nome": "GERADOR",
+      "usos": 159,
+      "ultimo_uso": "2026-09-29"
+    },
+    {
+      "nome": "Impostos",
+      "usos": 132,
+      "ultimo_uso": "2026-10-06"
+    },
+    {
+      "nome": "VEICULO - ALUGADO",
+      "usos": 130,
+      "ultimo_uso": "2026-10-06"
+    },
+    {
+      "nome": "Empréstimos de Outras Instituições",
+      "usos": 123,
+      "ultimo_uso": "2026-09-26"
+    },
+    {
+      "nome": "Combustivel Outros",
+      "usos": 122,
+      "ultimo_uso": "2026-09-25"
+    },
+    {
+      "nome": "FGTS",
+      "usos": 122,
+      "ultimo_uso": "2026-09-18"
+    },
+    {
+      "nome": "Plano de Saúde Sócios",
+      "usos": 122,
+      "ultimo_uso": "2026-09-29"
+    },
+    {
+      "nome": "Materiais p/ Escritório",
+      "usos": 117,
+      "ultimo_uso": "2026-09-18"
+    },
+    {
+      "nome": "Manutenção de Veículos",
+      "usos": 107,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "CONSÓRCIO",
+      "usos": 104,
+      "ultimo_uso": "2026-10-13"
+    },
+    {
+      "nome": "MANUTENÇÃO FIAT SCUDO SGR4B54",
+      "usos": 104,
+      "ultimo_uso": "2026-10-06"
+    },
+    {
+      "nome": "VIAGEM",
+      "usos": 92,
+      "ultimo_uso": "2026-09-18"
+    },
+    {
+      "nome": "HILUX - OMU7H82",
+      "usos": 90,
+      "ultimo_uso": "2026-01-23"
+    },
+    {
+      "nome": "Combustivel OVN-1505",
+      "usos": 88,
+      "ultimo_uso": "2026-10-06"
+    },
+    {
+      "nome": "MATERIAL DE MANUTENÇÃO",
+      "usos": 87,
+      "ultimo_uso": "2026-09-02"
+    },
+    {
+      "nome": "TAXA PIX",
+      "usos": 85,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "Combustivel OVN-5J98",
+      "usos": 81,
+      "ultimo_uso": "2026-09-24"
+    },
+    {
+      "nome": "APORTE/RETIRADA",
+      "usos": 75,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "Impostos retidos no ato do recebimento",
+      "usos": 73,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "Software / Licença de Uso",
+      "usos": 72,
+      "ultimo_uso": "2026-10-10"
+    },
+    {
+      "nome": "Combustivel REP-7B39",
+      "usos": 67,
+      "ultimo_uso": "2026-07-19"
+    },
+    {
+      "nome": "Água",
+      "usos": 64,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "MANUTENÇÃO S10 REP7B39",
+      "usos": 62,
+      "ultimo_uso": "2026-09-23"
+    },
+    {
+      "nome": "Combustivel JJK-0492",
+      "usos": 56,
+      "ultimo_uso": "2025-05-31"
+    },
+    {
+      "nome": "DIÁRIA - FREELANCER",
+      "usos": 55,
+      "ultimo_uso": "2026-09-21"
+    },
+    {
+      "nome": "Seguros de Veículos",
+      "usos": 55,
+      "ultimo_uso": "2026-08-10"
+    },
+    {
+      "nome": "ONIX - SFI4A94",
+      "usos": 54,
+      "ultimo_uso": "2026-09-28"
+    },
+    {
+      "nome": "S10 - PRE3B59",
+      "usos": 54,
+      "ultimo_uso": "2026-09-29"
+    },
+    {
+      "nome": "Adiantamento Salarial",
+      "usos": 52,
+      "ultimo_uso": "2026-09-26"
+    },
+    {
+      "nome": "MANUTENÇÃO HILUX OVN5J98",
+      "usos": 51,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "Energia Elétrica",
+      "usos": 48,
+      "ultimo_uso": "2026-09-23"
+    },
+    {
+      "nome": "Tarifas Bancárias",
+      "usos": 46,
+      "ultimo_uso": "2026-09-16"
+    },
+    {
+      "nome": "Aluguel",
+      "usos": 43,
+      "ultimo_uso": "2026-10-10"
+    },
+    {
+      "nome": "Viagens e Representações",
+      "usos": 43,
+      "ultimo_uso": "2025-12-04"
+    },
+    {
+      "nome": "Combustivel JKM-0I96",
+      "usos": 42,
+      "ultimo_uso": "2026-09-25"
+    },
+    {
+      "nome": "MANUTENÇÃO GOL RLQ4C16",
+      "usos": 42,
+      "ultimo_uso": "2026-08-06"
+    },
+    {
+      "nome": "IPVA / DPVAT / Licenciamento",
+      "usos": 40,
+      "ultimo_uso": "2026-07-27"
+    },
+    {
+      "nome": "SERVIÇO DE INTERNET",
+      "usos": 40,
+      "ultimo_uso": "2026-10-07"
+    },
+    {
+      "nome": "Tarifas",
+      "usos": 39,
+      "ultimo_uso": "2026-09-27"
+    },
+    {
+      "nome": "MANUTENÇÃO ETIOS JKM0196",
+      "usos": 37,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "MANUTENÇÃO FWD",
+      "usos": 37,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "Lavanderia",
+      "usos": 35,
+      "ultimo_uso": "2026-09-07"
+    },
+    {
+      "nome": "Tarifas de Cartões de Crédito",
+      "usos": 33,
+      "ultimo_uso": "2026-09-29"
+    },
+    {
+      "nome": "Combustivel OMU-7H82",
+      "usos": 31,
+      "ultimo_uso": "2025-08-30"
+    },
+    {
+      "nome": "Transporte Urbano (táxi, Uber)",
+      "usos": 31,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "Combustíveis",
+      "usos": 30,
+      "ultimo_uso": "2026-07-17"
+    },
+    {
+      "nome": "MANUTENÇÃO ETIOS OVN1505",
+      "usos": 30,
+      "ultimo_uso": "2026-07-12"
+    },
+    {
+      "nome": "MANUTENÇÃO CAMINHÃO F14K - CQA6B42",
+      "usos": 29,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "Manutenção de Equipamentos",
+      "usos": 28,
+      "ultimo_uso": "2026-08-26"
+    },
+    {
+      "nome": "Pró-labore",
+      "usos": 28,
+      "ultimo_uso": "2026-09-04"
+    },
+    {
+      "nome": "DUSTER - JJK0492",
+      "usos": 26,
+      "ultimo_uso": "2025-09-22"
+    },
+    {
+      "nome": "Multas de Trânsito",
+      "usos": 26,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "APLICATIVO",
+      "usos": 24,
+      "ultimo_uso": "2026-09-28"
+    },
+    {
+      "nome": "CAMINHÃO F14K - CQA6B42",
+      "usos": 24,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "Condomínio",
+      "usos": 24,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "Água e Saneamento",
+      "usos": 23,
+      "ultimo_uso": "2026-09-20"
+    },
+    {
+      "nome": "Cursos e Treinamentos",
+      "usos": 23,
+      "ultimo_uso": "2026-09-09"
+    },
+    {
+      "nome": "MANUTENÇÃO SAVEIRO - RBT2E25",
+      "usos": 22,
+      "ultimo_uso": "2026-09-01"
+    },
+    {
+      "nome": "Máquinas, Equipamentos e Instalações Industriais",
+      "usos": 22,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "Farmácia",
+      "usos": 21,
+      "ultimo_uso": "2026-09-05"
+    },
+    {
+      "nome": "LOCAÇÃO DE VEÍCULO",
+      "usos": 21,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "MANUTENÇÃO HILUX OMU7H82",
+      "usos": 20,
+      "ultimo_uso": "2026-02-23"
+    },
+    {
+      "nome": "MANUTENÇÃO FWD01 FRW1A55",
+      "usos": 19,
+      "ultimo_uso": "2026-08-28"
+    },
+    {
+      "nome": "Despesas de Campo",
+      "usos": 17,
+      "ultimo_uso": "2026-10-07"
+    },
+    {
+      "nome": "Manutenção S10 PRE - 3B59",
+      "usos": 17,
+      "ultimo_uso": "2026-09-19"
+    },
+    {
+      "nome": "CARTÃO DE CRÉDITO",
+      "usos": 16,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "Gratificações",
+      "usos": 16,
+      "ultimo_uso": "2026-04-17"
+    },
+    {
+      "nome": "Materiais de Limpeza e de Higiene",
+      "usos": 16,
+      "ultimo_uso": "2026-08-17"
+    },
+    {
+      "nome": "Terrenos",
+      "usos": 16,
+      "ultimo_uso": "2026-09-20"
+    },
+    {
+      "nome": "Vale-Transporte",
+      "usos": 16,
+      "ultimo_uso": "2026-07-02"
+    },
+    {
+      "nome": "Despesa Admissional",
+      "usos": 15,
+      "ultimo_uso": "2026-07-13"
+    },
+    {
+      "nome": "Lavagem de Veículo",
+      "usos": 15,
+      "ultimo_uso": "2026-09-19"
+    },
+    {
+      "nome": "MANUTENÇÃO FWD02 GAZ2J75",
+      "usos": 15,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "ART/CONTRATO",
+      "usos": 14,
+      "ultimo_uso": "2026-05-22"
+    },
+    {
+      "nome": "Plataforma - Assinatura Eletrônica",
+      "usos": 14,
+      "ultimo_uso": "2026-10-14"
+    },
+    {
+      "nome": "Reembolso + Comissão/Manutenção",
+      "usos": 14,
+      "ultimo_uso": "2026-09-10"
+    },
+    {
+      "nome": "SEGURO",
+      "usos": 14,
+      "ultimo_uso": "2026-10-15"
+    },
+    {
+      "nome": "SEGURO CONTA",
+      "usos": 14,
+      "ultimo_uso": "2026-10-04"
+    },
+    {
+      "nome": "Despesas a identificar",
+      "usos": 13,
+      "ultimo_uso": "2026-06-05"
+    },
+    {
+      "nome": "Estacionamento",
+      "usos": 13,
+      "ultimo_uso": "2026-09-25"
+    },
+    {
+      "nome": "Cartório",
+      "usos": 12,
+      "ultimo_uso": "2026-09-18"
+    },
+    {
+      "nome": "Juros pagos",
+      "usos": 12,
+      "ultimo_uso": "2026-09-16"
+    },
+    {
+      "nome": "Plano de Saúde Colaboradores",
+      "usos": 12,
+      "ultimo_uso": "2026-09-26"
+    },
+    {
+      "nome": "SEGURO EQUIPAMENTO",
+      "usos": 12,
+      "ultimo_uso": "2026-08-09"
+    },
+    {
+      "nome": "MANUTENÇÃO GERADOR",
+      "usos": 11,
+      "ultimo_uso": "2026-09-02"
+    },
+    {
+      "nome": "Uniformes",
+      "usos": 11,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "Computadores e Periféricos",
+      "usos": 10,
+      "ultimo_uso": "2026-02-13"
+    },
+    {
+      "nome": "Despesas Variáveis",
+      "usos": 10,
+      "ultimo_uso": "2026-08-28"
+    },
+    {
+      "nome": "Recarga de Celular",
+      "usos": 10,
+      "ultimo_uso": "2026-09-19"
+    },
+    {
+      "nome": "Despesa de Campo",
+      "usos": 9,
+      "ultimo_uso": "2026-10-04"
+    },
+    {
+      "nome": "MANUTENÇÃO ONIX SFI4A94",
+      "usos": 9,
+      "ultimo_uso": "2026-08-19"
+    },
+    {
+      "nome": "CREA",
+      "usos": 8,
+      "ultimo_uso": "2026-08-20"
+    },
+    {
+      "nome": "MANUTENÇÃO FWD03 STC1F55",
+      "usos": 8,
+      "ultimo_uso": "2026-09-15"
+    },
+    {
+      "nome": "Correios",
+      "usos": 7,
+      "ultimo_uso": "2026-08-20"
+    },
+    {
+      "nome": "ESTOQUE DE PEÇAS FWD",
+      "usos": 7,
+      "ultimo_uso": "2025-10-22"
+    },
+    {
+      "nome": "Exames Médicos",
+      "usos": 7,
+      "ultimo_uso": "2026-10-13"
+    },
+    {
+      "nome": "Veículo Alugado",
+      "usos": 7,
+      "ultimo_uso": "2026-07-29"
+    },
+    {
+      "nome": "Construções em Andamento - Imóvel Próprio",
+      "usos": 6,
+      "ultimo_uso": "2026-06-08"
+    },
+    {
+      "nome": "Manuteção OVN-5J98",
+      "usos": 6,
+      "ultimo_uso": "2025-05-23"
+    },
+    {
+      "nome": "MANUTENÇÃO DUSTER JJK0492",
+      "usos": 6,
+      "ultimo_uso": "2025-07-10"
+    },
+    {
+      "nome": "Retenção - Darf 1708 - IRRF",
+      "usos": 6,
+      "ultimo_uso": "2025-09-19"
+    },
+    {
+      "nome": "SAVEIRO BRANCA - FHH3G21",
+      "usos": 6,
+      "ultimo_uso": "2026-10-03"
+    },
+    {
+      "nome": "Segurança do Trabalho",
+      "usos": 6,
+      "ultimo_uso": "2026-09-15"
+    },
+    {
+      "nome": "Despachante",
+      "usos": 5,
+      "ultimo_uso": "2026-03-10"
+    },
+    {
+      "nome": "Doação",
+      "usos": 5,
+      "ultimo_uso": "2026-08-05"
+    },
+    {
+      "nome": "Manuteção REP-7B39",
+      "usos": 5,
+      "ultimo_uso": "2025-05-05"
+    },
+    {
+      "nome": "REBOQUE STC1F55",
+      "usos": 5,
+      "ultimo_uso": "2026-02-03"
+    },
+    {
+      "nome": "Simples Nacional - DAS",
+      "usos": 5,
+      "ultimo_uso": "2025-09-19"
+    },
+    {
+      "nome": "COMPRA VEÍCULO",
+      "usos": 4,
+      "ultimo_uso": "2026-06-16"
+    },
+    {
+      "nome": "DESPESAS COM A FROTA",
+      "usos": 4,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "FGTS e Multa de FGTS",
+      "usos": 4,
+      "ultimo_uso": "2026-04-20"
+    },
+    {
+      "nome": "FINANCIMENTO VDRod",
+      "usos": 4,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "Honorários Advocatícios",
+      "usos": 4,
+      "ultimo_uso": "2026-08-10"
+    },
+    {
+      "nome": "Manuteção OVN-1505",
+      "usos": 4,
+      "ultimo_uso": "2026-07-22"
+    },
+    {
+      "nome": "Serviços Gerais",
+      "usos": 4,
+      "ultimo_uso": "2026-08-08"
+    },
+    {
+      "nome": "Telefonia Móvel",
+      "usos": 4,
+      "ultimo_uso": "2026-08-24"
+    },
+    {
+      "nome": "Bônus de Produção",
+      "usos": 3,
+      "ultimo_uso": "2026-06-03"
+    },
+    {
+      "nome": "Confraternizações",
+      "usos": 3,
+      "ultimo_uso": "2026-05-15"
+    },
+    {
+      "nome": "FIAT SCUDO",
+      "usos": 3,
+      "ultimo_uso": "2025-09-02"
+    },
+    {
+      "nome": "Financiamento Fiat Scudo",
+      "usos": 3,
+      "ultimo_uso": "2026-09-14"
+    },
+    {
+      "nome": "Locação de Equipamento",
+      "usos": 3,
+      "ultimo_uso": "2026-04-15"
+    },
+    {
+      "nome": "Manutenção JKM-0I96",
+      "usos": 3,
+      "ultimo_uso": "2025-05-24"
+    },
+    {
+      "nome": "Material p/ depósito",
+      "usos": 3,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "TAXA",
+      "usos": 3,
+      "ultimo_uso": "2026-09-15"
+    },
+    {
+      "nome": "Despesas de Deslocamento",
+      "usos": 2,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "Guincho",
+      "usos": 2,
+      "ultimo_uso": "2026-09-16"
+    },
+    {
+      "nome": "Manuteção OMU-7H82",
+      "usos": 2,
+      "ultimo_uso": "2025-02-03"
+    },
+    {
+      "nome": "Multas pagas",
+      "usos": 2,
+      "ultimo_uso": "2026-04-06"
+    },
+    {
+      "nome": "Produtos P/Manutenção",
+      "usos": 2,
+      "ultimo_uso": "2025-01-18"
+    },
+    {
+      "nome": "Remuneração de Auxiliares",
+      "usos": 2,
+      "ultimo_uso": "2026-01-09"
+    },
+    {
+      "nome": "SITE",
+      "usos": 2,
+      "ultimo_uso": "2026-09-14"
+    },
+    {
+      "nome": "Tarifas DOC / TED",
+      "usos": 2,
+      "ultimo_uso": "2026-07-21"
+    },
+    {
+      "nome": "Ar Condicionado",
+      "usos": 1,
+      "ultimo_uso": "2026-03-19"
+    },
+    {
+      "nome": "Certificado Digital",
+      "usos": 1,
+      "ultimo_uso": "2026-05-29"
+    },
+    {
+      "nome": "Combustível SYP-6A25",
+      "usos": 1,
+      "ultimo_uso": "2025-01-03"
+    },
+    {
+      "nome": "Copa e Cozinha",
+      "usos": 1,
+      "ultimo_uso": "2025-07-24"
+    },
+    {
+      "nome": "Despesas Judiciais/Extrajudiciais",
+      "usos": 1,
+      "ultimo_uso": "2026-07-10"
+    },
+    {
+      "nome": "Despesas p/ o Galpão",
+      "usos": 1,
+      "ultimo_uso": "2026-07-13"
+    },
+    {
+      "nome": "Honorários (outros)",
+      "usos": 1,
+      "ultimo_uso": "2025-12-05"
+    },
+    {
+      "nome": "ISS sobre Faturamento",
+      "usos": 1,
+      "ultimo_uso": "2025-08-18"
+    },
+    {
+      "nome": "Manutenção Frota",
+      "usos": 1,
+      "ultimo_uso": "2026-08-21"
+    },
+    {
+      "nome": "Manutenção Terreno",
+      "usos": 1,
+      "ultimo_uso": "2026-02-25"
+    },
+    {
+      "nome": "REBOQUE SVN4I37",
+      "usos": 1,
+      "ultimo_uso": "2026-01-19"
+    },
+    {
+      "nome": "SEGURO DE SUCESSÃO EMPRESARIAL",
+      "usos": 1,
+      "ultimo_uso": "2025-08-12"
+    },
+    {
+      "nome": "Sem Categoria",
+      "usos": 1,
+      "ultimo_uso": "2025-06-07"
+    },
+    {
+      "nome": "TÍTULO DE CAPTALIZAÇÃO",
+      "usos": 1,
+      "ultimo_uso": "2026-01-07"
+    },
+    {
+      "nome": "Vale-Alimentação",
+      "usos": 1,
+      "ultimo_uso": "2025-10-25"
+    }
+  ],
+  "fornecedores": [
+    {
+      "nome": "RESTAURANTES",
+      "usos": 3454,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "POSTOS DE COMBUSTÍVEL",
+      "usos": 2295,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "HOTÉIS",
+      "usos": 926,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "Restaurantes",
+      "usos": 323,
+      "ultimo_uso": "2025-07-27"
+    },
+    {
+      "nome": "SUPERMERCADO",
+      "usos": 305,
+      "ultimo_uso": "2026-09-30"
+    },
+    {
+      "nome": "Postos de Combustivel",
+      "usos": 238,
+      "ultimo_uso": "2026-07-18"
+    },
+    {
+      "nome": "DIVERSOS",
+      "usos": 210,
+      "ultimo_uso": "2026-10-02"
+    },
+    {
+      "nome": "EVERSON MIQUELINO",
+      "usos": 120,
+      "ultimo_uso": "2026-10-07"
+    },
+    {
+      "nome": "Oficina Mecanica",
+      "usos": 108,
+      "ultimo_uso": "2026-09-02"
+    },
+    {
+      "nome": "Materiais de Campo",
+      "usos": 106,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "MANUTENÇÃO VEÍCULOS",
+      "usos": 103,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "Loja de Ferragens",
+      "usos": 97,
+      "ultimo_uso": "2026-09-02"
+    },
+    {
+      "nome": "Hoteis",
+      "usos": 94,
+      "ultimo_uso": "2025-07-26"
+    },
+    {
+      "nome": "Loja de Ferragens/Diversos",
+      "usos": 72,
+      "ultimo_uso": "2026-09-04"
+    },
+    {
+      "nome": "PADARIA",
+      "usos": 57,
+      "ultimo_uso": "2026-09-24"
+    },
+    {
+      "nome": "BOM DIA SUPERMERCADOS",
+      "usos": 52,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "AUTO PEÇAS",
+      "usos": 44,
+      "ultimo_uso": "2026-09-25"
+    },
+    {
+      "nome": "LAVANDERIA DE ROUPAS",
+      "usos": 23,
+      "ultimo_uso": "2026-09-07"
+    },
+    {
+      "nome": "IMTRAFF CONSULTORIA E PROJETOS DE ENGENHARIA LTDA",
+      "usos": 22,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "SUPERBOM SUPERMERCADO",
+      "usos": 22,
+      "ultimo_uso": "2026-10-01"
+    },
+    {
+      "nome": "Diversos",
+      "usos": 20,
+      "ultimo_uso": "2026-06-25"
+    },
+    {
+      "nome": "Supermercados",
+      "usos": 14,
+      "ultimo_uso": "2026-07-08"
+    },
+    {
+      "nome": "Lavagem de Veículo",
+      "usos": 11,
+      "ultimo_uso": "2026-08-25"
+    },
+    {
+      "nome": "QUASAR SOLUÇÕES EM TRANSPORTES",
+      "usos": 11,
+      "ultimo_uso": "2026-10-08"
+    },
+    {
+      "nome": "POSTO GARANTIA",
+      "usos": 9,
+      "ultimo_uso": "2026-10-05"
+    },
+    {
+      "nome": "DELLA VIA PNEUS LTDA",
+      "usos": 8,
+      "ultimo_uso": "2025-12-09"
+    },
+    {
+      "nome": "MANUTENÇÃO FWD",
+      "usos": 8,
+      "ultimo_uso": "2026-01-06"
+    },
+    {
+      "nome": "PONTO SETE BEER LTDA",
+      "usos": 8,
+      "ultimo_uso": "2026-05-22"
+    },
+    {
+      "nome": "VIAGEM",
+      "usos": 8,
+      "ultimo_uso": "2026-07-26"
+    },
+    {
+      "nome": "FARMÁCIA",
+      "usos": 7,
+      "ultimo_uso": "2026-09-05"
+    },
+    {
+      "nome": "MIFER - Agro Comercial e Ferragens",
+      "usos": 7,
+      "ultimo_uso": "2026-08-23"
+    },
+    {
+      "nome": "Caespro Cálculo Estrutural e Projeto",
+      "usos": 6,
+      "ultimo_uso": "2026-06-08"
+    },
+    {
+      "nome": "GOSTINHO CASEIRO",
+      "usos": 5,
+      "ultimo_uso": "2026-02-07"
+    },
+    {
+      "nome": "LAVA JATO - TIAGO TOMAZ DA SILVA",
+      "usos": 5,
+      "ultimo_uso": "2026-07-17"
+    },
+    {
+      "nome": "MERCADO LIVRE",
+      "usos": 5,
+      "ultimo_uso": "2026-09-03"
+    },
+    {
+      "nome": "OFICINA PÉ NA TÁBUA",
+      "usos": 5,
+      "ultimo_uso": "2026-03-20"
+    },
+    {
+      "nome": "STRIPE BRASIL SOLUÇÕES DE PAGAMENTO LTDA",
+      "usos": 5,
+      "ultimo_uso": "2026-02-07"
+    },
+    {
+      "nome": "Teles de Souza Filhos Ltda",
+      "usos": 3,
+      "ultimo_uso": "2026-03-23"
+    },
+    {
+      "nome": "AGEU S LANCHES",
+      "usos": 2,
+      "ultimo_uso": "2026-08-24"
+    },
+    {
+      "nome": "AMAZON",
+      "usos": 2,
+      "ultimo_uso": "2025-12-29"
+    },
+    {
+      "nome": "AUTO TRATO RELÂMPAGO",
+      "usos": 2,
+      "ultimo_uso": "2026-01-03"
+    },
+    {
+      "nome": "CARDANS DO VALE COMERCIAL LTDA",
+      "usos": 2,
+      "ultimo_uso": "2025-10-23"
+    },
+    {
+      "nome": "Clinica Medica",
+      "usos": 2,
+      "ultimo_uso": "2025-01-15"
+    },
+    {
+      "nome": "RONALDO GALDINO",
+      "usos": 2,
+      "ultimo_uso": "2025-09-10"
+    },
+    {
+      "nome": "Seu Juca",
+      "usos": 2,
+      "ultimo_uso": "2026-09-27"
+    },
+    {
+      "nome": "BELLAVIA SUPERMERCADO",
+      "usos": 1,
+      "ultimo_uso": "2026-04-28"
+    },
+    {
+      "nome": "Bom Tempero Grill",
+      "usos": 1,
+      "ultimo_uso": "2026-02-01"
+    },
+    {
+      "nome": "Gostinho Caseiro",
+      "usos": 1,
+      "ultimo_uso": "2026-02-02"
+    },
+    {
+      "nome": "ISMAEL FREDERICO PEREIRA",
+      "usos": 1,
+      "ultimo_uso": "2026-08-22"
+    },
+    {
+      "nome": "MALETA - RESTAURANTE",
+      "usos": 1,
+      "ultimo_uso": "2025-12-03"
+    },
+    {
+      "nome": "NÃO IDENTIFICADO",
+      "usos": 1,
+      "ultimo_uso": "2025-06-07"
+    },
+    {
+      "nome": "SILVA PNEUS",
+      "usos": 1,
+      "ultimo_uso": "2026-03-11"
+    }
+  ]
+}
