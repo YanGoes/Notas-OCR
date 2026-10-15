@@ -35,7 +35,7 @@ Na primeira vez, rode `ATALHOS/01_INSTALAR_E_INICIAR.bat`. Ele instala o Node.js
 | --- | --- |
 | **02_ABRIR_APLICATIVO.bat** | **Coleta em segundo plano** (recomendado): bolinha perto do relógio do Windows, religa sozinha se cair |
 | **13_ABRIR_CENTRAL_REVISAO.bat** | Abre a Central de revisão. Com a coleta aberta, só abre o navegador |
-| **14_TREINAR_CENTRAL.bat** | Treina e mede a IA (planilha do Conta Azul + notas aprovadas) |
+| **14_TREINAR_CENTRAL.bat** | Treina e mede a IA (planilha do Conta Azul + notas aprovadas) e refaz as prévias ainda em revisão com o que ela aprendeu (as já corrigidas por você ficam como estão) |
 | 15_COLETAR_WHATSAPP.bat | A mesma coleta numa janela visível (útil para ver erros). Fechar a janela para a coleta |
 | 09 / 10 | Liga ou desliga a abertura automática com o Windows (em segundo plano) |
 | 11_GERAR_PACOTE_PARA_ENVIO.bat | Gera um `.zip` do projeto **sem** sessões, chaves, telefones e fotos |

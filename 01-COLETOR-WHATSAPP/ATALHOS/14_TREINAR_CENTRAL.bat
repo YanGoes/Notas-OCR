@@ -34,5 +34,10 @@ if errorlevel 1 (
 )
 
 echo.
+echo Atualizando as notas ainda em revisao com o que a IA sabe agora...
+rem So refaz as previas sem correcao humana: o que voce ja corrigiu fica como esta.
+powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3211/api/central/regerar-pendentes' -ContentType 'application/json' -Body '{}' -TimeoutSec 180; Write-Host ('Notas em revisao atualizadas: ' + $r.regeradas + '. As que voce ja corrigiu ficam como estao.') } catch { Write-Host 'A coleta esta fechada: abra-a e use o botao Refazer previas pendentes na Central.' }"
+
+echo.
 echo Treino concluido. O resultado e a maturidade aparecem na aba Treino da Central.
 pause
