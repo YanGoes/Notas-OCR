@@ -1,6 +1,6 @@
 # Assistente da Central (chatbot): especificação
 
-Data: 14/10/2026 · Situação: **aguardando a escolha do motor gratuito** · Nada foi construído ainda.
+Data: 14/10/2026 · Situação: **aprovada para construir** · Nada foi construído ainda.
 
 ## 1. Objetivo
 
@@ -53,24 +53,22 @@ Regras do lançamento:
 
 Ele não corrige notas, não aprova, não descarta e não muda cadastros. Para isso continua sendo a Central.
 
-## 4. Modelo de IA (sem custo de API)
+## 4. Motor: assinatura Claude da empresa (sem custo de API)
 
-Decisão de 14/10: **não pagar API**. O programa terá um "motor" trocável, escolhido na própria aba e salvo em `config.json`, para mudar de serviço sem refazer o assistente:
+Decisão de 15/10, seguindo a estrutura do assistente RodMac do Jhonathan (`D:\10-LuMac`, arquivos `calc/assistente_assinatura.py` e `calc/mcp_assistente.py`):
 
-| Motor | Custo | Onde a conversa é processada | Situação |
-| --- | --- | --- | --- |
-| **Gemini (Google AI Studio), plano gratuito** | grátis, com limite diário de uso | servidores do Google | candidato principal; confirmar com o Jhonathan se é o que ele usa |
-| **Modelo local (Ollama)** | grátis | neste computador; nada sai daqui | inviável neste PC agora (pouco disco livre e sem placa de vídeo dedicada); bom para o servidor futuro |
-| Claude (API da Anthropic) | pago por uso | servidores da Anthropic | fica disponível, desligado |
-
-- **Contador de uso na aba:** perguntas e tokens do mês, por pessoa. No plano gratuito, ao bater o limite diário do serviço, a aba avisa e volta a funcionar no dia seguinte.
-- **Atenção à privacidade no plano gratuito do Gemini:** nos planos gratuitos, o Google pode usar o conteúdo das conversas para melhorar os produtos dele. Por isso as ferramentas mandam só o necessário (totais, nomes de operadores e de projetos, fornecedores) e nunca telefones nem fotos.
+- O assistente roda o **Claude Code** já instalado neste PC, logado na conta da empresa (plano Pro). Não usa chave de API: consome o limite do plano, sem cobrança extra. As variáveis de chave são retiradas do ambiente do processo, para ele nunca cair na API paga.
+- Cada pergunta roda um `claude -p` com as ferramentas embutidas desligadas (`--tools ""`), só o servidor de ferramentas do programa (`--strict-mcp-config`) e as instruções do assistente no lugar do prompt padrão. A conversa continua com `--resume`.
+- **Servidor de ferramentas (MCP, stdio)** em Node, no próprio programa: as consultas da seção 3 rodam direto; o que grava (lançamento, sugestão) vira uma **proposta** que só executa com o botão **Confirmar** na tela.
+- A tela acompanha a resposta enquanto ela chega (texto, "consultando…", fim) e tem um botão **Parar**.
+- **Limite do plano:** quando acaba, a aba avisa "volta quando o limite renovar" e o resto do programa segue igual. Mostra quanto do limite de 5 horas e da semana já foi usado.
+- **Plano B (opcional, depois):** o serviço da empresa do Jhonathan (`http://192.168.1.2:8765`, chave paga com teto mensal), só com autorização dele.
 
 ## 5. Segurança e privacidade
 
-- A chave do serviço escolhido fica no `.env` (ex.: `GEMINI_API_KEY`), que nunca vai para o Git. Sem chave, a aba mostra como configurar e nada é enviado.
+- Nenhuma chave no programa: o login fica no Claude Code do PC. Sem login ou sem o Claude Code, a aba explica como resolver.
 - **Telefones nunca são enviados.** As ferramentas devolvem só nomes e, quando preciso, os 4 últimos dígitos.
-- O que vai para o serviço: a pergunta, as instruções do assistente e os resultados das ferramentas daquela conversa.
+- O que vai para a Anthropic (pela assinatura): a pergunta, as instruções do assistente e os resultados das ferramentas daquela conversa.
 - As conversas ficam no banco local da Central, que entra no backup diário.
 
 ## 6. Como fica no programa
@@ -78,7 +76,8 @@ Decisão de 14/10: **não pagar API**. O programa terá um "motor" trocável, es
 - `src/assistente/`:
   - `ferramentas.js`: cada ferramenta é uma função pura sobre o banco e os cadastros, fácil de testar;
   - `conversa.js`: ciclo de pergunta → ferramentas → resposta, igual para qualquer motor;
-  - `motores/`: um arquivo por serviço (gemini, ollama, anthropic) com a mesma interface;
+  - `assinatura.js`: roda o `claude -p`, lê os eventos (stream-json) e trata limite e login;
+  - `mcp.js`: servidor de ferramentas (initialize, tools/list, tools/call, ping) com a fila de propostas;
   - `uso.js`: contagem de perguntas e tokens por pessoa.
 - **Banco:** migração nova com as tabelas `assistente_conversas`, `assistente_mensagens`, `assistente_sugestoes` e `assistente_uso`.
 - **Rotas:** `/api/central/assistente/*` (enviar mensagem, histórico, sugestões, uso, modelo, confirmar lançamento).
@@ -102,5 +101,5 @@ Acesso pelo WhatsApp ou pela rede, voz, edição de notas pelo chat, relatórios
 ## 9. Decisões
 
 1. **Confirmam lançamentos no botão:** Yan, Jhonathan e Vanessa. O Cauã só consulta.
-2. **Sem custo de API:** motor gratuito (seção 4). Falta confirmar qual serviço o Jhonathan usa no chatbot dele.
+2. **Sem custo de API:** assinatura Claude da empresa via Claude Code, igual ao RodMac (seção 4).
 3. **Relatórios de meses anteriores:** usam a planilha do Conta Azul (`visao_contas_a_pagar`), com a fonte indicada em cada número.

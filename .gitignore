@@ -76,3 +76,7 @@ configuracao/pessoas.json
 *.db
 *.db-wal
 *.db-shm
+
+# Exportacoes do Conta Azul (dados financeiros)
+visao_contas_a_pagar*
+*.pdf

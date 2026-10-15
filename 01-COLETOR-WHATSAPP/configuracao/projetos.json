@@ -230,11 +230,10 @@
     {
       "nome_oficial": "CTVM-IRI-ATR-IGG HOUER MT - ROTA DO PEQUI",
       "id_sistema_projetos": 43,
-      "centro_conta_azul": null,
+      "centro_conta_azul": "CTVM - LP/SN - HOUER / YVY - ROTA DO PEQUI",
       "id_conta_azul": null,
       "ativo": true,
       "servico": "IRI",
-      "busca_centro_conta_azul": "rota do pequi",
       "apelidos": [
         "Rota do Pequi"
       ],
@@ -252,7 +251,7 @@
     {
       "nome_oficial": "IMTRAFF CICLO II MT",
       "id_sistema_projetos": null,
-      "centro_conta_azul": null,
+      "centro_conta_azul": "CTVM - LP - IMTRAFF CICLO II - MT",
       "id_conta_azul": null,
       "ativo": true,
       "servico": "VDROD",
