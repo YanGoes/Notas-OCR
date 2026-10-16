@@ -288,7 +288,15 @@ async function principal() {
             const l = achado && !achado.ambiguo ? achado : null;
             const indice = l ? lancamentos.indexOf(l) : null;
             if (l) usados.add(indice);
-            else placar.sem_lancamento += 1;
+            else {
+                // Sem o lancamento nao ha como montar a mensagem no padrao (tipo,
+                // pessoas, centro, cartao): a foto nao entra no grupo de treino.
+                placar.sem_lancamento += 1;
+                registro.fotos[foto.caminho] = { data_pasta: foto.data_pasta, operador: foto.operador, ignorada: "sem lançamento no Conta Azul", em: agora() };
+                fs.writeFileSync(REGISTRO, JSON.stringify(registro, null, 2), "utf8");
+                console.log(`${foto.data_pasta} ${foto.operador} · sem lançamento no Conta Azul: não entrou no treino`);
+                continue;
+            }
 
             const pessoa = cad.pessoas.find((p) => normalizar(p.nome) === normalizar(foto.operador)) || null;
             const remetente = `historico:${normalizar(foto.operador).replace(/\s+/g, "_")}`;
