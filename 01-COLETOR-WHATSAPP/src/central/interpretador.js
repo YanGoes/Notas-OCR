@@ -45,7 +45,8 @@ const TIPOS_TEXTO = [
     { tipo: "ALMOCO", termos: ["almoco", "almocos"] },
     { tipo: "JANTAR", termos: ["jantar", "janta", "jantas", "jantares"] },
     { tipo: "LANCHE", termos: ["lanche", "lanches"] },
-    { tipo: "ABASTECIMENTO", termos: ["abastecimento", "abastecimentos", "combustivel", "gasolina", "etanol", "diesel"] },
+    { tipo: "ABASTECIMENTO", termos: ["abastecimento", "abastecimentos", "combustivel", "gasolina", "etanol", "diesel", "gerador"] },
+    { tipo: "AGUA", termos: ["agua", "aguas", "agua mineral", "fardo de agua"] },
     { tipo: "HOSPEDAGEM", termos: ["hospedagem", "hospedagens", "hotel", "hoteis", "pousada", "diaria", "diarias"] },
     { tipo: "PEDAGIO", termos: ["pedagio", "pedagios"] },
     { tipo: "ESTACIONAMENTO", termos: ["estacionamento", "estacionamentos"] },
@@ -192,6 +193,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
             continue;
         }
 
+        if (contemTermo(linha, "gerador")) dados.gerador = true;
         if (RE_REEMBOLSO.test(linha)) {
             dados.reembolso = true;
             dados.reembolso_texto = [dados.reembolso_texto, linha].filter(Boolean).join(" / ");
@@ -293,6 +295,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
         const tipoComNumero = tipoNumero && normalizar(tipoNumero[1]).split(" ").length <= 4 ? tipoDoTexto(tipoNumero[1]) : null;
         if (tipoComNumero) {
             if (!dados.tipos.includes(tipoComNumero)) dados.tipos.push(tipoComNumero);
+            if (tipoComNumero === "AGUA") dados.quantidade_agua = Number(tipoNumero[2]);
             if (TIPOS_COM_PESSOAS.has(tipoComNumero)) {
                 dados.pessoas = { quantidade: Number(tipoNumero[2]), tipo: tipoComNumero, semantica: "PESSOAS", origem: "texto" };
             }

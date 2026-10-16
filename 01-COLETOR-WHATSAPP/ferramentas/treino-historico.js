@@ -112,9 +112,11 @@ function legendaDoLancamento(l) {
     const descricao = String(l.descricao || "");
     const fornecedor = normalizar(l.fornecedor || "");
     const pessoas = (descricao.match(/(\d{1,2})\s*pessoas?/i) || [])[1];
+    const categoria = normalizar(l.categoria || "");
+    if (categoria === "gerador" || /gerador/i.test(descricao)) return "Gerador";
+    if (categoria === "agua") return "Água";
     if (/posto|combust/.test(fornecedor) || /\d+[,.]?\d*\s*l(t|itros)?\b.*\bod\b/i.test(descricao)) return "Abastecimento";
     if (/hote|pousada|hosped/.test(fornecedor) || /hosped/i.test(descricao)) return pessoas ? `Hospedagem ${pessoas}` : "Hospedagem";
-    const categoria = normalizar(l.categoria || "");
     if (/pedag/.test(categoria) || /pedag/i.test(descricao)) return "Pedágio";
     if (/estacionamento/.test(categoria)) return "Estacionamento";
     if (/manuten|oficina|auto pecas/.test(fornecedor) || /^manuten/.test(categoria)) {
@@ -143,6 +145,8 @@ function resumoDoDia(dataNota, l) {
 // Comparacao IA x Conta Azul
 // ---------------------------------------------------------------------------
 
+/** Mesma placa nos dois nomes = mesmo veiculo ("Combustivel OVN-1505" = "ETIOS - OVN1505"). */
+const placaNoNome = (nome) => (String(nome || "").toUpperCase().replace(/[\s-]/g, "").match(/[A-Z]{3}\d[A-Z0-9]\d{2}/) || [])[0] || null;
 const igual = (a, b) => normalizar(String(a ?? "")).replace(/\s+/g, " ") === normalizar(String(b ?? "")).replace(/\s+/g, " ");
 
 function comparar(despesa, l) {
@@ -151,7 +155,8 @@ function comparar(despesa, l) {
     const conferir = (campo, ia, certo) => { if (certo != null && certo !== "" && !igual(ia, certo)) diferencas.push({ campo, ia: ia ?? null, conta_azul: certo }); };
     conferir("valor", c.valor?.valor != null ? Number(c.valor.valor).toFixed(2) : null, Math.abs(l.valor).toFixed(2));
     conferir("data_competencia", c.data_competencia?.valor, l.data);
-    conferir("categoria", c.categoria?.nome, l.categoria);
+    const mesmaPlaca = placaNoNome(c.categoria?.nome) && placaNoNome(c.categoria?.nome) === placaNoNome(l.categoria) && !/manuten/i.test(`${c.categoria?.nome} ${l.categoria}`);
+    if (!mesmaPlaca) conferir("categoria", c.categoria?.nome, l.categoria);
     conferir("centro_custo", c.centro_custo?.nome, l.centro);
     conferir("fornecedor", c.fornecedor?.valor, l.fornecedor);
     return diferencas;
@@ -239,7 +244,14 @@ async function principal() {
     const opcoes = argumentos();
     if (opcoes.recomparar) { recomparar(opcoes); return; }
     const registro = lerJson(fs.existsSync(REGISTRO) ? fs.readFileSync(REGISTRO, "utf8") : null, { fotos: {} });
-    const fotos = fotosDoDrive(opcoes).filter((f) => !registro.fotos[f.caminho]);
+    let fotos = fotosDoDrive(opcoes).filter((f) => !registro.fotos[f.caminho]);
+    if (opcoes.categoria) {
+        const alvo = new Set(String(opcoes.categoria).split(",").map((c) => normalizar(c)));
+        const todos = lerJson(fs.readFileSync(path.join(RAIZ, "dados", "aprendizado", "lancamentos-conta-azul.json"), "utf8"), {}).lancamentos || [];
+        const dias = new Set(todos.filter((l) => alvo.has(normalizar(l.categoria || ""))).map((l) => l.data));
+        fotos = fotos.filter((f) => dias.has(f.data_pasta));
+        console.log(`${dias.size} dia(s) com lançamento de ${opcoes.categoria} no Conta Azul.`);
+    }
     const lote = fotos.slice(0, opcoes.max);
     console.log(`${fotos.length} foto(s) ainda não usadas no treino${opcoes.operador ? ` de ${opcoes.operador}` : ""}. Lote: ${lote.length}.`);
     if (!opcoes.executar) {

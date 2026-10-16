@@ -30,3 +30,10 @@ test("legenda e resumo no padrao combinado", () => {
     assert.equal(h.resumoDoDia("2026-09-10", LANCAMENTOS[1]), "Despesas 10/09/2026\nCentro de custo: IMTRAFF - MT FWD\nCartão: BB - Crédito");
     assert.equal(h.cartaoDaConta("Nubank - Conta Corrente"), null, "conta sem cartao cadastrado: nao inventa");
 });
+
+test("legenda de gerador e agua; mesmo veiculo com nomes diferentes nao e divergencia", () => {
+    assert.equal(h.legendaDoLancamento({ fornecedor: "POSTOS DE COMBUSTÍVEL", categoria: "GERADOR", descricao: "GERADOR - 10.19L" }), "Gerador");
+    assert.equal(h.legendaDoLancamento({ fornecedor: "RESTAURANTES", categoria: "Água", descricao: "AGUA" }), "Água");
+    const despesa = { campos: { valor: { valor: 10 }, data_competencia: { valor: "2026-09-01" }, categoria: { nome: "ETIOS - OVN1505" }, centro_custo: { nome: "X" }, fornecedor: { valor: "P" } } };
+    assert.deepEqual(h.comparar(despesa, { valor: -10, data: "2026-09-01", categoria: "Combustivel OVN-1505", centro: "X", fornecedor: "P" }), []);
+});

@@ -32,6 +32,8 @@ const TIPOS = Object.freeze({
     ESTACIONAMENTO: { rotulo: "ESTACIONAMENTO", categoria: "ESTACIONAMENTO" },
     // Manutencao de veiculo: categoria de manutencao do proprio veiculo (pela placa) ou a geral.
     MANUTENCAO: { rotulo: "MANUTENÇÃO", categoria: "MANUTENCAO" },
+    // Agua mineral (nota so de agua): categoria "Água" do Conta Azul, com a quantidade.
+    AGUA: { rotulo: "ÁGUA", categoria: "AGUA" },
     MERCADO: { rotulo: "MERCADO", categoria: null },
     OUTROS: { rotulo: "OUTROS", categoria: null },
 });
@@ -144,6 +146,7 @@ function tipoPelaNota(ocr) {
     // Azure as vezes classifica qualquer nota de varejo como refeicao.
     if (ehMaterialDeCampo(estabelecimento, itens)) return { tipo: "OUTROS", origem: "material_de_campo", material: true };
     if (OFICINAS.some((termo) => contemTermo(estabelecimento, termo))) return { tipo: "MANUTENCAO", origem: "estabelecimento_da_nota" };
+    if (itensSoDeAgua(ocr)) return { tipo: "AGUA", origem: "itens_da_nota" };
     if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo)) || ocr?.tipo_despesa_sugerido === "alimentacao") {
         return { tipo: "REFEICAO", origem: "estabelecimento_da_nota" };
     }
@@ -382,7 +385,9 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     // Material de campo (ferragens, parafuso, cola de contato...): fornecedor generico "Materiais de Campo".
     const itensDaNota = (ocr?.itens || []).map((item) => item.descricao).filter(Boolean);
     const material = tipo === "OUTROS" && (decisaoTipo.material || legenda?.material || ehMaterialDeCampo(textoDoEstabelecimento(ocr), itensDaNota.join(" ")));
-    const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, material ? "MATERIAL_DE_CAMPO" : tipo);
+    // Agua: o fornecedor e o do lugar onde foi comprada (restaurante, mercado, posto).
+    const tipoDoFornecedor = material ? "MATERIAL_DE_CAMPO" : tipo === "AGUA" ? tipoDoEstabelecimento(ocr) : tipo;
+    const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, tipoDoFornecedor);
     campos.fornecedor = { valor: fornecedor.nome, origem: fornecedor.origem, nome_lido: fornecedor.nome_lido || ocr?.fornecedor || null, cnpj_lido: ocr?.cnpj || null };
     if (ocr && !fornecedor.nome) pendencias.push("Fornecedor não foi lido na nota.");
 
@@ -510,6 +515,26 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         if (peca) descricao = { valor: String(peca).replace(/\s+/g, " ").trim().toUpperCase(), origem: legenda?.observacoes?.length ? "mensagem_da_foto" : "itens_da_nota" };
     }
 
+    if (tipo === "AGUA") {
+        const quantidade = Number(legenda?.quantidade_agua) || quantidadeDeAgua(ocr);
+        if (!descricao) descricao = { valor: quantidade ? `ÁGUA - ${quantidade} ${quantidade === 1 ? "UNIDADE" : "UNIDADES"}` : "ÁGUA", origem: "template_agua" };
+    }
+    // Gerador: "gerador" na mensagem, ou ate 12 L sem placa e sem hodometro
+    // (gerador nao tem placa nem hodometro; orientacao do Yan, 16/10/2026).
+    if (tipo === "ABASTECIMENTO" && campos.abastecimento && categoria?.origem !== "regra_especial") {
+        const ab = campos.abastecimento;
+        const ditoGerador = Boolean(legenda?.gerador) || contemTermo([legenda?.texto, ...(legenda?.observacoes || []), ...(lote?.observacoes || [])].join(" "), "gerador");
+        const litrosDeGerador = Number(ab.litros?.valor) > 0 && Number(ab.litros.valor) <= LITROS_MAXIMO_GERADOR && !ab.placa?.valor && !ab.odometro?.valor;
+        if (ditoGerador || litrosDeGerador) {
+            const gerador = categoriaLivre(cad, "GERADOR");
+            categoria = { nome: gerador.nome || "GERADOR", id: gerador.id, origem: ditoGerador ? "mensagem_da_foto" : "litros_de_gerador" };
+            sugestaoCategoria = null;
+            descricao = { valor: ab.litros?.valor ? `GERADOR - ${litrosBr(ab.litros.valor)}L` : "GERADOR", origem: "template_gerador" };
+            campos.placa_veiculo = { valor: null };
+            for (let i = pendencias.length - 1; i >= 0; i -= 1) if (/^(Abastecimento sem|Placa|Veículo|Hodômetro)/.test(pendencias[i])) pendencias.splice(i, 1);
+            if (!ditoGerador) avisos.push(`${litrosBr(ab.litros.valor)} L sem placa e sem hodômetro: classificado como gerador.`);
+        }
+    }
     if (!categoria && material) {
         const encontrada = cadastros.categoriaPorNome(cad, "MATERIAL DE CAMPO");
         categoria = encontrada ? { ...encontrada, origem: "material_de_campo" } : null;
@@ -696,6 +721,29 @@ function montarObservacao({ legenda, pagamento }) {
     }
     for (const obs of legenda?.obs_rotuladas || []) if (!partes.some((p) => p.includes(obs))) partes.push(obs);
     return partes.length ? partes.join(". ").slice(0, 500) : null;
+}
+
+const LITROS_MAXIMO_GERADOR = 12;
+const ehItemDeAgua = (descricao) => /\bagua\b/.test(normalizar(descricao || "")) && !/\bcoco\b|\btonica\b|\bsaborizada\b/.test(normalizar(descricao || ""));
+
+/** Nota em que TODOS os itens sao agua mineral. */
+function itensSoDeAgua(ocr) {
+    const itens = (ocr?.itens || []).filter((item) => item.descricao);
+    return itens.length > 0 && itens.every((item) => ehItemDeAgua(item.descricao));
+}
+
+function quantidadeDeAgua(ocr) {
+    const total = (ocr?.itens || []).filter((item) => ehItemDeAgua(item.descricao))
+        .reduce((soma, item) => soma + (Number.isInteger(Number(item.quantidade)) && Number(item.quantidade) > 0 ? Number(item.quantidade) : 1), 0);
+    return total || null;
+}
+
+/** Tipo do lugar da compra, so para escolher o fornecedor generico. */
+function tipoDoEstabelecimento(ocr) {
+    const estabelecimento = textoDoEstabelecimento(ocr);
+    if (contemTermo(estabelecimento, "posto") || COMBUSTIVEIS.some((termo) => contemTermo(estabelecimento, termo))) return "ABASTECIMENTO";
+    if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo))) return "REFEICAO";
+    return null;
 }
 
 const TIPOS_COM_NOTA_PROPRIA = ["ABASTECIMENTO", "HOSPEDAGEM", "PEDAGIO", "ESTACIONAMENTO"];

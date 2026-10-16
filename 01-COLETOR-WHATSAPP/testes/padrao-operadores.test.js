@@ -339,3 +339,33 @@ test("concessionaria de rodovia na nota e pedagio, nao refeicao", () => {
         legenda: legenda("PEDAGIOS").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(previa.campos.tipo.valor, "PEDAGIO");
 });
+
+// --- Agua e gerador (orientacao do Yan, 16/10/2026) ------------------------------
+
+const CAD_AGUA_GERADOR = () => ({ ...cadastros(), categorias: [...cadastros().categorias, { nome: "Água", nome_conta_azul: "Água", id: null }, { nome: "GERADOR", nome_conta_azul: "GERADOR", id: null }],
+    fornecedores: { recorrentes: [], fornecedor_generico_mercado: "SUPERMERCADO", genericos_por_tipo: { ABASTECIMENTO: "POSTOS DE COMBUSTÍVEL", REFEICAO: "RESTAURANTES" } } });
+
+test("agua: nota so de agua vira categoria Agua com a quantidade na descricao", () => {
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-09-21", valor: 18, fornecedor: "SUPERMERCADO BOM PRECO", confianca: 0.99,
+        itens: [{ descricao: "AGUA MINERAL 500ML", quantidade: 6 }] }, legenda: {}, cad: CAD_AGUA_GERADOR(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.tipo.valor, "AGUA");
+    assert.equal(previa.campos.categoria.nome, "Água");
+    assert.equal(previa.campos.descricao.valor, "ÁGUA - 6 UNIDADES");
+    assert.equal(previa.campos.fornecedor.valor, "SUPERMERCADO");
+    const legendaAgua = interpretar(CAD_AGUA_GERADOR(), { texto: "Água 12", temMidia: true }).dados;
+    assert.deepEqual(legendaAgua.tipos, ["AGUA"]);
+    assert.equal(legendaAgua.quantidade_agua, 12);
+});
+
+test("gerador: ate 12 L sem placa nem hodometro, ou quando a mensagem diz gerador", () => {
+    const posto = (extra) => ({ data: "2026-09-26", valor: 62.96, fornecedor: "AUTO POSTO X", confianca: 0.99, litragem: 10.01, itens: [{ descricao: "GASOLINA COMUM" }], ...extra });
+    const semPlaca = regrasVmac.montarPrevia({ ocr: posto({}), legenda: { tipos: ["ABASTECIMENTO"] }, cad: CAD_AGUA_GERADOR(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(semPlaca.campos.categoria.nome, "GERADOR");
+    assert.equal(semPlaca.campos.descricao.valor, "GERADOR - 10,01L");
+    assert.ok(!semPlaca.pendencias.some((p) => /placa|hodômetro/i.test(p)), "gerador nao tem placa nem hodometro");
+    const dito = regrasVmac.montarPrevia({ ocr: posto({ litragem: 16.24, valor: 111.08 }), legenda: interpretar(CAD_AGUA_GERADOR(), { texto: "Gerador", temMidia: true }).dados,
+        cad: CAD_AGUA_GERADOR(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(dito.campos.categoria.nome, "GERADOR");
+    const carro = regrasVmac.montarPrevia({ ocr: posto({ placa: "SGR4B54", odometro: 145225 }), legenda: { tipos: ["ABASTECIMENTO"] }, cad: CAD_AGUA_GERADOR(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.notEqual(carro.campos.categoria.nome, "GERADOR", "com placa e hodometro e veiculo");
+});
