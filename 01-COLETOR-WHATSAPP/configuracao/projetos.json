@@ -11,12 +11,13 @@
       "apelidos": [
         "DESPESAS ADMINISTRATIVAS",
         "Escritório Santa Branca",
-        "Escritorio Santa Branca",
         "Santa Branca",
         "Escritório",
         "Administrativo",
         "VMAC LP DESPESAS ADMINISTRATIVAS",
-        "LP administrativo"
+        "LP administrativo",
+        "ADM",
+        "VMAC ADM"
       ],
       "_nota": "Centro administrativo PADRAO (sede em Santa Branca, escritorio). Despesa administrativa: refeicao e mercado em 'Lanches e Refeições'; o resto segue a regra do tipo (nao existe OUTROS no Conta Azul)."
     },

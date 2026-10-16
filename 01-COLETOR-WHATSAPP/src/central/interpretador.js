@@ -82,6 +82,8 @@ const RE_PERIODO = /(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s*(?:a|ao|at[eé])\s*(?:o\s
 // Separador de partes na mesma linha: "Almoço 3 - Pix Murilo".
 const RE_SEPARADOR = /\s+[-–—]\s+/;
 const RE_SEM_COMPROVANTE = /\b(perdi|perdeu|sem)\s+(a\s+)?(nota|notinha|comprovante|cupom|recibo)\b|\bnota\s+perdida\b/i;
+// Pago pelo proprio operador (vai para a observacao do lancamento, para reembolsar).
+const RE_REEMBOLSO = /\b(reembols\w*|ressarc\w*|do\s+(meu\s+|proprio\s+|próprio\s+)?bolso|paguei|pago\s+por\s+mim|meu\s+cart[aã]o|cart[aã]o\s+pessoal|minha\s+conta|dinheiro\s+pr[oó]prio)\b/i;
 
 /** "08/10" sem ano: usa o ano da mensagem (ex.: nota de dezembro mandada em janeiro = ano anterior). */
 function dataComAno(texto, referencia) {
@@ -180,6 +182,12 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
             continue;
         }
 
+        if (RE_REEMBOLSO.test(linha)) {
+            dados.reembolso = true;
+            dados.reembolso_texto = [dados.reembolso_texto, linha].filter(Boolean).join(" / ");
+            if (/^\s*(reembols\w*|ressarc\w*)\s*[:.!-]?\s*$/i.test(linha)) continue;
+        }
+
         if (RE_SEM_COMPROVANTE.test(linha)) {
             dados.sem_comprovante = true;
             if (!normalizar(linha.replace(RE_SEM_COMPROVANTE, ""))) continue;
@@ -211,7 +219,11 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
         const obs = linha.match(RE_OBS);
         if (obs) {
             const conteudo = obs[1].trim();
-            if (conteudo && !/^s\s*\/?\s*a$/i.test(conteudo)) dados.observacoes.push(conteudo);
+            if (conteudo && !/^s\s*\/?\s*a$/i.test(conteudo)) {
+                dados.observacoes.push(conteudo);
+                // "Obs:" escrito pelo operador tambem vai para a observacao do lancamento.
+                dados.obs_rotuladas = [...(dados.obs_rotuladas || []), conteudo];
+            }
             continue;
         }
 

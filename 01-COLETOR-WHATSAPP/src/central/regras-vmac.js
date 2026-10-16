@@ -613,6 +613,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         pagamento = { forma: declaradoPag.forma, cartao: declaradoPag.cartao, origem: origemDeclarado, conflito_com_politica: politica };
     } else if (declaradoPag) {
         pagamento = { forma: declaradoPag.forma, cartao: declaradoPag.cartao, origem: origemDeclarado };
+        if (declaradoPag.pagador) pagamento.pagador = declaradoPag.pagador;
         if (!declaradoPag.cartao && politica?.cartao) avisos.push(`Pagamento excepcional declarado (${declaradoPag.rotulo}) num projeto com orientação de cartão ${politica.cartao}.`);
     } else if (politica?.cartao) {
         const cartao = cad.cartoes.find((item) => item.codigo === politica.cartao);
@@ -624,6 +625,13 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         pagamento.conta_id = cartao?.conta_conta_azul_id || null;
     }
     campos.pagamento = pagamento || { forma: null, cartao: null, origem: null };
+
+    // Observacao do lancamento (opcional): reembolso, pagamento fora do cartao
+    // da empresa e "Obs:" do operador. Vai para o campo observacao no Conta Azul.
+    campos.observacao = { valor: montarObservacao({ legenda, pagamento: campos.pagamento }), origem: "mensagem" };
+    if (!campos.observacao.valor) campos.observacao.origem = null;
+    if (legenda?.reembolso) avisos.push("Operador indica que pagou do próprio bolso: reembolso anotado na observação.");
+
     if (!pagamento) {
         const impresso = ocr?.forma_pagamento ? ` (o cupom indica ${ocr.forma_pagamento}, mas isso não decide)` : "";
         // Cartao de costume do operador: so SUGESTAO (quem decide e a mensagem ou a gerencia).
@@ -656,6 +664,19 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         avisos: [...new Set(avisos)],
         estado: pendencias.length ? "AGUARDANDO_REVISAO" : "CLASSIFICADO",
     };
+}
+
+const ROTULO_FORMA = { PIX: "PIX", DINHEIRO: "dinheiro", CARTAO_DEBITO: "cartão de débito", CARTAO_CREDITO: "cartão de crédito" };
+
+function montarObservacao({ legenda, pagamento }) {
+    const partes = [];
+    if (legenda?.reembolso) partes.push(`REEMBOLSO ao operador: ${legenda.reembolso_texto || "pago do próprio bolso"}`);
+    if (pagamento && !pagamento.cartao && pagamento.forma && pagamento.forma !== "CARTAO_CREDITO") {
+        const quem = pagamento.pagador ? ` (${pagamento.pagador})` : "";
+        partes.push(`Pago via ${ROTULO_FORMA[pagamento.forma] || pagamento.forma}${quem}, fora do cartão da empresa${legenda?.reembolso ? "" : " — conferir reembolso"}`);
+    }
+    for (const obs of legenda?.obs_rotuladas || []) if (!partes.some((p) => p.includes(obs))) partes.push(obs);
+    return partes.length ? partes.join(". ").slice(0, 500) : null;
 }
 
 const TIPOS_COM_NOTA_PROPRIA = ["ABASTECIMENTO", "HOSPEDAGEM", "PEDAGIO", "ESTACIONAMENTO"];

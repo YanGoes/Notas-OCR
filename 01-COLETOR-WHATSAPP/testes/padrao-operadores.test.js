@@ -285,3 +285,23 @@ test("o padrao de um operador nunca vale para outro", () => {
     const outro = orquestrador.lerDespesa(db, fotoEm(db, cad, { id: "c2", remetente: VANESSA, legendaFoto: "Janta", data: "2026-10-14", hora: "20:05" }));
     assert.notEqual(outro.campos.pessoas.origem, "pessoas_do_mesmo_dia");
 });
+
+// --- Observacao / reembolso -----------------------------------------------------
+
+test("'paguei do bolso' marca reembolso e vira observacao da nota", () => {
+    const { dados } = legenda("Almoço 2 - Paguei do meu bolso, reembolsar");
+    assert.equal(dados.reembolso, true);
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 50, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.match(previa.campos.observacao.valor, /REEMBOLSO/);
+    assert.match(previa.campos.observacao.valor, /bolso/i);
+});
+
+test("Pix com pagador vira observacao; nota no cartao do dia fica sem observacao", () => {
+    const pix = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 50, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: legenda("Almoço 3 - Pix Murilo").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.match(pix.campos.observacao.valor, /PIX.*Murilo/i);
+    const cartao = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 50, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: legenda("Almoço 3 - Cartão C6").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(cartao.campos.observacao.valor, null);
+});

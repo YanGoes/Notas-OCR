@@ -4,13 +4,36 @@
     "rotulo": "CRÉDITO INTER",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
-    "apelidos": ["credito inter", "cartao inter", "inter"]
+    "apelidos": [
+      "credito inter",
+      "cartao inter",
+      "inter"
+    ]
   },
   {
     "codigo": "C6",
     "rotulo": "CRÉDITO C6",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
-    "apelidos": ["credito c6", "cartao c6", "c6"]
+    "apelidos": [
+      "credito c6",
+      "cartao c6",
+      "c6"
+    ]
+  },
+  {
+    "codigo": "BB",
+    "rotulo": "CRÉDITO BB",
+    "forma_pagamento": "CARTAO_CREDITO",
+    "conta_conta_azul_id": null,
+    "apelidos": [
+      "credito bb",
+      "cartao bb",
+      "bb credito",
+      "bb - credito",
+      "banco do brasil",
+      "cartao banco do brasil",
+      "bb"
+    ]
   }
 ]

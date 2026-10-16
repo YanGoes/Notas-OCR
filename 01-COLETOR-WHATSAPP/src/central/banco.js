@@ -193,6 +193,48 @@ const MIGRACOES = [
     `
     ALTER TABLE correcoes ADD COLUMN observacao TEXT;
     `,
+    // 5 — Assistente da Central (chat): conversas, mensagens, sugestoes de
+    // melhoria e propostas que so executam com o Confirmar de uma pessoa.
+    `
+    CREATE TABLE assistente_conversas (
+        id INTEGER PRIMARY KEY,
+        pessoa TEXT NOT NULL,
+        titulo TEXT,
+        sessao TEXT,
+        criada_em TEXT NOT NULL,
+        atualizada_em TEXT NOT NULL
+    );
+    CREATE TABLE assistente_mensagens (
+        id INTEGER PRIMARY KEY,
+        conversa_id INTEGER NOT NULL REFERENCES assistente_conversas(id),
+        papel TEXT NOT NULL,
+        texto TEXT NOT NULL,
+        dados TEXT,
+        em TEXT NOT NULL
+    );
+    CREATE TABLE assistente_sugestoes (
+        id INTEGER PRIMARY KEY,
+        pessoa TEXT NOT NULL,
+        texto TEXT NOT NULL,
+        tipo TEXT,
+        status TEXT NOT NULL DEFAULT 'NOVA',
+        conversa_id INTEGER,
+        em TEXT NOT NULL
+    );
+    CREATE TABLE assistente_propostas (
+        id INTEGER PRIMARY KEY,
+        conversa_id INTEGER NOT NULL REFERENCES assistente_conversas(id),
+        ferramenta TEXT NOT NULL,
+        parametros TEXT NOT NULL,
+        resumo TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDENTE',
+        pedida_por TEXT NOT NULL,
+        decidida_por TEXT,
+        resultado TEXT,
+        em TEXT NOT NULL,
+        decidida_em TEXT
+    );
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }
