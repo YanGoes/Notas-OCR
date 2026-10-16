@@ -1,13 +1,13 @@
 {
   "_leia_me": "Gerado por ferramentas/importar-catalogo-conta-azul.js a partir da exportação do Conta Azul. Não edite à mão: exporte de novo e rode a ferramenta.",
-  "gerado_em": "2026-10-15T03:35:37.188Z",
+  "gerado_em": "2026-10-16T03:27:49.556Z",
   "fonte": "visao_contas_a_pagar (3).xlsx",
   "lancamentos": 14073,
   "centros": [
     {
       "nome": "DESPESAS ADMINISTRATIVAS",
       "usos": 4922,
-      "ultimo_uso": "2026-10-15"
+      "ultimo_uso": "2026-10-16"
     },
     {
       "nome": "53.655.381/0001-03",
@@ -574,7 +574,7 @@
     {
       "nome": "Software / Licença de Uso",
       "usos": 72,
-      "ultimo_uso": "2026-10-10"
+      "ultimo_uso": "2026-10-16"
     },
     {
       "nome": "Combustivel REP-7B39",

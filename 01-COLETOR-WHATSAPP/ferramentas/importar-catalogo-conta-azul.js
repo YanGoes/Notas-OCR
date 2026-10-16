@@ -39,7 +39,7 @@ async function lerCatalogo(planilha, { hoje = new Date() } = {}) {
     const colunas = { data: coluna("Data de competência"), fornecedor: coluna("Nome do fornecedor"), categoria: coluna("Categoria 1"), centro: coluna("Centro de Custo 1") };
     const opcional = (nome) => cabecalho.indexOf(nome);
     const extras = { valor: opcional("Valor na Categoria 1"), valorParcela: opcional("Valor original da parcela (R$)"), descricao: opcional("Descrição"),
-        referencia: opcional("Código de referência"), situacao: opcional("Situação"), forma: opcional("Forma de pagamento") };
+        referencia: opcional("Código de referência"), situacao: opcional("Situação"), forma: opcional("Forma de pagamento"), conta: opcional("Conta bancária") };
     const lancamentos = [];
     const paraNumero = (valor) => {
         if (typeof valor === "number") return valor;
@@ -72,7 +72,7 @@ async function lerCatalogo(planilha, { hoje = new Date() } = {}) {
             data, valor: paraNumero(celula(linha, extras.valor)) || paraNumero(celula(linha, extras.valorParcela)),
             fornecedor: texto(linha.getCell(colunas.fornecedor).value), categoria: texto(linha.getCell(colunas.categoria).value),
             centro: texto(linha.getCell(colunas.centro).value), descricao: texto(celula(linha, extras.descricao)),
-            referencia: texto(celula(linha, extras.referencia)), situacao: texto(celula(linha, extras.situacao)), forma: texto(celula(linha, extras.forma)),
+            referencia: texto(celula(linha, extras.referencia)), situacao: texto(celula(linha, extras.situacao)), forma: texto(celula(linha, extras.forma)), conta: texto(celula(linha, extras.conta)),
         });
     });
     const ordenar = (mapa) => [...mapa.values()].sort((a, b) => b.usos - a.usos || a.nome.localeCompare(b.nome, "pt-BR"));

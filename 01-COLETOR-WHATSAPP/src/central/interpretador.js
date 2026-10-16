@@ -132,6 +132,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
         sem_comprovante: false, placa: null, litros: null, odometro: null, linhas_nao_entendidas: [],
     };
     const linhas = [];
+    let proximaInteira = false;
     for (const bruta of String(texto || "").split(/\r?\n/)) {
         let linha = bruta.trim();
         if (RE_PREFIXO_CORRECAO.test(linha)) {
@@ -147,6 +148,14 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
                 dados.periodo = { de, ate };
                 continue;
             }
+        }
+        // Nome de centro tem " - " ("IMTRAFF - MT FWD"): linha rotulada, linha logo
+        // depois de "Centro de custo" sozinho ou nome igual a um projeto vai inteira.
+        const rotuloCentro = linha.match(RE_ROTULO_CENTRO);
+        if (rotuloCentro || proximaInteira || RE_PAGAMENTO.test(linha) || RE_OBS.test(linha) || cadastros.pareceProjeto(cad, linha, pessoa)) {
+            linhas.push(linha);
+            proximaInteira = Boolean(rotuloCentro && !rotuloCentro[1].trim());
+            continue;
         }
         // "Almoço 3 - Pix Murilo": cada parte e lida como uma linha.
         linhas.push(...linha.split(RE_SEPARADOR).map((parte) => parte.trim()).filter(Boolean));

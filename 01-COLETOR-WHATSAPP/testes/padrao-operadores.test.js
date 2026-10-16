@@ -305,3 +305,13 @@ test("Pix com pagador vira observacao; nota no cartao do dia fica sem observacao
         legenda: legenda("Almoço 3 - Cartão C6").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(cartao.campos.observacao.valor, null);
 });
+
+test("nome de centro com ' - ' nao e cortado (rotulado, na linha seguinte ou sozinho)", () => {
+    const cad = { ...cadastros(), projetos: [...cadastros().projetos, { nome_oficial: "IMTRAFF - MT FWD", ativo: true, apelidos: [] }] };
+    const ler = (texto, temMidia = false) => interpretar(cad, { texto, temMidia }).dados;
+    assert.equal(ler("Despesas 10/09/2026\nCentro de custo: IMTRAFF - MT FWD\nCartão: Inter").projeto_texto, "IMTRAFF - MT FWD");
+    assert.equal(ler("Despesas 10/09/2026\nCentro de custo\nHOUER / YVY - ROTA DO PEQUI").projeto_texto, "HOUER / YVY - ROTA DO PEQUI");
+    const foto = ler("Almoço 2\nIMTRAFF - MT FWD", true);
+    assert.equal(foto.projeto_texto, "IMTRAFF - MT FWD");
+    assert.equal(foto.pessoas.quantidade, 2);
+});
