@@ -36,9 +36,10 @@
   },
   {
     "nome": "MATERIAL DE CAMPO",
-    "nome_conta_azul": "Materiais Aplicados na Prestação de Serviços",
-    "id": "50a875e6-22d2-455b-b3c4-21158a577234",
-    "apelidos": []
+    "nome_conta_azul": "MATERIAL DE CAMPO",
+    "id": null,
+    "apelidos": [],
+    "_nota": "Nome atual no Conta Azul (345 lançamentos até 10/2026). O ID antigo era de 'Materiais Aplicados na Prestação de Serviços'; o novo vem da sincronização."
   },
   {
     "nome": "ALMOCO",

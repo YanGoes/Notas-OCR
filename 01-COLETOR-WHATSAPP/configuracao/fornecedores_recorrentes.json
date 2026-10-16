@@ -8,7 +8,8 @@
     "LANCHE": "RESTAURANTES",
     "REFEICAO": "RESTAURANTES",
     "HOSPEDAGEM": "HOTÉIS",
-    "MATERIAL_DE_CAMPO": "Materiais de Campo"
+    "MATERIAL_DE_CAMPO": "Materiais de Campo",
+    "MANUTENCAO": "MANUTENÇÃO VEÍCULOS"
   },
   "fornecedor_generico_mercado": "SUPERMERCADO",
   "_opcoes_leia_me": "Fornecedores oferecidos na lista do campo Fornecedor da Central (pode digitar outro).",

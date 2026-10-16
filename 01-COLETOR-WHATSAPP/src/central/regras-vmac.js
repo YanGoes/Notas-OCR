@@ -30,6 +30,8 @@ const TIPOS = Object.freeze({
     HOSPEDAGEM: { rotulo: "HOSPEDAGEM", categoria: "HOSPEDAGEM" },
     PEDAGIO: { rotulo: "PEDÁGIO", categoria: "PEDAGIO" },
     ESTACIONAMENTO: { rotulo: "ESTACIONAMENTO", categoria: "ESTACIONAMENTO" },
+    // Manutencao de veiculo: categoria de manutencao do proprio veiculo (pela placa) ou a geral.
+    MANUTENCAO: { rotulo: "MANUTENÇÃO", categoria: "MANUTENCAO" },
     MERCADO: { rotulo: "MERCADO", categoria: null },
     OUTROS: { rotulo: "OUTROS", categoria: null },
 });
@@ -72,6 +74,9 @@ function descricaoRefeicao(tipo, pessoas) {
 // ---------------------------------------------------------------------------
 
 const COMBUSTIVEIS = ["gasolina", "etanol", "alcool", "diesel", "gnv", "arla"];
+// Concessionarias de rodovia: a nota de pedagio vem com o nome delas ("Conc. ECOVIAS").
+const CONCESSIONARIAS = /\b(conc|concession\w*|ecovias|ecorodovias|ecopistas|ecosul|arteris|autoban|autopista\w*|triunfo|viapaulista|rota das bandeiras|entrevias|eixo sp|ccr|motiva)\b/;
+const OFICINAS = ["oficina", "mecanica", "auto pecas", "autopecas", "auto center", "centro automotivo", "borracharia", "pneus", "retifica", "funilaria", "auto eletrica", "lubrificantes"];
 const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "padaria", "panificadora", "confeitaria",
     "cafeteria", "bar", "self service", "marmitaria", "pastelaria", "hamburgueria", "lanches", "grill", "buffet"];
 const HOTEIS = ["hotel", "hoteis", "pousada", "hostel", "motel", "hospedagem", "flat", "apart hotel"];
@@ -131,13 +136,14 @@ function tipoPelaNota(ocr) {
     if (/hospedagem\s+de\s+qualquer|\bdi[aá]rias?\b|qtd[_ .]*h[oó]spede|h[oó]spede\s+principal|\bcheck[\s-]?in\b/i.test(String(ocr?.texto_bruto || ""))) {
         return { tipo: "HOSPEDAGEM", origem: "texto_da_nota" };
     }
-    if (contemTermo(estabelecimento, "pedagio") || contemTermo(ocr?.texto_bruto, "praca de pedagio")) {
+    if (contemTermo(estabelecimento, "pedagio") || contemTermo(ocr?.texto_bruto, "praca de pedagio") || CONCESSIONARIAS.test(normalizar(estabelecimento))) {
         return { tipo: "PEDAGIO", origem: "estabelecimento_da_nota" };
     }
     if (contemTermo(estabelecimento, "estacionamento")) return { tipo: "ESTACIONAMENTO", origem: "estabelecimento_da_nota" };
     // Loja de ferragens / material de construcao: antes de "refeicao", porque o
     // Azure as vezes classifica qualquer nota de varejo como refeicao.
     if (ehMaterialDeCampo(estabelecimento, itens)) return { tipo: "OUTROS", origem: "material_de_campo", material: true };
+    if (OFICINAS.some((termo) => contemTermo(estabelecimento, termo))) return { tipo: "MANUTENCAO", origem: "estabelecimento_da_nota" };
     if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo)) || ocr?.tipo_despesa_sugerido === "alimentacao") {
         return { tipo: "REFEICAO", origem: "estabelecimento_da_nota" };
     }
@@ -489,6 +495,19 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         descricao = { valor: descricaoRefeicao(tipo, pessoas.valor), origem: "template_refeicao", estimada: !pessoas.confirmado };
     } else if (tipo === "MERCADO") {
         pendencias.push("Compra em mercado: defina se é despesa de campo ou administrativa (categoria).");
+    } else if (tipo === "MANUTENCAO") {
+        // Placa digitada ou lida na nota: categoria de manutencao DAQUELE veiculo.
+        const placa = legenda?.placa || ocr?.placa || null;
+        const veiculo = placa ? cadastros.resolverVeiculo(cad, placa) : null;
+        if (veiculo?.manutencao_categoria_nome) {
+            const idValido = veiculo.manutencao_categoria_id && !String(veiculo.manutencao_categoria_id).startsWith("PREENCHER_");
+            categoria = { nome: veiculo.manutencao_categoria_nome, id: idValido ? veiculo.manutencao_categoria_id : null, origem: "placa_da_frota" };
+            campos.placa_veiculo = { valor: veiculo.nome };
+        } else {
+            pendencias.push("Manutenção sem placa do veículo: informe a placa para usar a categoria de manutenção dele.");
+        }
+        const peca = (legenda?.observacoes || [])[0] || (ocr?.itens || []).map((item) => item.descricao).filter(Boolean)[0];
+        if (peca) descricao = { valor: String(peca).replace(/\s+/g, " ").trim().toUpperCase(), origem: legenda?.observacoes?.length ? "mensagem_da_foto" : "itens_da_nota" };
     }
 
     if (!categoria && material) {

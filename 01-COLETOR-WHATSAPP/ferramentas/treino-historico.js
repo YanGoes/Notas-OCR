@@ -49,6 +49,8 @@ function argumentos(lista = process.argv.slice(2)) {
     for (let i = 0; i < lista.length; i += 1) {
         const chave = lista[i].replace(/^--/, "");
         if (chave === "executar") opcoes.executar = true;
+        else if (chave === "aprovar") opcoes.aprovar = true;
+        else if (chave === "recomparar") opcoes.recomparar = true;
         else opcoes[chave] = lista[++i];
     }
     opcoes.max = Number(opcoes.max) || 20;
@@ -112,6 +114,13 @@ function legendaDoLancamento(l) {
     const pessoas = (descricao.match(/(\d{1,2})\s*pessoas?/i) || [])[1];
     if (/posto|combust/.test(fornecedor) || /\d+[,.]?\d*\s*l(t|itros)?\b.*\bod\b/i.test(descricao)) return "Abastecimento";
     if (/hote|pousada|hosped/.test(fornecedor) || /hosped/i.test(descricao)) return pessoas ? `Hospedagem ${pessoas}` : "Hospedagem";
+    const categoria = normalizar(l.categoria || "");
+    if (/pedag/.test(categoria) || /pedag/i.test(descricao)) return "Pedágio";
+    if (/estacionamento/.test(categoria)) return "Estacionamento";
+    if (/manuten|oficina|auto pecas/.test(fornecedor) || /^manuten/.test(categoria)) {
+        const placa = (String(l.categoria || "").replace(/-/g, "").match(/[A-Z]{3}\d[A-Z0-9]\d{2}/) || [])[0];
+        return [`Manutenção - ${descricao || "manutenção do veículo"}`, placa].filter(Boolean).join("\n");
+    }
     const refeicao = REFEICOES.find(([re]) => re.test(descricao));
     if (refeicao) return pessoas ? `${refeicao[1]} ${pessoas}` : refeicao[1];
     if (/restaurante|padaria|lanchonete/.test(fornecedor)) return pessoas ? `Refeição ${pessoas} pessoas` : "Refeição";
@@ -166,8 +175,69 @@ async function lerNota(foto, cota, opcoes) {
     return { sha, nome, bruto: resultado.resposta_bruta, novo: true };
 }
 
+/**
+ * Compara a previa da IA com o lancamento do Conta Azul. Foto com duas notas:
+ * so a despesa com o mesmo valor do lancamento e comparada.
+ */
+function avaliar(db, despesas, l, opcoes, placar) {
+    if (!l) return {};
+    const lidas = (despesas || []).map((id) => orquestrador.lerDespesa(db, id)).filter(Boolean);
+    const daNota = lidas.length > 1 ? lidas.filter((d) => Math.abs(Number(d.campos.valor?.valor) - Math.abs(l.valor)) < 0.011) : lidas;
+    let diferencasFinais = null;
+    for (const despesa of daNota) {
+        if (!["AGUARDANDO_REVISAO", "CLASSIFICADO"].includes(despesa.estado)) continue;
+        const diferencas = comparar(despesa, l);
+        diferencasFinais = diferencas;
+        const avisosBase = (despesa.avisos || []).filter((a) => !a.startsWith("Treino com histórico"));
+        const pendenciasBase = (despesa.pendencias || []).filter((p) => !p.startsWith("Treino com histórico"));
+        if (!diferencas.length && !opcoes.aprovar) {
+            // Sem --aprovar: so marca; quem aprova e o Yan na Central.
+            db.prepare("UPDATE despesas SET avisos = ?, pendencias = ? WHERE id = ?").run(JSON.stringify([...avisosBase,
+                "Treino com histórico: igual ao que o Conta Azul lançou (valor, data, categoria, centro e fornecedor)."]), JSON.stringify(pendenciasBase), despesa.id);
+            placar.iguais_ao_conta_azul = (placar.iguais_ao_conta_azul || 0) + 1;
+            continue;
+        }
+        if (!diferencas.length) {
+            try {
+                // Campos que o Conta Azul nao confirma ficam fora do treino.
+                revisao.aprovar(db, despesa.id, AUTOR, { naoUsarNoTreino: cartaoDaConta(l.conta) ? [] : ["pagamento"] });
+                placar.aprovadas += 1;
+                continue;
+            } catch (_) { /* faltou campo obrigatorio: vai para revisao */ }
+        }
+        // Diferente do Conta Azul: fica para o Yan, com o que o Conta Azul lancou.
+        const texto = `Treino com histórico — o Conta Azul lançou: ${diferencas.map((d) => `${d.campo} "${d.conta_azul}" (IA: "${d.ia ?? "vazio"}")`).join("; ") || "veja os campos obrigatórios"}. Descrição no Conta Azul: "${l.descricao || "-"}".`;
+        db.prepare("UPDATE despesas SET pendencias = ?, avisos = ?, estado = 'AGUARDANDO_REVISAO' WHERE id = ?").run(JSON.stringify([...pendenciasBase, texto]), JSON.stringify(avisosBase), despesa.id);
+        placar.para_revisar += 1;
+    }
+    return { diferencas: diferencasFinais };
+}
+
+/** Refaz as previas ja lidas (sem Azure) com as regras atuais e compara de novo. */
+function recomparar(opcoes) {
+    const registro = lerJson(fs.existsSync(REGISTRO) ? fs.readFileSync(REGISTRO, "utf8") : null, { fotos: {} });
+    const lancamentos = lerJson(fs.readFileSync(path.join(RAIZ, "dados", "aprendizado", "lancamentos-conta-azul.json"), "utf8"), {}).lancamentos || [];
+    const db = banco();
+    const cad = cadastros.carregar();
+    const regras = lerJson(fs.readFileSync(path.join(RAIZ, "configuracao", "regras.json"), "utf8"), {});
+    const placar = { recomparadas: 0, aprovadas: 0, para_revisar: 0, ja_revisadas: 0 };
+    for (const resultado of Object.values(registro.fotos)) {
+        if (resultado.lancamento_indice == null || !resultado.despesas?.length) continue;
+        let revisada = false;
+        for (const id of resultado.despesas) {
+            try { orquestrador.regenerarPrevia(db, cad, id, { regras }); } catch (_) { revisada = true; }
+        }
+        if (revisada) { placar.ja_revisadas += 1; continue; }
+        Object.assign(resultado, avaliar(db, resultado.despesas, lancamentos[resultado.lancamento_indice], opcoes, placar));
+        placar.recomparadas += 1;
+    }
+    fs.writeFileSync(REGISTRO, JSON.stringify(registro, null, 2), "utf8");
+    console.log("Recomparação:", JSON.stringify(placar));
+}
+
 async function principal() {
     const opcoes = argumentos();
+    if (opcoes.recomparar) { recomparar(opcoes); return; }
     const registro = lerJson(fs.existsSync(REGISTRO) ? fs.readFileSync(REGISTRO, "utf8") : null, { fotos: {} });
     const fotos = fotosDoDrive(opcoes).filter((f) => !registro.fotos[f.caminho]);
     const lote = fotos.slice(0, opcoes.max);
@@ -223,25 +293,7 @@ async function principal() {
                     recebido_em_ms: Date.parse(quando(0)) },
             });
             const resultado = { data_pasta: foto.data_pasta, operador: foto.operador, legenda, despesas, lancamento_indice: indice, em: agora() };
-            for (const id of despesas || []) {
-                const despesa = orquestrador.lerDespesa(db, id);
-                if (!l || !despesa || !["AGUARDANDO_REVISAO", "CLASSIFICADO"].includes(despesa.estado)) continue;
-                const diferencas = comparar(despesa, l);
-                resultado.diferencas = diferencas;
-                if (!diferencas.length) {
-                    try {
-                        // Campos que o Conta Azul nao confirma ficam fora do treino.
-                        const naoUsar = cartaoDaConta(l.conta) ? [] : ["pagamento"];
-                        revisao.aprovar(db, id, AUTOR, { naoUsarNoTreino: naoUsar });
-                        placar.aprovadas += 1;
-                        continue;
-                    } catch (_) { /* faltou campo obrigatorio: vai para revisao */ }
-                }
-                // Diferente do Conta Azul: fica para o Yan, com o que o Conta Azul lancou.
-                const pendencias = [...despesa.pendencias, `Treino com histórico — o Conta Azul lançou: ${diferencas.map((d) => `${d.campo} "${d.conta_azul}" (IA: "${d.ia ?? "vazio"}")`).join("; ") || "veja os campos obrigatórios"}. Descrição no Conta Azul: "${l.descricao || "-"}".`];
-                db.prepare("UPDATE despesas SET pendencias = ?, estado = 'AGUARDANDO_REVISAO' WHERE id = ?").run(JSON.stringify(pendencias), id);
-                placar.para_revisar += 1;
-            }
+            Object.assign(resultado, avaliar(db, despesas, l, opcoes, placar));
             registro.fotos[foto.caminho] = resultado;
             fs.mkdirSync(path.dirname(REGISTRO), { recursive: true });
             fs.writeFileSync(REGISTRO, JSON.stringify(registro, null, 2), "utf8");

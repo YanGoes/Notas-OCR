@@ -315,3 +315,27 @@ test("nome de centro com ' - ' nao e cortado (rotulado, na linha seguinte ou soz
     assert.equal(foto.projeto_texto, "IMTRAFF - MT FWD");
     assert.equal(foto.pessoas.quantidade, 2);
 });
+
+// --- Manutencao e pedagio (achados do treino com historico, 16/10/2026) ---------
+
+test("manutencao: legenda ou oficina na nota; categoria de manutencao do veiculo pela placa", () => {
+    const cad = { ...cadastros(), veiculos: [{ nome: "HILUX - OVN5J98", placa: "OVN5J98", categoria_nome_conta_azul: "HILUX - OVN5J98", manutencao_categoria_nome: "MANUTENÇÃO HILUX OVN5J98" }],
+        categorias: [...cadastros().categorias, { nome: "MANUTENCAO", nome_conta_azul: "Manutenção de Veículos", id: null }],
+        fornecedores: { recorrentes: [], genericos_por_tipo: { MANUTENCAO: "MANUTENÇÃO VEÍCULOS" } } };
+    assert.deepEqual(legenda("Manutenção - tambor de freio").dados.tipos, ["MANUTENCAO"]);
+    const comPlaca = regrasVmac.montarPrevia({ ocr: { data: "2026-10-01", valor: 350, fornecedor: "AUTO CENTER SILVA", confianca: 0.99 },
+        legenda: interpretar(cad, { texto: "Manutenção - tambor de freio\nOVN5J98", temMidia: true }).dados, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(comPlaca.campos.tipo.valor, "MANUTENCAO");
+    assert.equal(comPlaca.campos.categoria.nome, "MANUTENÇÃO HILUX OVN5J98");
+    assert.equal(comPlaca.campos.fornecedor.valor, "MANUTENÇÃO VEÍCULOS");
+    const pelaNota = regrasVmac.montarPrevia({ ocr: { data: "2026-10-01", valor: 90, fornecedor: "OFICINA MECANICA DO ZE", confianca: 0.99 },
+        legenda: {}, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(pelaNota.campos.tipo.valor, "MANUTENCAO");
+    assert.equal(pelaNota.campos.categoria.nome, "Manutenção de Veículos");
+});
+
+test("concessionaria de rodovia na nota e pedagio, nao refeicao", () => {
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-10-04", hora: "20:10", valor: 12.5, fornecedor: "Conc. ECOVIAS RAPOSO CASTELLO", confianca: 0.62, tipo_despesa_sugerido: "alimentacao" },
+        legenda: legenda("PEDAGIOS").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.tipo.valor, "PEDAGIO");
+});
