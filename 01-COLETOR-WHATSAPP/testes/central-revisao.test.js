@@ -337,3 +337,17 @@ test("metricas por operador: notas, situacao, acerto e o que faltou informar", (
     assert.equal(almir.faltou.centro_custo, 1);
     assert.ok(almir.acuracia > 0);
 });
+
+test("notas do treino com historico ficam na aba Simuladas, fora de Para revisar", () => {
+    const real = cenario({ legenda: "Jantar 2 pessoas" });
+    const simulada = orquestrador.processarFoto(real.db, real.cad, {
+        arquivo: "f-hist.jpg", sha256: "h-hist", brutoAzure: JANTAR, hoje: new Date("2026-10-02T12:00:00Z"),
+        meta: { id_mensagem: "historico-1", id_grupo: GRUPO, remetente: "historico:almir", legenda: "Janta 2", recebido_em_ms: Date.parse("2026-10-01T09:00:00-03:00") },
+    }).despesas[0];
+    const revisar = revisao.listar(real.db, { aba: "revisar", cad: real.cad });
+    const simuladas = revisao.listar(real.db, { aba: "simuladas", cad: real.cad });
+    assert.ok(!revisar.itens.some((item) => item.id === simulada));
+    assert.ok(simuladas.itens.some((item) => item.id === simulada));
+    assert.ok(!simuladas.itens.some((item) => item.id === real.id));
+    assert.equal(revisar.contagem.simuladas, 1);
+});

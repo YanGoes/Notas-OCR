@@ -475,7 +475,13 @@ const ABAS = {
     classificadas: [ESTADOS.CLASSIFICADO],
     aprovadas: [ESTADOS.APROVADO],
     fora: [ESTADOS.BLOQUEADO_DUPLICADO, ESTADOS.DESCARTADO],
+    // Notas do treino com o historico (ferramentas/treino-historico.js) ainda
+    // sem decisao: ficam aqui, fora de "Para revisar" e "Classificadas".
+    simuladas: [ESTADOS.AGUARDANDO_REVISAO, ESTADOS.CLASSIFICADO],
 };
+const SIMULADA_SQL = "COALESCE(msg.remetente_id, '') LIKE 'historico:%'";
+/** Filtro de origem por aba: simuladas so na aba delas; nas abas de revisao, so as reais. */
+const filtroOrigem = (aba) => (aba === "simuladas" ? `AND ${SIMULADA_SQL}` : ["revisar", "classificadas"].includes(aba) ? `AND NOT ${SIMULADA_SQL}` : "");
 
 // Operador = a PESSOA que mandou a nota (nao o grupo: um grupo pode ter
 // varios operadores). Sem vinculo, cai em "nao identificado".
@@ -511,19 +517,22 @@ function resumo(linha) {
  * (operadores do cadastro aparecem mesmo com zero).
  */
 function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null } = {}) {
-    const estados = ABAS[aba] || ABAS.revisar;
+    if (!ABAS[aba]) aba = "revisar";
+    const estados = ABAS[aba];
+    const origem = filtroOrigem(aba);
     const marcadores = estados.map(() => "?").join(",");
     const filtrarOperador = operador && operador !== "todos";
     const linhas = db.prepare(`
         SELECT d.*, m.recebida_em, msg.remetente_nome, ${OPERADOR_SQL} AS operador,
             (SELECT COUNT(*) FROM correcoes c WHERE c.despesa_id = d.id) AS correcoes
         FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
-        WHERE d.estado IN (${marcadores}) ${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""}
+        WHERE d.estado IN (${marcadores}) ${origem} ${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""}
         ORDER BY COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
         .all(...estados, ...(filtrarOperador ? [String(operador)] : []), Math.min(Number(limite) || 300, 1000));
     const contagem = Object.fromEntries(Object.keys(ABAS).map((nome) => [nome, 0]));
-    for (const { estado, total } of db.prepare("SELECT estado, COUNT(*) AS total FROM despesas GROUP BY estado").all()) {
-        const nome = Object.keys(ABAS).find((chave) => ABAS[chave].includes(estado));
+    for (const { estado, simulada, total } of db.prepare(`SELECT d.estado, (${SIMULADA_SQL}) AS simulada, COUNT(*) AS total
+        FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref GROUP BY 1, 2`).all()) {
+        const nome = simulada && ABAS.simuladas.includes(estado) ? "simuladas" : Object.keys(ABAS).find((chave) => chave !== "simuladas" && ABAS[chave].includes(estado));
         if (nome) contagem[nome] += total;
     }
 
@@ -535,7 +544,7 @@ function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null
     for (const linha of db.prepare(`
         SELECT ${OPERADOR_SQL} AS operador, MAX(msg.remetente_nome) AS remetente_nome, COUNT(*) AS total
         FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
-        WHERE d.estado IN (${marcadores}) GROUP BY operador`).all(...estados)) {
+        WHERE d.estado IN (${marcadores}) ${origem} GROUP BY operador`).all(...estados)) {
         porOperador.set(linha.operador, { id: linha.operador, nome: nomeDoOperador(linha.operador, nomes, linha.remetente_nome), total: linha.total });
     }
     const operadores = [...porOperador.values()]
