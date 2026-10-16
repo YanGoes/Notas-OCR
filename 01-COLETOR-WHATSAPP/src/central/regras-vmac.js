@@ -386,7 +386,13 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     const itensDaNota = (ocr?.itens || []).map((item) => item.descricao).filter(Boolean);
     const material = tipo === "OUTROS" && (decisaoTipo.material || legenda?.material || ehMaterialDeCampo(textoDoEstabelecimento(ocr), itensDaNota.join(" ")));
     // Agua: o fornecedor e o do lugar onde foi comprada (restaurante, mercado, posto).
-    const tipoDoFornecedor = material ? "MATERIAL_DE_CAMPO" : tipo === "AGUA" ? tipoDoEstabelecimento(ocr) : tipo;
+    // Refeicao em padaria -> PADARIA; em mercado -> fornecedor do mercado (SUPERMERCADO), como o Conta Azul faz.
+    const estabelecimentoDaNota = textoDoEstabelecimento(ocr);
+    const refeicaoEm = TIPOS[tipo]?.refeicao
+        ? (["padaria", "panificadora", "panificacao", "confeitaria"].some((t) => contemTermo(estabelecimentoDaNota, t)) ? "PADARIA"
+            : MERCADOS.some((t) => contemTermo(estabelecimentoDaNota, t)) ? null : tipo)
+        : tipo;
+    const tipoDoFornecedor = material ? "MATERIAL_DE_CAMPO" : tipo === "AGUA" ? tipoDoEstabelecimento(ocr) : refeicaoEm;
     const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, tipoDoFornecedor);
     campos.fornecedor = { valor: fornecedor.nome, origem: fornecedor.origem, nome_lido: fornecedor.nome_lido || ocr?.fornecedor || null, cnpj_lido: ocr?.cnpj || null };
     if (ocr && !fornecedor.nome) pendencias.push("Fornecedor não foi lido na nota.");

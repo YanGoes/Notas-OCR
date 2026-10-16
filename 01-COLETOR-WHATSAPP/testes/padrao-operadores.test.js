@@ -369,3 +369,13 @@ test("gerador: ate 12 L sem placa nem hodometro, ou quando a mensagem diz gerado
     const carro = regrasVmac.montarPrevia({ ocr: posto({ placa: "SGR4B54", odometro: 145225 }), legenda: { tipos: ["ABASTECIMENTO"] }, cad: CAD_AGUA_GERADOR(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.notEqual(carro.campos.categoria.nome, "GERADOR", "com placa e hodometro e veiculo");
 });
+
+test("refeicao em padaria vai com fornecedor PADARIA; em mercado, SUPERMERCADO", () => {
+    const cad = { ...cadastros(), fornecedores: { recorrentes: [], fornecedor_generico_mercado: "SUPERMERCADO", genericos_por_tipo: { CAFE_DA_MANHA: "RESTAURANTES", LANCHE: "RESTAURANTES", PADARIA: "PADARIA" } } };
+    const padaria = regrasVmac.montarPrevia({ ocr: { data: "2026-09-21", hora: "07:30", valor: 18, fornecedor: "PANIFICADORA PAO QUENTE", confianca: 0.99 },
+        legenda: legenda("Café 2").dados, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(padaria.campos.fornecedor.valor, "PADARIA");
+    const mercado = regrasVmac.montarPrevia({ ocr: { data: "2026-09-21", hora: "16:30", valor: 22, fornecedor: "SUPERMERCADO BOM PRECO LTDA", confianca: 0.99 },
+        legenda: legenda("Lanche 2").dados, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(mercado.campos.fornecedor.valor, "SUPERMERCADO");
+});

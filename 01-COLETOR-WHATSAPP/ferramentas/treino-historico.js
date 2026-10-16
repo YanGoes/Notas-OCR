@@ -252,6 +252,12 @@ async function principal() {
         fotos = fotos.filter((f) => dias.has(f.data_pasta));
         console.log(`${dias.size} dia(s) com lançamento de ${opcoes.categoria} no Conta Azul.`);
     }
+    if (opcoes.sortear) {
+        // Amostra variada (operadores, meses, tipos); semente fixa = mesmo sorteio se repetir.
+        let semente = Number(opcoes.sortear) || 42;
+        const aleatorio = () => ((semente = (semente * 16807) % 2147483647) / 2147483647);
+        for (let i = fotos.length - 1; i > 0; i -= 1) { const j = Math.floor(aleatorio() * (i + 1)); [fotos[i], fotos[j]] = [fotos[j], fotos[i]]; }
+    }
     const lote = fotos.slice(0, opcoes.max);
     console.log(`${fotos.length} foto(s) ainda não usadas no treino${opcoes.operador ? ` de ${opcoes.operador}` : ""}. Lote: ${lote.length}.`);
     if (!opcoes.executar) {

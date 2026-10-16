@@ -9,7 +9,8 @@
     "REFEICAO": "RESTAURANTES",
     "HOSPEDAGEM": "HOTÉIS",
     "MATERIAL_DE_CAMPO": "Materiais de Campo",
-    "MANUTENCAO": "MANUTENÇÃO VEÍCULOS"
+    "MANUTENCAO": "MANUTENÇÃO VEÍCULOS",
+    "PADARIA": "PADARIA"
   },
   "fornecedor_generico_mercado": "SUPERMERCADO",
   "_opcoes_leia_me": "Fornecedores oferecidos na lista do campo Fornecedor da Central (pode digitar outro).",
