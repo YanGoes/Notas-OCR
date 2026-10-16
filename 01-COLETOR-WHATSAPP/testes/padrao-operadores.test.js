@@ -379,3 +379,9 @@ test("refeicao em padaria vai com fornecedor PADARIA; em mercado, SUPERMERCADO",
         legenda: legenda("Lanche 2").dados, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(mercado.campos.fornecedor.valor, "SUPERMERCADO");
 });
+
+test("palpite do Azure ('parece refeicao') nao vence a legenda do operador", () => {
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-09-21", valor: 180, fornecedor: "COMERCIAL SILVA LTDA", confianca: 0.99, tipo_despesa_sugerido: "alimentacao" },
+        legenda: legenda("Manutenção - filtro de combustível").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.tipo.valor, "MANUTENCAO");
+});

@@ -135,6 +135,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
     };
     const linhas = [];
     let proximaInteira = false;
+    const complementos = new Set();
     for (const bruta of String(texto || "").split(/\r?\n/)) {
         let linha = bruta.trim();
         if (RE_PREFIXO_CORRECAO.test(linha)) {
@@ -160,11 +161,16 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
             continue;
         }
         // "Almoço 3 - Pix Murilo": cada parte e lida como uma linha.
-        linhas.push(...linha.split(RE_SEPARADOR).map((parte) => parte.trim()).filter(Boolean));
+        // So a PRIMEIRA parte define o tipo; as outras sao descricao ou pagamento
+        // ("Manutenção - filtro de combustível" nao vira abastecimento).
+        const partes = linha.split(RE_SEPARADOR).map((parte) => parte.trim()).filter(Boolean);
+        partes.forEach((parte, indice) => { if (indice > 0) complementos.add(linhas.length + indice); });
+        linhas.push(...partes);
     }
     let aguardandoProjeto = false;
 
-    for (const linha of linhas) {
+    for (const [indiceLinha, linha] of linhas.entries()) {
+        const complemento = complementos.has(indiceLinha);
         const normal = normalizar(linha);
         if (!normal) continue;
 
@@ -292,7 +298,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
         }
 
         const tipoNumero = linha.match(RE_TIPO_NUMERO);
-        const tipoComNumero = tipoNumero && normalizar(tipoNumero[1]).split(" ").length <= 4 ? tipoDoTexto(tipoNumero[1]) : null;
+        const tipoComNumero = !complemento && tipoNumero && normalizar(tipoNumero[1]).split(" ").length <= 4 ? tipoDoTexto(tipoNumero[1]) : null;
         if (tipoComNumero) {
             if (!dados.tipos.includes(tipoComNumero)) dados.tipos.push(tipoComNumero);
             if (tipoComNumero === "AGUA") dados.quantidade_agua = Number(tipoNumero[2]);
@@ -302,7 +308,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
             continue;
         }
 
-        const tipo = tipoDoTexto(linha);
+        const tipo = complemento ? null : tipoDoTexto(linha);
         if (tipo && normal.split(" ").length <= 4) {
             if (!dados.tipos.includes(tipo)) dados.tipos.push(tipo);
             continue;

@@ -38,7 +38,7 @@ test("Coca-Cola nao e material de campo", () => {
 test("centro administrativo: refeicao vai para Lanches e Refeições", () => {
     const resultado = previa({ fornecedor: "RESTAURANTE SABOR", itens: [{ descricao: "PRATO FEITO" }] },
         { tipos: ["ALMOCO"], projeto_texto: "VMAC - LP - DESPESAS ADMINISTRATIVAS" });
-    assert.match(resultado.campos.centro_custo.nome, /LP - DESPESAS ADMINISTRATIVAS/);
+    assert.equal(resultado.campos.centro_custo.projeto, "VMAC - LP - DESPESAS ADMINISTRATIVAS");
     assert.match(resultado.campos.categoria.nome, /Lanches e Refei/i);
     assert.equal(resultado.campos.categoria.origem, "despesa_administrativa");
 });
@@ -46,7 +46,7 @@ test("centro administrativo: refeicao vai para Lanches e Refeições", () => {
 test("sem projeto informado, o costume do gestor vira SUGESTAO de centro e de categoria", () => {
     const resultado = previa({ fornecedor: "RESTAURANTE SABOR", itens: [{ descricao: "PRATO FEITO" }] }, { tipos: ["ALMOCO"] });
     assert.equal(resultado.campos.centro_custo.nome ?? null, null, "nunca decide sozinho");
-    assert.match(resultado.campos.centro_custo.sugestao.nome, /LP - DESPESAS ADMINISTRATIVAS/);
+    assert.equal(resultado.campos.centro_custo.sugestao.projeto, "VMAC - LP - DESPESAS ADMINISTRATIVAS");
     assert.equal(resultado.campos.centro_custo.sugestao.origem, "costume_cadastrado");
     assert.ok(resultado.pendencias.some((p) => /Projeto não informado/.test(p)));
     if (!/Lanches e Refei/i.test(resultado.campos.categoria.nome || "")) assert.match(resultado.campos.categoria.sugestao?.nome || "", /Lanches e Refei/i);
