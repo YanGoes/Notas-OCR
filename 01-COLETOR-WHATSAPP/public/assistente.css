@@ -1,0 +1,45 @@
+/* Assistente: botao fixo + painel lateral (como o chat do VS Code). Usa as cores do theme.css. */
+.ass-botao { position: fixed; right: 18px; bottom: 18px; z-index: 900; display: flex; align-items: center; gap: 8px; padding: 11px 16px; border: 0; border-radius: 999px;
+  background: var(--brand); color: #fff; font: inherit; font-weight: 600; box-shadow: 0 6px 20px rgba(0, 0, 0, .22); cursor: pointer; }
+.ass-botao:hover { background: var(--brand-hover); }
+body.ass-aberto .ass-botao { display: none; }
+
+.ass-painel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 950; width: min(440px, 100vw); display: flex; flex-direction: column;
+  background: var(--surface); color: var(--ink); border-left: 1px solid var(--line); box-shadow: -8px 0 28px rgba(0, 0, 0, .14); }
+.ass-painel[hidden] { display: none; }
+/* Com o painel aberto, a pagina encolhe para nao ficar escondida atras dele (telas largas). */
+@media (min-width: 1100px) { body.ass-aberto { padding-right: 440px; } }
+
+.ass-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.ass-titulo { display: grid; } .ass-titulo small { color: var(--muted); font-size: 12px; }
+.ass-acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+.ass-acoes button, .ass-rodape button { padding: 6px 10px; font-size: 13px; }
+.ass-opcoes { display: grid; grid-template-columns: 1fr 90px; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.ass-opcoes select { width: 100%; font: inherit; font-size: 13px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.ass-opcoes #assConversas { grid-column: 1 / -1; }
+
+.ass-mensagens { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.ass-msg { max-width: 92%; padding: 8px 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-soft); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.ass-pessoa { align-self: flex-end; background: var(--brand-soft); border-color: transparent; }
+.ass-assistente { align-self: flex-start; background: var(--surface); }
+.ass-sistema { align-self: center; font-size: 12px; color: var(--muted); }
+.ass-quem { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+.ass-md p { margin: 0 0 6px; } .ass-md ul { margin: 0 0 6px 18px; padding: 0; } .ass-md code { font-size: 12px; }
+.ass-pensando { color: var(--muted); font-style: italic; }
+.ass-tabela { overflow-x: auto; margin: 4px 0 8px; }
+.ass-tabela table { border-collapse: collapse; font-size: 12.5px; } .ass-tabela th, .ass-tabela td { border: 1px solid var(--line); padding: 3px 6px; text-align: left; }
+.ass-vazio { color: var(--muted); font-size: 14px; } .ass-vazio ul { list-style: none; padding: 0; display: grid; gap: 6px; }
+.ass-exemplo { width: 100%; text-align: left; padding: 7px 10px; border: 1px dashed var(--line); border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.ass-exemplo:hover { border-color: var(--brand); }
+.ass-proposta { border: 2px solid var(--brand); border-radius: 12px; padding: 9px 11px; display: grid; gap: 6px; font-size: 14px; }
+.ass-proposta.decidida { border-width: 1px; border-color: var(--line); color: var(--muted); font-size: 12px; }
+.ass-proposta small { color: var(--muted); }
+.ass-sugestoes { max-height: 34vh; overflow-y: auto; padding: 8px 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; font-size: 13px; }
+.ass-sugestoes[hidden] { display: none; }
+.ass-sugestao small { color: var(--muted); } .ass-sugestao.feita, .ass-sugestao.descartada { opacity: .55; }
+.ass-status { min-height: 0; padding: 0 12px; font-size: 12px; color: var(--muted); }
+.ass-status:not(:empty) { padding: 6px 12px; } .ass-status.erro { color: var(--danger); }
+.ass-envio { padding: 10px 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.ass-envio textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 60px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.ass-envio textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+.ass-rodape { display: flex; align-items: center; gap: 6px; } .ass-rodape small { flex: 1; color: var(--muted); font-size: 11px; }

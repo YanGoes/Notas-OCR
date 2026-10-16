@@ -5,7 +5,7 @@
   <title>VMac · Central de Revisão</title>
   <meta name="theme-color" content="#8f171a"><meta name="color-scheme" content="light dark">
   <script>document.documentElement.dataset.theme=localStorage.getItem("vmac-tema")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");</script>
-  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/central.css">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/central.css"><link rel="stylesheet" href="/assistente.css">
 </head>
 <body>
   <header>
@@ -29,7 +29,6 @@
       <button role="tab" data-aba="fora" aria-selected="false">Duplicadas / descartadas <span class="n" data-n="fora">0</span></button>
       <button role="tab" data-aba="treino" aria-selected="false">Treino</button>
       <button role="tab" data-aba="centros" aria-selected="false">Centros de custo</button>
-      <button role="tab" data-aba="assistente" aria-selected="false">Assistente</button>
     </nav>
     <nav id="filtroOperador" class="operadores" aria-label="Filtrar por operador"></nav>
     <section id="areaRevisao" class="revisao">
@@ -38,7 +37,6 @@
     </section>
     <section id="areaTreino" class="treino oculto"></section>
     <section id="areaCentros" class="centros oculto"></section>
-    <section id="areaAssistente" class="assistente oculto"></section>
   </main>
   <script src="/central.js"></script>
   <script src="/assistente.js"></script>

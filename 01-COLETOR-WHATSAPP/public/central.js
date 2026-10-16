@@ -646,10 +646,10 @@ async function trocarAba(aba) {
     estado.selecionada = null;
     history.replaceState(null, "", `#${aba}`);
     for (const botao of document.querySelectorAll(".abas button")) botao.setAttribute("aria-selected", botao.dataset.aba === aba ? "true" : "false");
-    const area = { treino: "#areaTreino", centros: "#areaCentros", assistente: "#areaAssistente" }[aba] || "#areaRevisao";
-    for (const id of ["#areaRevisao", "#areaTreino", "#areaCentros", "#areaAssistente"]) $(id).classList.toggle("oculto", id !== area);
+    const area = { treino: "#areaTreino", centros: "#areaCentros" }[aba] || "#areaRevisao";
+    for (const id of ["#areaRevisao", "#areaTreino", "#areaCentros"]) $(id).classList.toggle("oculto", id !== area);
     $("#filtroOperador").classList.toggle("oculto", area !== "#areaRevisao");
-    await executar({ treino: carregarTreino, centros: carregarCentros, assistente: carregarAssistente }[aba] || carregarLista);
+    await executar({ treino: carregarTreino, centros: carregarCentros }[aba] || carregarLista);
 }
 
 // ---------------------------------------------------------------------------
