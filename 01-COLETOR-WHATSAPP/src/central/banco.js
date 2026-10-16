@@ -271,6 +271,8 @@ function abrir(caminho = CAMINHO_PADRAO) {
     if (caminho !== ":memory:") fs.mkdirSync(path.dirname(caminho), { recursive: true });
     const db = new DatabaseSync(caminho);
     db.exec("PRAGMA foreign_keys = ON");
+    // O assistente le e grava de outro processo (servidor MCP): espera em vez de falhar.
+    db.exec("PRAGMA busy_timeout = 5000");
     if (caminho !== ":memory:") db.exec("PRAGMA journal_mode = WAL");
     migrar(db);
     return db;

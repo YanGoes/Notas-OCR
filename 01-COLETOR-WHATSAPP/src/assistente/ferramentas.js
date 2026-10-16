@@ -242,9 +242,24 @@ function lancarConfirmado(ctx, { ids = [] } = {}) {
     return ctx.lancar(lista);
 }
 
+/** Retreino confirmado: catalogo + treino + medicao + refaz as previas em revisao (igual ao atalho 14). */
+async function treinarConfirmado(ctx) {
+    const { execFile } = require("child_process");
+    const rodar = (args) => new Promise((resolver, rejeitar) => execFile(process.execPath, args, { cwd: RAIZ, windowsHide: true, maxBuffer: 20 * 1024 * 1024 },
+        (erro, saida) => (erro ? rejeitar(new Error(String(erro.message).slice(0, 300))) : resolver(String(saida)))));
+    const planilha = [path.join(RAIZ, "..", "visao_contas_a_pagar (3).xlsx"), "C:\\Users\\vmac_\\Desktop\\APRENDIZADO DE IA - DESPESAS\\visao_contas_a_pagar (1).xls"].find((p) => fs.existsSync(p));
+    if (planilha) {
+        await rodar([path.join("ferramentas", "importar-catalogo-conta-azul.js"), planilha]);
+        await rodar([path.join("ferramentas", "treinar-central.js"), planilha]);
+    }
+    const medicao = await rodar([path.join("ferramentas", "medir-contra-aprovadas.js")]);
+    const regeradas = typeof ctx.regerar === "function" ? ctx.regerar() : null;
+    return { treinado: Boolean(planilha), resumo: medicao.split(/\r?\n/).filter((l) => /notas inteiras|TOTAL|MATURIDADE|Próximo estágio/.test(l)).join("\n"), previas_refeitas: regeradas };
+}
+
 // ---------------------------------------------------------------------------
 
-const DATA = { type: "string", description: "Data AAAA-MM-DD" };
+const DATA ={ type: "string", description: "Data AAAA-MM-DD" };
 const FERRAMENTAS = [
     { nome: "relatorio_gastos", grava: false, executar: relatorioGastos,
         descricao: "Total, quantidade e média de gastos num período, agrupados por operador, centro, categoria, tipo, fornecedor, dia ou mês. Fonte 'central' (notas do WhatsApp desde 11/10/2026) ou 'planilha' (exportação do Conta Azul, meses anteriores).",
@@ -275,6 +290,9 @@ const FERRAMENTAS = [
     { nome: "preparar_lancamento", grava: true, executar: lancarConfirmado, resumir: resumoLancamento,
         descricao: "SÓ quando a pessoa pedir explicitamente para lançar: prepara o lançamento no Conta Azul das despesas APROVADAS indicadas. Não lança: a tela mostra um botão Confirmar e só uma pessoa autorizada executa.",
         esquema: { type: "object", properties: { ids: { type: "array", items: { type: "integer" } } }, required: ["ids"] } },
+    { nome: "treinar_ia", grava: true, executar: treinarConfirmado, resumir: () => "Retreinar a IA (catálogo do Conta Azul, treino, medição da maturidade e atualização das notas em revisão)",
+        descricao: "SÓ quando a pessoa pedir: retreina a IA com as notas aprovadas e a planilha do Conta Azul, mede a maturidade e refaz as prévias em revisão. Vira um botão Confirmar.",
+        esquema: { type: "object", properties: {} } },
 ];
 
 const porNome = new Map(FERRAMENTAS.map((ferramenta) => [ferramenta.nome, ferramenta]));

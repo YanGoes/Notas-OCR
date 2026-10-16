@@ -126,6 +126,37 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
             return res.sendFile(caminho);
         } catch (erro) { return next(erro); }
     });
+    // --- Assistente (chat pela assinatura Claude da empresa) -------------------
+    const assistente = require("../assistente/servico");
+    rotas.get("/assistente/estado", responder(() => assistente.estado()));
+    rotas.get("/assistente/conversas", responder((req) => assistente.listarConversas(db(), { pessoa: req.query.pessoa ? String(req.query.pessoa) : null })));
+    rotas.get("/assistente/conversas/:id", responder((req) => assistente.lerConversa(db(), idDe(req))));
+    rotas.get("/assistente/sugestoes", responder(() => assistente.sugestoes(db())));
+    rotas.post("/assistente/sugestoes/:id", responder((req) => assistente.mudarSugestao(db(), idDe(req), String(req.body?.status || ""))));
+    rotas.post("/assistente/parar", responder(() => ({ parado: assistente.parar() })));
+    // Resposta ao vivo: uma linha JSON por evento (texto chegando, ferramenta, fim).
+    rotas.post("/assistente/enviar", async (req, res) => {
+        res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        const escrever = (evento) => { try { res.write(`${JSON.stringify(evento)}\n`); } catch (_) { /* tela fechada */ } };
+        try {
+            const final = await assistente.enviar(db(), {
+                pessoa: req.body?.pessoa, texto: req.body?.texto, conversaId: req.body?.conversa_id || null,
+                modelo: String(req.body?.modelo || ""), emitir: escrever, sinal: {},
+            });
+            escrever({ ...final, resultado: final.tipo, tipo: "final" });
+        } catch (erro) {
+            escrever({ tipo: "falha", erro: erro.message });
+        }
+        res.end();
+    });
+    rotas.post("/assistente/propostas/:id", async (req, res, next) => {
+        try {
+            res.json(await assistente.decidir(db(), idDe(req), { pessoa: req.body?.pessoa, aceito: req.body?.aceito === true,
+                ctx: { cad: cad(), regerar: () => revisao.regenerarPendentes(db(), cad(), { regras: regras() }).regeradas } }));
+        } catch (erro) { next(erro); }
+    });
+
     return rotas;
 }
 
