@@ -140,3 +140,9 @@ details.leitura pre { max-height: 280px; overflow: auto; font-size: 12px; white-
 .tabela-metricas a { color: var(--brand); font-weight: 600; }
 .titulo-historico { margin: 8px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
+
+/* Comentario para a IA: mesmo visual das caixas da previa, tamanho fixo. */
+.comentario-ia textarea { display: block; width: 100%; box-sizing: border-box; height: 84px; resize: none; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.4; }
+.comentario-ia textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+.comentario-ia .acoes { margin-top: 8px; }
