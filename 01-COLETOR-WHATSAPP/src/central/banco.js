@@ -235,6 +235,13 @@ const MIGRACOES = [
         decidida_em TEXT
     );
     `,
+    // 6 — Comentario livre do revisor para a IA aprender ("foto com duas notas:
+    // separar uma despesa por nota"). Nao vai para o Conta Azul.
+    `
+    ALTER TABLE despesas ADD COLUMN comentario_ia TEXT;
+    ALTER TABLE despesas ADD COLUMN comentario_ia_por TEXT;
+    ALTER TABLE despesas ADD COLUMN comentario_ia_em TEXT;
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

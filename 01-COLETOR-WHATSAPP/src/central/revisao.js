@@ -333,6 +333,8 @@ function entradaDoExemplo(db, despesa) {
         previa_da_ia: despesa.campos_originais || null,
         // O que a pessoa corrigiu, com o motivo e a explicacao: diz a IA o que
         // ela errou (e o que simplesmente nao foi informado).
+        // Comentario livre do revisor: explica o caso (ex.: duas notas na mesma foto).
+        comentario_da_revisao: despesa.comentario_ia || null,
         correcoes_da_revisao: db.prepare("SELECT campo, tipo_erro, observacao FROM correcoes WHERE despesa_id = ? ORDER BY id").all(despesa.id)
             .map((linha) => ({ campo: linha.campo, motivo: linha.tipo_erro, explicacao: linha.observacao || null })),
     };
@@ -704,7 +706,39 @@ function remetentesNaoVinculados(db) {
         GROUP BY m.remetente_id ORDER BY despesas DESC`).all();
 }
 
+/**
+ * Comentario do revisor para a IA aprender. Vale em qualquer estado (inclusive
+ * aprovada); se a nota ja e exemplo de treino, o exemplo e atualizado.
+ */
+function comentarParaIa(db, despesaId, texto, autor) {
+    const quem = String(autor || "").trim();
+    if (!quem) throw new Error("Informe quem está comentando.");
+    const comentario = String(texto || "").replace(/\s+\n/g, "\n").trim().slice(0, 2000) || null;
+    const despesa = lerDespesa(db, despesaId);
+    if (!despesa) throw new Error(`Despesa #${despesaId} não encontrada.`);
+    transacao(db, () => {
+        db.prepare("UPDATE despesas SET comentario_ia = ?, comentario_ia_por = ?, comentario_ia_em = ?, atualizado_em = ? WHERE id = ?")
+            .run(comentario, comentario ? quem : null, comentario ? agora() : null, agora(), despesaId);
+        registrarHistorico(db, despesaId, despesa.estado, despesa.estado, comentario ? `comentário para a IA (${quem})` : `comentário para a IA removido (${quem})`);
+        const exemplo = db.prepare("SELECT entrada FROM exemplos_treino WHERE despesa_id = ?").get(despesaId);
+        if (exemplo) {
+            const entrada = lerJson(exemplo.entrada, {});
+            entrada.comentario_da_revisao = comentario;
+            db.prepare("UPDATE exemplos_treino SET entrada = ? WHERE despesa_id = ?").run(json(entrada), despesaId);
+        }
+    });
+    return lerDespesa(db, despesaId);
+}
+
+/** Comentarios para a IA mais recentes (aba Treino e assistente). */
+function comentariosParaIa(db, limite = 50) {
+    return db.prepare(`SELECT id, estado, comentario_ia AS comentario, comentario_ia_por AS por, comentario_ia_em AS em,
+            json_extract(campos, '$.tipo.valor') AS tipo, json_extract(campos, '$.valor.valor') AS valor
+        FROM despesas WHERE comentario_ia IS NOT NULL ORDER BY comentario_ia_em DESC LIMIT ?`).all(Math.min(Number(limite) || 50, 200));
+}
+
 module.exports = {
+    comentarParaIa, comentariosParaIa,
     CAMPOS, ESTADOS, ABAS, TIPOS_ERRO, SEM_OPERADOR, erroSugerido, nomesDasPessoas,
     opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados,
     regenerar: regenerarPrevia, regenerarPendentes, marcarNaoUsarNoTreino, CAMPOS_EXCLUIVEIS_DO_TREINO,

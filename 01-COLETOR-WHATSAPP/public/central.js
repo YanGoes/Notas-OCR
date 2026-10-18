@@ -404,6 +404,20 @@ function desenharDetalhe() {
             el("button", { type: "button", class: "danger ghost", onclick: () => executar(() => descartar(motivo.value), "Descartada.") }, "Descartar")));
     }
 
+    // Comentario livre para a IA aprender (nao vai para o Conta Azul).
+    const comentario = el("textarea", { id: "comentarioIa", rows: 3, maxlength: 2000,
+        placeholder: "Ex.: foto com duas notas — separar uma despesa para cada nota. / O operador pagou do bolso. / A placa está no canto do cupom." });
+    comentario.value = detalhe.comentario_ia || "";
+    const blocoComentario = el("div", { class: "bloco comentario-ia" },
+        el("h3", {}, "Comentário para a IA aprender"),
+        el("p", { class: "origem" }, "Explique o caso com suas palavras. Não vai para o Conta Azul: fica no exemplo de treino e na lista da aba Treino.",
+            detalhe.comentario_ia_por ? ` Último: ${detalhe.comentario_ia_por}, ${dataHora(detalhe.comentario_ia_em)}.` : ""),
+        comentario,
+        el("div", { class: "acoes" }, el("button", { type: "button", class: "secondary", onclick: () => executar(async () => {
+            await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor: revisor() });
+            await recarregar();
+        }, "Comentário salvo.") }, "Salvar comentário")));
+
     const historico = el("details", { class: "leitura" }, el("summary", {}, `Histórico (${detalhe.historico.length}) e correções (${detalhe.correcoes.length})`),
         el("ul", { class: "historico" },
             detalhe.historico.map((h) => el("li", {}, `${dataHora(h.em)} · ${h.de || "—"} → ${h.para}${h.motivo ? ` (${h.motivo})` : ""}`)),
@@ -426,6 +440,7 @@ function desenharDetalhe() {
                 irmas, duplicada,
                 el("div", { class: "bloco" }, el("h3", {}, "Prévia"), campos),
                 acoes,
+                blocoComentario,
                 blocoMensagem(detalhe),
                 blocoLeitura(detalhe),
                 historico)));
@@ -463,6 +478,11 @@ function marcadorNaoUsar() {
 
 async function aprovar(campos) {
     const autor = revisor();
+    // Comentario escrito e nao salvo vai junto com a aprovacao.
+    const comentario = document.querySelector("#comentarioIa");
+    if (comentario && comentario.value.trim() !== (estado.detalhe.comentario_ia || "").trim()) {
+        await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor });
+    }
     const alteracoes = alteracoesDe(campos);
     if (alteracoes.length) await api(`/despesas/${estado.selecionada}/corrigir`, { alteracoes, autor });
     const naoUsar = document.querySelector("#naoUsarCentroPagamento")?.checked ? ["centro_custo", "pagamento"] : [];
@@ -537,12 +557,18 @@ function mostrarContagem(contagem) {
 }
 
 async function carregarTreino() {
-    const [m, { contagem }] = await Promise.all([api("/metricas"), api("/despesas?aba=revisar")]);
+    const [m, { contagem }, comentarios] = await Promise.all([api("/metricas"), api("/despesas?aba=revisar"), api("/comentarios-ia")]);
     mostrarContagem(contagem);
     const pct = (valor) => (valor == null ? "—" : `${Math.round(valor * 100)}%`);
     const linhas = Object.values(m.por_campo).sort((a, b) => (a.acuracia ?? 1) - (b.acuracia ?? 1));
+    const blocoComentarios = el("div", { class: "bloco" }, el("h3", {}, `Comentários para a IA (${comentarios.length})`),
+        comentarios.length ? el("ul", { class: "historico" }, comentarios.map((c) => el("li", {},
+            el("a", { href: "#", onclick: (e) => { e.preventDefault(); estado.selecionada = c.id; trocarAba(c.estado === "APROVADO" ? "aprovadas" : "revisar").then(() => selecionar(c.id)); } }, `#${c.id}`),
+            ` · ${c.tipo || "—"} · ${c.por}, ${dataHora(c.em)}: `, c.comentario)))
+            : el("p", { class: "origem" }, "Nenhum ainda. Use o campo \"Comentário para a IA aprender\" em qualquer nota para explicar um caso especial."));
     $("#areaTreino").replaceChildren(
         blocoMaturidade(m.maturidade, pct),
+        blocoComentarios,
         el("h3", { class: "titulo-historico" }, "Histórico das revisões (prévias como a IA gerou na época)"),
         el("div", { class: "cartoes-metricas" },
             el("article", {}, el("span", {}, "Exemplos validados"), el("strong", {}, m.exemplos_treino)),

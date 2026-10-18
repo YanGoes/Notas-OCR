@@ -351,3 +351,15 @@ test("notas do treino com historico ficam na aba Simuladas, fora de Para revisar
     assert.ok(!simuladas.itens.some((item) => item.id === real.id));
     assert.equal(revisar.contagem.simuladas, 1);
 });
+
+test("comentario para a IA: salva em qualquer estado e entra no exemplo de treino", () => {
+    const { db, cad, id } = cenario();
+    revisao.aprovar(db, id, "Yan");
+    revisao.comentarParaIa(db, id, "Foto com duas notas: separar uma despesa para cada nota.", "Yan");
+    const [comentario] = revisao.comentariosParaIa(db);
+    assert.equal(comentario.id, id);
+    assert.match(comentario.comentario, /duas notas/);
+    const entrada = JSON.parse(db.prepare("SELECT entrada FROM exemplos_treino WHERE despesa_id = ?").get(id).entrada);
+    assert.match(entrada.comentario_da_revisao, /duas notas/);
+    assert.throws(() => revisao.comentarParaIa(db, id, "x", ""), /quem está comentando/);
+});

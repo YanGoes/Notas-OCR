@@ -140,6 +140,7 @@ function detalharDespesa(ctx, { id } = {}) {
         : valor]));
     return {
         id: linha.id, estado: linha.estado, campos: resumo, pendencias: lerJson(linha.pendencias, []), avisos: lerJson(linha.avisos, []),
+        comentario_para_ia: linha.comentario_ia || null,
         mensagem_do_operador: mensagem ? { quem: mensagem.remetente_nome, quando: mensagem.enviada_em, texto: mensagem.texto } : null,
         correcoes,
     };
@@ -279,6 +280,9 @@ const FERRAMENTAS = [
         esquema: { type: "object", properties: { operador: { type: "string" }, ano: { type: "integer" }, mes: { type: "integer" } } } },
     { nome: "situacao_do_sistema", grava: false, executar: situacaoDoSistema,
         descricao: "Estado do programa: WhatsApp conectado?, grupos e contatos monitorados, cota do Azure, último backup, notas por estado, últimos eventos da conexão.", esquema: { type: "object", properties: {} } },
+    { nome: "comentarios_para_ia", grava: false, executar: (ctx, { limite } = {}) => require("../central/revisao").comentariosParaIa(ctx.db, limite || 30),
+        descricao: "Comentários que o revisor escreveu nas notas para a IA aprender (casos especiais: duas notas na mesma foto, reembolso, placa difícil...).",
+        esquema: { type: "object", properties: { limite: { type: "integer" } } } },
     { nome: "maturidade_da_ia", grava: false, executar: maturidadeDaIa,
         descricao: "Última medição de acerto da IA contra as notas aprovadas (estágio, notas inteiras certas, campos que mais erram).", esquema: { type: "object", properties: {} } },
     { nome: "cadastros", grava: false, executar: consultarCadastros,
