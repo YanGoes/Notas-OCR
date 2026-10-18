@@ -64,6 +64,8 @@ const CAMPOS = {
     pagamento: { rotulo: "Pagamento", caminho: ["pagamento", "cartao"], erro: "CLASSIFICACAO", tipo: "pagamento" },
     // Opcional: reembolso, pagamento fora do cartao, recado do operador. Vai para a observacao no Conta Azul.
     observacao: { rotulo: "Observação (reembolso, etc.)", caminho: ["observacao", "valor"], erro: "NAO_INFORMADO", tipo: "texto" },
+    // Opcional: "Descrição" do anexo no Conta Azul (ao lado da foto). Ex.: "REEMBOLSO LORRAN".
+    anexo_descricao: { rotulo: "Descrição do anexo", caminho: ["anexo", "descricao"], erro: "NAO_INFORMADO", tipo: "texto" },
 };
 const OBRIGATORIOS_PARA_APROVAR = ["data_competencia", "valor", "tipo", "descricao", "categoria", "centro_custo"];
 

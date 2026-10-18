@@ -704,6 +704,14 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         avisos.push(`O cupom indica ${ocr.forma_pagamento}; prevaleceu o pagamento informado (${pagamento.rotulo || pagamento.forma}).`);
     }
 
+    // Reembolso: a descricao do anexo (ao lado da foto no Conta Azul) diz de quem e
+    // o reembolso, como a VMac faz: "REEMBOLSO LORRAN".
+    if (legenda?.reembolso && !descricaoAnexo) {
+        const nome = pessoa?.nome || identificacao?.sugestao?.nome || null;
+        descricaoAnexo = nome ? `REEMBOLSO ${normalizar(nome).toUpperCase()}` : "REEMBOLSO";
+        if (!nome) pendencias.push("Reembolso sem o operador identificado: complete a descrição do anexo com o nome de quem pagou.");
+    }
+
     // Anexo
     campos.anexo = {
         tipo: tipo === "ABASTECIMENTO" ? TIPO_ANEXO_FISCAL : TIPO_ANEXO_OUTROS,

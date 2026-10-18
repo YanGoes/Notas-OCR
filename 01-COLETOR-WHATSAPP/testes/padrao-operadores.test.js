@@ -385,3 +385,15 @@ test("palpite do Azure ('parece refeicao') nao vence a legenda do operador", () 
         legenda: legenda("Manutenção - filtro de combustível").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(previa.campos.tipo.valor, "MANUTENCAO");
 });
+
+test("reembolso: descricao do anexo vira 'REEMBOLSO <OPERADOR>' (mesmo com so 'Reembolso' na legenda)", () => {
+    const lorran = { pessoa: { id: "lorran", nome: "Lorran" }, origem: "telefone" };
+    const so = legenda("Almoço 2 - Reembolso").dados;
+    assert.equal(so.reembolso, true);
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 58, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: so, identificacao: lorran, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.anexo.descricao, "REEMBOLSO LORRAN");
+    const normal = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 58, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: legenda("Almoço 2").dados, identificacao: lorran, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(normal.campos.anexo.descricao, null);
+});
