@@ -209,13 +209,71 @@ function controle(campo, valor, desabilitado) {
         case "tipo": return el("select", comum, el("option", { value: "" }, "—"),
             opcoes.tipos.map((tipo) => el("option", { value: tipo.codigo, selected: tipo.codigo === valor }, tipo.rotulo)));
         case "categoria": return el("input", { ...comum, list: "listaCategorias", value: valor || "", placeholder: "Escolha ou digite a categoria" });
-        // Centro: digita ou escolhe na lista (sugestoes enquanto digita, como a categoria).
-        case "centro": return el("input", { ...comum, list: "listaCentros", value: valor || "", placeholder: "Digite ou escolha o centro de custo", autocomplete: "off" });
+        // Centro: lista agrupada como antes, mas da para digitar e ela filtra.
+        case "centro": return comboCentro(comum, valor);
         case "pagamento": return el("select", comum, el("option", { value: "" }, "—"),
             opcoes.cartoes.map((cartao) => el("option", { value: cartao.codigo, selected: cartao.codigo === valor }, cartao.rotulo)),
             PAGAMENTOS_EXTRA.map(([codigo, rotulo]) => el("option", { value: codigo, selected: codigo === valor }, rotulo)));
         default: return el("input", { ...comum, value: valor ?? "", list: campo.chave === "fornecedor" ? "listaFornecedores" : null });
     }
+}
+
+// ---------------------------------------------------------------------------
+// Caixa de centro de custo: parece a lista de antes (grupos ativos / inativos),
+// aceita digitar e filtra enquanto digita.
+// ---------------------------------------------------------------------------
+
+const semAcento = (texto) => String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+function comboCentro(comum, valor) {
+    const entrada = el("input", { ...comum, value: valor || "", class: "combo-centro", placeholder: "Digite ou escolha o centro de custo", autocomplete: "off", role: "combobox", "aria-expanded": "false" });
+    let painel = null;
+    let marcado = -1;
+    const fechar = () => { if (painel) painel.remove(); painel = null; marcado = -1; entrada.setAttribute("aria-expanded", "false"); };
+    const escolher = (nome) => {
+        entrada.value = nome;
+        entrada.dispatchEvent(new Event("input"));
+        entrada.dispatchEvent(new Event("change"));
+        fechar();
+    };
+    const desenhar = (filtrar) => {
+        const termo = filtrar ? semAcento(entrada.value).trim() : "";
+        const casa = (centro) => !termo || semAcento(`${centro.nome} ${centro.projeto || ""}`).includes(termo);
+        const rotulo = (centro) => `${centro.nome}${centro.ativo === false ? " (inativo)" : centro.ativo == null ? " (não confirmado)" : ""}${centro.id ? "" : " · sem ID"}`;
+        const ativos = estado.opcoes.centros.filter((c) => c.ativo === true && casa(c));
+        const outros = estado.opcoes.centros.filter((c) => c.ativo !== true && casa(c));
+        if (!painel) {
+            painel = el("div", { class: "combo-lista", role: "listbox" });
+            document.body.append(painel);
+        }
+        const r = entrada.getBoundingClientRect();
+        Object.assign(painel.style, { left: `${r.left + window.scrollX}px`, top: `${r.bottom + window.scrollY + 2}px`, width: `${Math.max(r.width, 280)}px` });
+        const item = (centro) => el("div", { class: `combo-item${centro.nome === entrada.value ? " atual" : ""}`, role: "option", onmousedown: (e) => { e.preventDefault(); escolher(centro.nome); } }, rotulo(centro));
+        painel.replaceChildren(
+            ...(ativos.length ? [el("div", { class: "combo-grupo" }, "Projetos ativos"), ...ativos.map(item)] : []),
+            ...(outros.length ? [el("div", { class: "combo-grupo" }, "Inativos / não confirmados"), ...outros.map(item)] : []),
+            ...(!ativos.length && !outros.length ? [el("div", { class: "combo-vazio" }, "Nenhum centro com esse nome. O texto digitado fica como informado na revisão.")] : []));
+        entrada.setAttribute("aria-expanded", "true");
+        marcado = -1;
+    };
+    entrada.addEventListener("focus", () => desenhar(false));
+    entrada.addEventListener("click", () => desenhar(false));
+    entrada.addEventListener("input", (e) => { if (e.isTrusted) desenhar(true); });
+    entrada.addEventListener("blur", () => setTimeout(fechar, 120));
+    entrada.addEventListener("keydown", (e) => {
+        if (!painel) return;
+        const itens = [...painel.querySelectorAll(".combo-item")];
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            marcado = Math.max(0, Math.min(itens.length - 1, marcado + (e.key === "ArrowDown" ? 1 : -1)));
+            itens.forEach((it, i) => it.classList.toggle("marcado", i === marcado));
+            itens[marcado]?.scrollIntoView({ block: "nearest" });
+        } else if (e.key === "Enter" && marcado >= 0 && itens[marcado]) {
+            e.preventDefault();
+            itens[marcado].dispatchEvent(new MouseEvent("mousedown"));
+        } else if (e.key === "Escape") fechar();
+    });
+    return entrada;
 }
 
 const CAMPOS_ABASTECIMENTO = ["litros", "odometro", "placa"];
