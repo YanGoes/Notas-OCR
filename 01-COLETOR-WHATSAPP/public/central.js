@@ -209,16 +209,8 @@ function controle(campo, valor, desabilitado) {
         case "tipo": return el("select", comum, el("option", { value: "" }, "—"),
             opcoes.tipos.map((tipo) => el("option", { value: tipo.codigo, selected: tipo.codigo === valor }, tipo.rotulo)));
         case "categoria": return el("input", { ...comum, list: "listaCategorias", value: valor || "", placeholder: "Escolha ou digite a categoria" });
-        case "centro": {
-            const ativos = opcoes.centros.filter((centro) => centro.ativo === true);
-            const outros = opcoes.centros.filter((centro) => centro.ativo !== true);
-            const conhecido = opcoes.centros.some((centro) => centro.nome === valor);
-            const rotulo = (centro) => `${centro.nome}${centro.ativo === false ? " (inativo)" : centro.ativo == null ? " (não confirmado)" : ""}${centro.id ? "" : " · sem ID"}`;
-            return el("select", comum, el("option", { value: "" }, "—"),
-                valor && !conhecido ? el("option", { value: valor, selected: true }, `${valor} (fora do cadastro)`) : null,
-                el("optgroup", { label: "Projetos ativos" }, ativos.map((centro) => el("option", { value: centro.nome, selected: centro.nome === valor }, rotulo(centro)))),
-                el("optgroup", { label: "Inativos / não confirmados" }, outros.map((centro) => el("option", { value: centro.nome, selected: centro.nome === valor }, rotulo(centro)))));
-        }
+        // Centro: digita ou escolhe na lista (sugestoes enquanto digita, como a categoria).
+        case "centro": return el("input", { ...comum, list: "listaCentros", value: valor || "", placeholder: "Digite ou escolha o centro de custo", autocomplete: "off" });
         case "pagamento": return el("select", comum, el("option", { value: "" }, "—"),
             opcoes.cartoes.map((cartao) => el("option", { value: cartao.codigo, selected: cartao.codigo === valor }, cartao.rotulo)),
             PAGAMENTOS_EXTRA.map(([codigo, rotulo]) => el("option", { value: codigo, selected: codigo === valor }, rotulo)));
@@ -728,6 +720,8 @@ function formularioProjeto(projeto, servicos, aoSalvar, aoCancelar) {
 
 async function depoisDeMudarCadastro(mensagem) {
     estado.opcoes = await api("/opcoes");
+    const lista = document.getElementById("listaCentros");
+    if (lista) lista.replaceChildren(...estado.opcoes.centros.map((centro) => el("option", { value: centro.nome }, centro.projeto || "")));
     await carregarCentros();
     avisar(`${mensagem} Use "Refazer prévias pendentes" para aplicar às despesas em revisão.`, "ok");
 }
@@ -802,6 +796,9 @@ async function iniciar() {
     vigiarColeta();
     try {
         estado.opcoes = await api("/opcoes");
+        const rotuloCentro = (centro) => `${centro.projeto && centro.projeto !== centro.nome ? `${centro.projeto} · ` : ""}${centro.ativo === true ? "ativo" : centro.ativo === false ? "inativo" : "não confirmado"}${centro.id ? "" : " · sem ID"}`;
+        document.body.append(el("datalist", { id: "listaCentros" }, [...estado.opcoes.centros].sort((a, b) => Number(b.ativo === true) - Number(a.ativo === true))
+            .map((centro) => el("option", { value: centro.nome }, rotuloCentro(centro)))));
         document.body.append(el("datalist", { id: "listaCategorias" }, estado.opcoes.categorias.map((categoria) =>
             el("option", { value: categoria.nome }, `${categoria.grupo}${categoria.id ? "" : " · sem ID"}`))));
         document.body.append(el("datalist", { id: "listaFornecedores" }, (estado.opcoes.fornecedores || []).map((nome) => el("option", { value: nome }))));

@@ -205,7 +205,12 @@ function aplicar(cad, campos, chave, valor) {
         return;
     }
     if (campo.tipo === "centro") {
-        const conhecido = valor ? opcoesCentro(cad).find((item) => normalizar(item.nome) === normalizar(valor) || normalizar(item.projeto) === normalizar(valor)) : null;
+        let conhecido = valor ? opcoesCentro(cad).find((item) => normalizar(item.nome) === normalizar(valor) || normalizar(item.projeto) === normalizar(valor)) : null;
+        // Digitado com um apelido do cadastro ("ADM", "Rota do Pequi"): resolve so se for exato e unico.
+        if (valor && !conhecido) {
+            const resolucao = cadastros.resolverProjeto(cad, valor);
+            if (resolucao.status === "RESOLVIDO") conhecido = opcoesCentro(cad).find((item) => item.projeto === resolucao.projeto.nome_oficial) || null;
+        }
         campos.centro_custo = {
             ...(campos.centro_custo || {}), nome: conhecido?.nome || valor, projeto: conhecido?.projeto || null,
             id: conhecido?.id || null, status: conhecido ? "ESCOLHIDO_NA_REVISAO" : "INFORMADO_NA_REVISAO", candidatos: [], ...MARCA,

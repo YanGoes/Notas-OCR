@@ -363,3 +363,10 @@ test("comentario para a IA: salva em qualquer estado e entra no exemplo de trein
     assert.match(entrada.comentario_da_revisao, /duas notas/);
     assert.throws(() => revisao.comentarParaIa(db, id, "x", ""), /quem está comentando/);
 });
+
+test("centro digitado na revisao resolve pelo nome, pelo projeto ou por apelido exato", () => {
+    const { db, cad, id } = cenario({ legenda: "Jantar 2 pessoas" });
+    const { despesa } = revisao.corrigir(db, cad, id, [{ campo: "centro_custo", valor: "br020" }], "Yan");
+    assert.equal(despesa.campos.centro_custo.id, ID_CENTRO);
+    assert.equal(despesa.campos.centro_custo.projeto, "CTVM-VDRod. DYNA BR020 e 242");
+});
