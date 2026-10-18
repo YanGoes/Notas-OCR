@@ -206,15 +206,20 @@ function controle(campo, valor, desabilitado) {
         // Hodometro com ponto de milhar, como na descricao ("184.428"); ao salvar o ponto e ignorado.
         case "inteiro": return el("input", { ...comum, inputmode: "numeric",
             value: campo.chave === "odometro" && valor != null && valor !== "" ? Number(valor).toLocaleString("pt-BR") : valor ?? "" });
-        case "tipo": return el("select", comum, el("option", { value: "" }, "—"),
-            opcoes.tipos.map((tipo) => el("option", { value: tipo.codigo, selected: tipo.codigo === valor }, tipo.rotulo)));
-        case "categoria": return el("input", { ...comum, list: "listaCategorias", value: valor || "", placeholder: "Escolha ou digite a categoria" });
-        // Centro: lista agrupada como antes, mas da para digitar e ela filtra.
-        case "centro": return comboCentro(comum, valor);
-        case "pagamento": return el("select", comum, el("option", { value: "" }, "—"),
-            opcoes.cartoes.map((cartao) => el("option", { value: cartao.codigo, selected: cartao.codigo === valor }, cartao.rotulo)),
-            PAGAMENTOS_EXTRA.map(([codigo, rotulo]) => el("option", { value: codigo, selected: codigo === valor }, rotulo)));
-        default: return el("input", { ...comum, value: valor ?? "", list: campo.chave === "fornecedor" ? "listaFornecedores" : null });
+        // Campos de lista: caixa com seta e lista agrupada de fundo branco, que aceita digitar e filtra.
+        case "tipo": return combo(comum, valor, opcoes.tipos.map((tipo) => ({ valor: tipo.codigo, rotulo: tipo.rotulo })), { livre: false, placeholder: "Escolha ou digite o tipo" });
+        case "categoria": return combo(comum, valor, opcoes.categorias.map((c) => ({ valor: c.nome, rotulo: `${c.nome}${c.id ? "" : " · sem ID"}`, grupo: c.grupo })),
+            { livre: true, placeholder: "Escolha ou digite a categoria" });
+        case "centro": return combo(comum, valor, opcoes.centros.map((c) => ({ valor: c.nome, busca: c.projeto,
+            rotulo: `${c.nome}${c.ativo === false ? " (inativo)" : c.ativo == null ? " (não confirmado)" : ""}${c.id ? "" : " · sem ID"}`,
+            grupo: c.ativo === true ? "Projetos ativos" : "Inativos / não confirmados" })).sort((a, b) => Number(b.grupo === "Projetos ativos") - Number(a.grupo === "Projetos ativos")),
+            { livre: true, placeholder: "Digite ou escolha o centro de custo", vazio: "Nenhum centro com esse nome. O texto digitado fica como informado na revisão." });
+        case "pagamento": return combo(comum, valor, [
+            ...opcoes.cartoes.map((cartao) => ({ valor: cartao.codigo, rotulo: cartao.rotulo, grupo: "Cartões" })),
+            ...PAGAMENTOS_EXTRA.map(([codigo, rotulo]) => ({ valor: codigo, rotulo, grupo: "Outras formas" }))], { livre: false, placeholder: "Escolha ou digite o pagamento" });
+        default: return campo.chave === "fornecedor"
+            ? combo(comum, valor, (opcoes.fornecedores || []).map((nome) => ({ valor: nome, rotulo: nome })), { livre: true, placeholder: "Escolha ou digite o fornecedor" })
+            : el("input", { ...comum, value: valor ?? "" });
     }
 }
 
@@ -225,41 +230,62 @@ function controle(campo, valor, desabilitado) {
 
 const semAcento = (texto) => String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-function comboCentro(comum, valor) {
-    const entrada = el("input", { ...comum, value: valor || "", class: "combo-centro", placeholder: "Digite ou escolha o centro de custo", autocomplete: "off", role: "combobox", "aria-expanded": "false" });
+/**
+ * Caixa de lista que aceita digitar. `opcoes`: [{ valor, rotulo, grupo?, busca? }].
+ * Mostra o rotulo; o valor gravado fica em dataset.valor (ex.: tipo "ALMOCO",
+ * mostrado "ALMOÇO"). `livre`: o texto digitado vale mesmo fora da lista
+ * (categoria, centro, fornecedor); sem `livre`, so vale o que estiver na lista.
+ */
+function combo(comum, valor, opcoes, { livre = false, placeholder = "", vazio = "Nada encontrado." } = {}) {
+    const achar = (v) => opcoes.find((o) => o.valor === v) || null;
+    const inicial = achar(valor);
+    const entrada = el("input", { ...comum, value: inicial ? inicial.rotulo : (valor ?? ""), class: "combo-centro", placeholder, autocomplete: "off", role: "combobox", "aria-expanded": "false" });
+    entrada.dataset.valor = valor ?? "";
     let painel = null;
     let marcado = -1;
     const fechar = () => { if (painel) painel.remove(); painel = null; marcado = -1; entrada.setAttribute("aria-expanded", "false"); };
-    const escolher = (nome) => {
-        entrada.value = nome;
+    /** Define o valor (escolha na lista ou "Usar sugestao"). */
+    entrada.definir = (novo) => {
+        const opcao = achar(novo) || opcoes.find((o) => semAcento(o.rotulo) === semAcento(novo)) || null;
+        entrada.dataset.valor = opcao ? opcao.valor : (livre ? String(novo ?? "") : entrada.dataset.valor);
+        entrada.value = opcao ? opcao.rotulo : (livre ? String(novo ?? "") : (achar(entrada.dataset.valor)?.rotulo ?? ""));
         entrada.dispatchEvent(new Event("input"));
         entrada.dispatchEvent(new Event("change"));
         fechar();
     };
     const desenhar = (filtrar) => {
         const termo = filtrar ? semAcento(entrada.value).trim() : "";
-        const casa = (centro) => !termo || semAcento(`${centro.nome} ${centro.projeto || ""}`).includes(termo);
-        const rotulo = (centro) => `${centro.nome}${centro.ativo === false ? " (inativo)" : centro.ativo == null ? " (não confirmado)" : ""}${centro.id ? "" : " · sem ID"}`;
-        const ativos = estado.opcoes.centros.filter((c) => c.ativo === true && casa(c));
-        const outros = estado.opcoes.centros.filter((c) => c.ativo !== true && casa(c));
-        if (!painel) {
-            painel = el("div", { class: "combo-lista", role: "listbox" });
-            document.body.append(painel);
-        }
+        const visiveis = opcoes.filter((o) => !termo || semAcento(`${o.rotulo} ${o.valor} ${o.busca || ""}`).includes(termo));
+        if (!painel) { painel = el("div", { class: "combo-lista", role: "listbox" }); document.body.append(painel); }
         const r = entrada.getBoundingClientRect();
-        Object.assign(painel.style, { left: `${r.left + window.scrollX}px`, top: `${r.bottom + window.scrollY + 2}px`, width: `${Math.max(r.width, 280)}px` });
-        const item = (centro) => el("div", { class: `combo-item${centro.nome === entrada.value ? " atual" : ""}`, role: "option", onmousedown: (e) => { e.preventDefault(); escolher(centro.nome); } }, rotulo(centro));
-        painel.replaceChildren(
-            ...(ativos.length ? [el("div", { class: "combo-grupo" }, "Projetos ativos"), ...ativos.map(item)] : []),
-            ...(outros.length ? [el("div", { class: "combo-grupo" }, "Inativos / não confirmados"), ...outros.map(item)] : []),
-            ...(!ativos.length && !outros.length ? [el("div", { class: "combo-vazio" }, "Nenhum centro com esse nome. O texto digitado fica como informado na revisão.")] : []));
+        Object.assign(painel.style, { left: `${r.left + window.scrollX}px`, top: `${r.bottom + window.scrollY + 2}px`, width: `${Math.max(r.width, 260)}px` });
+        const item = (o) => el("div", { class: `combo-item${o.valor === entrada.dataset.valor ? " atual" : ""}`, role: "option", onmousedown: (e) => { e.preventDefault(); entrada.definir(o.valor); } }, o.rotulo);
+        const filhos = [];
+        let grupoAtual = null;
+        for (const o of visiveis) {
+            if (o.grupo && o.grupo !== grupoAtual) { grupoAtual = o.grupo; filhos.push(el("div", { class: "combo-grupo" }, o.grupo)); }
+            filhos.push(item(o));
+        }
+        painel.replaceChildren(...(filhos.length ? filhos : [el("div", { class: "combo-vazio" }, livre ? vazio : "Nada com esse nome. Escolha uma opção da lista.")]));
         entrada.setAttribute("aria-expanded", "true");
         marcado = -1;
     };
     entrada.addEventListener("focus", () => desenhar(false));
     entrada.addEventListener("click", () => desenhar(false));
-    entrada.addEventListener("input", (e) => { if (e.isTrusted) desenhar(true); });
-    entrada.addEventListener("blur", () => setTimeout(fechar, 120));
+    entrada.addEventListener("input", (e) => {
+        if (!e.isTrusted) return;
+        if (livre) entrada.dataset.valor = entrada.value;
+        desenhar(true);
+    });
+    entrada.addEventListener("blur", () => setTimeout(() => {
+        fechar();
+        // Sem "livre": texto que nao e uma opcao volta para o ultimo valor valido.
+        if (!livre) {
+            const exata = opcoes.find((o) => semAcento(o.rotulo) === semAcento(entrada.value) || semAcento(o.valor) === semAcento(entrada.value));
+            if (exata && exata.valor !== entrada.dataset.valor) entrada.definir(exata.valor);
+            else entrada.value = achar(entrada.dataset.valor)?.rotulo ?? "";
+        }
+    }, 120));
     entrada.addEventListener("keydown", (e) => {
         if (!painel) return;
         const itens = [...painel.querySelectorAll(".combo-item")];
@@ -329,6 +355,7 @@ function linhaCampo(campo, detalhe) {
         linha.querySelector(".entrada").insertBefore(el("div", { class: "sugestao" },
             `Sugestão (${origemSugestao}${confianca}): `, el("b", {}, sugestao.nome), " ",
             el("button", { type: "button", class: "secondary", onclick: () => {
+                if (typeof entrada.definir === "function") { entrada.definir(sugestao.valor ?? sugestao.nome); return; }
                 entrada.value = sugestao.valor ?? sugestao.nome;
                 entrada.dispatchEvent(new Event("input"));
                 entrada.dispatchEvent(new Event("change"));
@@ -339,7 +366,7 @@ function linhaCampo(campo, detalhe) {
     return linha;
 }
 
-function valorDoControle(entrada) { return String(entrada.value ?? "").trim(); }
+function valorDoControle(entrada) { return String(entrada.dataset?.valor !== undefined ? entrada.dataset.valor : entrada.value ?? "").trim(); }
 
 function blocoLista(titulo, itens, classe) {
     if (!itens?.length) return null;
@@ -503,7 +530,7 @@ function desenharDetalhe() {
 function alteracoesDe(campos) {
     return [...campos.querySelectorAll(".campo.mudou")].map((linha) => ({
         campo: linha.dataset.chave,
-        valor: linha.querySelector(`#c-${CSS.escape(linha.dataset.chave)}`).value,
+        valor: valorDoControle(linha.querySelector(`#c-${CSS.escape(linha.dataset.chave)}`)),
         tipo_erro: linha.querySelector(".motivo-erro")?.value,
         observacao: linha.querySelector(".explicacao-erro")?.value.trim() || undefined,
     }));
