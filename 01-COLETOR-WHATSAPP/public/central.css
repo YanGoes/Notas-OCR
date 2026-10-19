@@ -136,6 +136,10 @@ details.leitura pre { max-height: 280px; overflow: auto; font-size: 12px; white-
 .chip-operador[aria-pressed="true"] .n { background: rgba(255, 255, 255, .22); color: #fff; }
 .chip-operador.zerado:not([aria-pressed="true"]) { color: var(--muted); font-weight: 500; }
 .chip-operador.sem-operador:not([aria-pressed="true"]) { border-style: dashed; }
+.periodo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 12px; }
+.entrada-periodo { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 4px 8px; font: inherit; font-size: 13px; }
+.periodo .intervalo { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+.resumo-periodo { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--ink); }
 .chip-operador .n { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 99px; background: var(--surface-soft); color: var(--muted); font-size: 11px; text-align: center; }
 .tabela-metricas a { color: var(--brand); font-weight: 600; }
 .titulo-historico { margin: 8px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }

@@ -139,16 +139,80 @@ function desenharFiltroOperador(operadores, totalDaAba) {
         ...operadores.map((item) => botao(item.id, item.nome, item.total)));
 }
 
+// Periodo escolhido (lembrado no navegador): todas | dia | mes | ano | intervalo.
+estado.periodo = (() => {
+    const padrao = { modo: "todas", dia: "", mes: "", ano: "", de: "", ate: "", pela: "nota" };
+    try { return { ...padrao, ...JSON.parse(localStorage.getItem("vmac-periodo") || "{}") }; } catch (_) { return padrao; }
+})();
+
+const doisDigitos = (n) => String(n).padStart(2, "0");
+
+/** Converte o modo escolhido em datas de/ate (AAAA-MM-DD, inclusivas). */
+function intervaloDoPeriodo(p) {
+    if (p.modo === "dia" && p.dia) return { de: p.dia, ate: p.dia };
+    if (p.modo === "mes" && /^\d{4}-\d{2}$/.test(p.mes)) {
+        const [a, m] = p.mes.split("-").map(Number);
+        return { de: `${p.mes}-01`, ate: `${p.mes}-${doisDigitos(new Date(a, m, 0).getDate())}` };
+    }
+    if (p.modo === "ano" && /^\d{4}$/.test(p.ano)) return { de: `${p.ano}-01-01`, ate: `${p.ano}-12-31` };
+    if (p.modo === "intervalo" && (p.de || p.ate)) return { de: p.de || null, ate: p.ate || null };
+    return null;
+}
+
+function mudarPeriodo(alteracao) {
+    Object.assign(estado.periodo, alteracao);
+    estado.selecionada = null;
+    try { localStorage.setItem("vmac-periodo", JSON.stringify(estado.periodo)); } catch (_) { /* sem armazenamento */ }
+    executar(carregarLista);
+}
+
+function desenharFiltroPeriodo(resumo) {
+    const p = estado.periodo;
+    const hoje = new Date();
+    if (!p.dia) p.dia = `${hoje.getFullYear()}-${doisDigitos(hoje.getMonth() + 1)}-${doisDigitos(hoje.getDate())}`;
+    if (!p.mes) p.mes = p.dia.slice(0, 7);
+    if (!p.ano) p.ano = p.dia.slice(0, 4);
+    const modos = [["todas", "Todas"], ["dia", "Dia"], ["mes", "Mês"], ["ano", "Ano"], ["intervalo", "De… até…"]];
+    const chips = modos.map(([id, rotulo]) => el("button", {
+        type: "button", class: "chip-operador", "aria-pressed": String(p.modo === id), onclick: () => mudarPeriodo({ modo: id }),
+    }, rotulo));
+    const entrada = (tipo, chave, extra = {}) => el("input", {
+        type: tipo, value: p[chave] || "", class: "entrada-periodo", ...extra,
+        onchange: (evento) => mudarPeriodo({ [chave]: evento.target.value }),
+    });
+    const anos = [];
+    for (let a = hoje.getFullYear() + 1; a >= 2024; a -= 1) anos.push(String(a));
+    const controle = {
+        dia: () => entrada("date", "dia", { "aria-label": "Dia" }),
+        mes: () => entrada("month", "mes", { "aria-label": "Mês" }),
+        ano: () => el("select", { class: "entrada-periodo", "aria-label": "Ano", onchange: (evento) => mudarPeriodo({ ano: evento.target.value }) },
+            ...anos.map((a) => el("option", { value: a, selected: a === p.ano }, a))),
+        intervalo: () => el("span", { class: "intervalo" }, entrada("date", "de", { "aria-label": "De" }), " até ", entrada("date", "ate", { "aria-label": "Até" })),
+    }[p.modo];
+    const pela = el("select", { class: "entrada-periodo", title: "Qual data usar no filtro", "aria-label": "Filtrar pela data",
+        onchange: (evento) => mudarPeriodo({ pela: evento.target.value }) },
+    el("option", { value: "nota", selected: p.pela !== "recebida" }, "pela data da nota"),
+    el("option", { value: "recebida", selected: p.pela === "recebida" }, "pela data em que chegou"));
+    $("#filtroPeriodo").replaceChildren(
+        el("span", { class: "rotulo-operadores" }, "Período:"), ...chips,
+        controle ? controle() : null, p.modo !== "todas" ? pela : null,
+        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null);
+}
+
 async function carregarLista() {
     const filtro = estado.operador && estado.operador !== "todos" ? `&operador=${encodeURIComponent(estado.operador)}` : "";
-    const { itens, contagem, operadores, total_da_aba: totalDaAba } = await api(`/despesas?aba=${encodeURIComponent(estado.aba)}${filtro}`);
+    const intervalo = intervaloDoPeriodo(estado.periodo);
+    const filtroData = intervalo ? `${intervalo.de ? `&de=${intervalo.de}` : ""}${intervalo.ate ? `&ate=${intervalo.ate}` : ""}&pela=${estado.periodo.pela}` : "";
+    const { itens, contagem, operadores, total_da_aba: totalDaAba, periodo } = await api(`/despesas?aba=${encodeURIComponent(estado.aba)}${filtro}${filtroData}`);
     mostrarContagem(contagem);
     desenharFiltroOperador(operadores || [], totalDaAba ?? itens.length);
+    desenharFiltroPeriodo(periodo);
     const lista = $("#lista");
     lista.replaceChildren();
     if (!itens.length) {
         const nome = (operadores || []).find((item) => item.id === estado.operador)?.nome;
-        lista.append(el("div", { class: "vazio" }, nome ? `Nenhuma nota de ${nome} nesta aba.` : "Nada nesta aba."));
+        const noPeriodo = intervaloDoPeriodo(estado.periodo) ? " neste período" : "";
+        lista.append(el("div", { class: "vazio" }, nome ? `Nenhuma nota de ${nome} nesta aba${noPeriodo}.` : `Nada nesta aba${noPeriodo}.`));
         if (!itens.some((item) => item.id === estado.selecionada)) mostrarVazio();
         return;
     }
@@ -793,6 +857,7 @@ async function trocarAba(aba) {
     const area = { treino: "#areaTreino", centros: "#areaCentros" }[aba] || "#areaRevisao";
     for (const id of ["#areaRevisao", "#areaTreino", "#areaCentros"]) $(id).classList.toggle("oculto", id !== area);
     $("#filtroOperador").classList.toggle("oculto", area !== "#areaRevisao");
+    $("#filtroPeriodo").classList.toggle("oculto", area !== "#areaRevisao");
     await executar({ treino: carregarTreino, centros: carregarCentros }[aba] || carregarLista);
 }
 

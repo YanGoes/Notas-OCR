@@ -575,24 +575,44 @@ function resumo(linha) {
     };
 }
 
+const DATA_DA_NOTA_SQL = "json_extract(d.campos, '$.data_competencia.valor')";
+const DATA_RECEBIDA_SQL = "substr(COALESCE(m.recebida_em, d.criado_em), 1, 10)";
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
- * Lista de uma aba, opcionalmente so de um operador.
+ * Filtro de periodo (datas AAAA-MM-DD, inclusivas). Pela data da nota
+ * (competencia) ou pela data em que a foto chegou. Devolve SQL + parametros.
+ */
+function filtroPeriodo({ de = null, ate = null, pela = "nota" } = {}) {
+    const coluna = pela === "recebida" ? DATA_RECEBIDA_SQL : DATA_DA_NOTA_SQL;
+    const partes = [];
+    const parametros = [];
+    if (DATA_ISO.test(String(de || ""))) { partes.push(`${coluna} >= ?`); parametros.push(String(de)); }
+    if (DATA_ISO.test(String(ate || ""))) { partes.push(`${coluna} <= ?`); parametros.push(String(ate)); }
+    return { sql: partes.map((p) => `AND ${p}`).join(" "), parametros, ativo: partes.length > 0 };
+}
+
+/**
+ * Lista de uma aba, opcionalmente so de um operador e de um periodo.
  * `operadores` traz, para a aba atual, quantas notas cada operador tem
  * (operadores do cadastro aparecem mesmo com zero).
  */
-function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null } = {}) {
+function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null, de = null, ate = null, pela = "nota" } = {}) {
     if (!ABAS[aba]) aba = "revisar";
     const estados = ABAS[aba];
     const origem = filtroOrigem(aba);
     const marcadores = estados.map(() => "?").join(",");
     const filtrarOperador = operador && operador !== "todos";
+    const periodo = filtroPeriodo({ de, ate, pela });
+    // Com periodo escolhido a pessoa quer ver tudo daquele intervalo.
+    const teto = periodo.ativo ? 2000 : 1000;
     const linhas = db.prepare(`
         SELECT d.*, m.recebida_em, msg.remetente_nome, ${OPERADOR_SQL} AS operador,
             (SELECT COUNT(*) FROM correcoes c WHERE c.despesa_id = d.id) AS correcoes
         FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
-        WHERE d.estado IN (${marcadores}) ${origem} ${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""}
-        ORDER BY COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
-        .all(...estados, ...(filtrarOperador ? [String(operador)] : []), Math.min(Number(limite) || 300, 1000));
+        WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} ${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""}
+        ORDER BY ${periodo.ativo && pela !== "recebida" ? `${DATA_DA_NOTA_SQL} DESC,` : ""} COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
+        .all(...estados, ...periodo.parametros, ...(filtrarOperador ? [String(operador)] : []), periodo.ativo ? teto : Math.min(Number(limite) || 300, teto));
     const contagem = Object.fromEntries(Object.keys(ABAS).map((nome) => [nome, 0]));
     for (const { estado, simulada, total } of db.prepare(`SELECT d.estado, (${SIMULADA_SQL}) AS simulada, COUNT(*) AS total
         FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref GROUP BY 1, 2`).all()) {
@@ -607,13 +627,18 @@ function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null
     }
     for (const linha of db.prepare(`
         SELECT ${OPERADOR_SQL} AS operador, MAX(msg.remetente_nome) AS remetente_nome, COUNT(*) AS total
-        FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
-        WHERE d.estado IN (${marcadores}) ${origem} GROUP BY operador`).all(...estados)) {
+        FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
+        WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} GROUP BY operador`).all(...estados, ...periodo.parametros)) {
         porOperador.set(linha.operador, { id: linha.operador, nome: nomeDoOperador(linha.operador, nomes, linha.remetente_nome), total: linha.total });
     }
     const operadores = [...porOperador.values()]
         .sort((a, b) => (a.id === SEM_OPERADOR) - (b.id === SEM_OPERADOR) || b.total - a.total || a.nome.localeCompare(b.nome));
-    return { itens: linhas.map(resumo), contagem, operadores, total_da_aba: operadores.reduce((soma, item) => soma + item.total, 0) };
+    const itens = linhas.map(resumo);
+    const soma = itens.reduce((total, item) => total + (Number(item.valor) || 0), 0);
+    return {
+        itens, contagem, operadores, total_da_aba: operadores.reduce((total, item) => total + item.total, 0),
+        periodo: periodo.ativo ? { de: de || null, ate: ate || null, pela: pela === "recebida" ? "recebida" : "nota", notas: itens.length, valor: Math.round(soma * 100) / 100 } : null,
+    };
 }
 
 function detalhar(db, despesaId) {

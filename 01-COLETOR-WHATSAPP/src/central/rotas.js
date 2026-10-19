@@ -78,6 +78,8 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.get("/opcoes", responder(() => revisao.opcoes(cad())));
     rotas.get("/despesas", responder((req) => revisao.listar(db(), {
         aba: String(req.query.aba || "revisar"), operador: req.query.operador ? String(req.query.operador) : null, cad: cad(),
+        de: req.query.de ? String(req.query.de) : null, ate: req.query.ate ? String(req.query.ate) : null,
+        pela: req.query.pela === "recebida" ? "recebida" : "nota",
     })));
     rotas.get("/despesas/:id", (req, res, next) => {
         try {
