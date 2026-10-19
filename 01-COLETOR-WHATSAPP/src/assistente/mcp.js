@@ -29,7 +29,7 @@ function anotar(fila, nome, parametros) {
 
 async function chamar(ctx, nome, parametros) {
     let ferramenta;
-    try { ferramenta = ferramentas.obter(nome); } catch (erro) { return { texto: erro.message, erro: true }; }
+    try { ferramenta = ferramentas.obter(nome, ctx.db); } catch (erro) { return { texto: erro.message, erro: true }; }
     if (ferramenta.grava) {
         anotar(ctx.fila, nome, parametros);
         return { texto: "Proposta registrada: a Central mostra um botão Confirmar para uma pessoa autorizada. Não chame outra ferramenta que grava; termine a resposta dizendo o que vai ser feito.", erro: false };
@@ -51,7 +51,7 @@ async function tratar(mensagem, ctx) {
     if (metodo === "initialize") {
         resultado = { protocolVersion: mensagem.params?.protocolVersion || VERSAO_PROTOCOLO, capabilities: { tools: {} }, serverInfo: { name: "vmac", version: "1" } };
     } else if (metodo === "tools/list") {
-        resultado = { tools: ferramentas.FERRAMENTAS.map((f) => ({ name: f.nome, description: f.descricao, inputSchema: f.esquema })) };
+        resultado = { tools: ferramentas.todas(ctx.db).map((f) => ({ name: f.nome, description: f.descricao, inputSchema: f.esquema })) };
     } else if (metodo === "tools/call") {
         const { texto, erro } = await chamar(ctx, mensagem.params?.name, mensagem.params?.arguments || {});
         resultado = { content: [{ type: "text", text: texto }], isError: erro };

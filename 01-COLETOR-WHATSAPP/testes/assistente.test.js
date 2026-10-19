@@ -156,3 +156,51 @@ test("relatorio do treino compara antes e depois por campo", () => {
     assert.equal(r.depois.taxa_pct, 60);
     assert.deepEqual(r.campos_do_pior_para_o_melhor[0], { campo: "Valor", acerto_pct: 99, de: 100, acerto_na_medicao_anterior_pct: 95 });
 });
+
+// --- Veiculos, consulta livre e habilidades criadas pelo usuario --------------
+
+test("veiculos: km rodados, consumo e leitura de hodometro fora da sequencia descartada", () => {
+    const v = require("../src/assistente/veiculos");
+    const planilha = [
+        { data: "2026-09-01", valor: -200, categoria: "HILUX - OVN5J98", descricao: "40,00L od 100.000 - OVN5J98" },
+        { data: "2026-09-05", valor: -210, categoria: "HILUX - OVN5J98", descricao: "50,00L od 100.500 - OVN5J98" },
+        { data: "2026-09-07", valor: -220, categoria: "Combustivel OVN-5J98", descricao: "50,00L od 61,788 - OVN5J98" },
+        { data: "2026-09-10", valor: -230, categoria: "HILUX - OVN5J98", descricao: "50,00L od 101.000 - OVN5J98" },
+        { data: "2026-09-10", valor: -99, categoria: "MANUTENÇÃO HILUX OVN5J98", descricao: "PNEU" },
+    ];
+    const [hilux] = v.resumoPorVeiculo(v.abastecimentos({ planilha }), { placa: "OVN-5J98" });
+    assert.equal(hilux.km_rodados, 1000);
+    assert.equal(hilux.abastecimentos, 4, "manutencao nao conta");
+    assert.equal(hilux.consumo_km_por_litro, 10, "1000 km / 100 L depois do 1o hodometro");
+    assert.equal(hilux.sem_hodometro, 1, "'od 61,788' nao e hodometro valido");
+});
+
+test("consulta livre so le: recusa alterar e roda SELECT no banco da Central", () => {
+    const fs = require("fs"); const os = require("os"); const path = require("path");
+    const consultas = require("../src/assistente/consultas");
+    assert.throws(() => consultas.validar("DELETE FROM despesas"), /leitura/);
+    assert.throws(() => consultas.validar("SELECT 1; DROP TABLE despesas"), /Uma consulta|alterar/);
+    const caminho = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cons-")), "c.db");
+    const db = banco.abrir(caminho);
+    db.prepare("INSERT INTO despesas (estado, campos, pendencias, avisos, criado_em, atualizado_em) VALUES ('APROVADO', '{\"valor\":{\"valor\":50}}', '[]', '[]', 'x', 'x')").run();
+    db.close();
+    const r = consultas.consultar({ base: "central", sql: "SELECT SUM(json_extract(campos, '$.valor.valor')) AS total FROM despesas" }, { caminhoCentral: caminho });
+    assert.equal(r.linhas[0].total, 50);
+});
+
+test("criar habilidade: testa, grava e aparece como ferramenta nova (h_nome)", async () => {
+    const fs = require("fs"); const os = require("os"); const path = require("path");
+    const caminho = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hab-")), "c.db");
+    process.env.CENTRAL_DB = caminho;
+    try {
+        const db = banco.abrir(caminho);
+        const consultas = require("../src/assistente/consultas");
+        consultas.criarHabilidade({ db, pessoa: "Yan" }, { nome: "notas_por_estado", descricao: "Quantas notas há em cada estado", base: "central",
+            sql: "SELECT estado, COUNT(*) AS n FROM despesas WHERE estado = :estado OR :estado IS NULL GROUP BY estado", parametros: [{ nome: "estado", descricao: "opcional" }] });
+        const lista = ferramentas.todas(db).map((f) => f.nome);
+        assert.ok(lista.includes("h_notas_por_estado"));
+        const resultado = await ferramentas.executar("h_notas_por_estado", {}, { db });
+        assert.deepEqual(resultado.linhas, []);
+        assert.throws(() => consultas.criarHabilidade({ db, pessoa: "Yan" }, { nome: "x", descricao: "y", sql: "SELECT 1" }), /Nome da habilidade/);
+    } finally { delete process.env.CENTRAL_DB; }
+});

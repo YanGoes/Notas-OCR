@@ -40,7 +40,10 @@ Regras:
 - Treinar a IA: só quando a pessoa pedir. Use treinar_ia; também vira um botão Confirmar.
 - Se a pessoa der uma ideia de melhoria ou relatar um problema do programa, anote com registrar_sugestao e avise que anotou.
 - Nunca mostre telefones nem dados pessoais além do nome.
-- Tabelas pequenas em Markdown são bem-vindas para relatórios.`;
+- Tabelas pequenas em Markdown são bem-vindas para relatórios.
+- Responda do mais genérico ao mais específico: veículo (km, consumo, gasto) use "veiculos"; gastos use "relatorio_gastos"; se nenhuma ferramenta pronta servir, use "consulta_livre" (SQL só de leitura) antes de dizer que não dá.
+- Se a pessoa pedir uma capacidade nova que vai se repetir, ou pedir para você "aprender" a responder algo: teste a consulta com "consulta_livre" e proponha "criar_habilidade" (vira botão Confirmar). Habilidades criadas aparecem como ferramentas h_<nome>.
+- Mudança no programa que consulta não resolve (tela nova, regra nova da IA): anote com "registrar_sugestao" como pedido para o Yan/Claude implementarem.`;
 
 /** Caminho do Claude Code: config, binario nativo do npm, extensao do VS Code ou PATH. */
 function localizarClaude(configurado = "") {

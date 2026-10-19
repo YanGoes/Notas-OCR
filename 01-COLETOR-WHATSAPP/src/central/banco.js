@@ -242,6 +242,19 @@ const MIGRACOES = [
     ALTER TABLE despesas ADD COLUMN comentario_ia_por TEXT;
     ALTER TABLE despesas ADD COLUMN comentario_ia_em TEXT;
     `,
+    // 7 — Habilidades do assistente criadas pelo usuario (consultas salvas).
+    `
+    CREATE TABLE assistente_habilidades (
+        nome TEXT PRIMARY KEY,
+        descricao TEXT NOT NULL,
+        base TEXT NOT NULL,
+        sql TEXT NOT NULL,
+        parametros TEXT,
+        criada_por TEXT NOT NULL,
+        em TEXT NOT NULL,
+        ativa INTEGER NOT NULL DEFAULT 1
+    );
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

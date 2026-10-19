@@ -71,7 +71,7 @@ async function enviar(db, { pessoa, texto, conversaId = null, emitir = () => {},
         let proposta = null;
         const [primeira] = resultado.propostas || [];
         if (primeira) {
-            const ferramenta = ferramentas.obter(primeira.ferramenta);
+            const ferramenta = ferramentas.obter(primeira.ferramenta, db);
             const resumo = ferramenta.resumir ? ferramenta.resumir(primeira.parametros || {}) : primeira.ferramenta;
             const propostaId = Number(db.prepare(`INSERT INTO assistente_propostas (conversa_id, ferramenta, parametros, resumo, pedida_por, em) VALUES (?, ?, ?, ?, ?, ?)`)
                 .run(id, primeira.ferramenta, json(primeira.parametros || {}), resumo, quem, agora()).lastInsertRowid);

@@ -283,6 +283,22 @@ function relatorioDoTreino(antes, depois, { treinado = true, regeradas = null } 
 
 // ---------------------------------------------------------------------------
 
+/** Veiculos: km rodados, litros, consumo, gasto (planilha + Central). */
+function consultarVeiculos(ctx, { placa, de, ate } = {}) {
+    const veiculos = require("./veiculos");
+    const central = despesasCentral(ctx.db).filter((d) => d.tipo === "ABASTECIMENTO").map((d) => {
+        const linha = ctx.db.prepare("SELECT campos FROM despesas WHERE id = ?").get(d.id);
+        const c = lerJson(linha?.campos, {});
+        return { placa: c.abastecimento?.placa?.valor, veiculo: c.categoria?.nome, data: d.data, litros: Number(c.abastecimento?.litros?.valor) || null,
+            odometro: Number(c.abastecimento?.odometro?.valor) || null, valor: d.valor };
+    });
+    const lista = veiculos.abastecimentos({ planilha: lancamentosPlanilha().lancamentos, central });
+    const resumo = veiculos.resumoPorVeiculo(lista, { placa, de, ate });
+    return { periodo: { de: de || "início", ate: ate || "hoje" }, fonte: "planilha do Conta Azul + notas da Central (mesmo hodômetro conta uma vez)",
+        observacao: "km rodados = último hodômetro válido − primeiro; leituras fora da sequência são descartadas. Consumo = km / litros abastecidos depois do primeiro hodômetro.",
+        veiculos: resumo };
+}
+
 const DATA ={ type: "string", description: "Data AAAA-MM-DD" };
 const FERRAMENTAS = [
     { nome: "relatorio_gastos", grava: false, executar: relatorioGastos,
@@ -306,6 +322,19 @@ const FERRAMENTAS = [
     { nome: "comentarios_para_ia", grava: false, executar: (ctx, { limite } = {}) => require("../central/revisao").comentariosParaIa(ctx.db, limite || 30),
         descricao: "Comentários que o revisor escreveu nas notas para a IA aprender (casos especiais: duas notas na mesma foto, reembolso, placa difícil...).",
         esquema: { type: "object", properties: { limite: { type: "integer" } } } },
+    { nome: "veiculos", grava: false, executar: consultarVeiculos,
+        descricao: "Por veículo (placa): km rodados, litros, consumo médio (km/L), gasto com combustível, custo por km, hodômetro inicial/final, primeiro e último abastecimento. Filtra por placa e período.",
+        esquema: { type: "object", properties: { placa: { type: "string" }, de: DATA, ate: DATA } } },
+    { nome: "consulta_livre", grava: false, executar: (_ctx, p) => require("./consultas").consultar(p),
+        descricao: "Para perguntas que nenhuma outra ferramenta responde: consulta SQL de LEITURA (SELECT/WITH, até 500 linhas). base 'central' = banco da Central; base 'planilha' = lançamentos do Conta Azul. Esquemas:\n" + require("./consultas").ESQUEMA.central + "\n" + require("./consultas").ESQUEMA.planilha,
+        esquema: { type: "object", properties: { base: { type: "string", enum: ["central", "planilha"] }, sql: { type: "string" } }, required: ["base", "sql"] } },
+    { nome: "criar_habilidade", grava: true, executar: (ctx, p) => require("./consultas").criarHabilidade(ctx, p),
+        resumir: (p) => `Criar a habilidade "${p.nome}": ${p.descricao}`,
+        descricao: "Quando a pessoa pedir uma capacidade nova que vai se repetir (ou pedir para 'aprender' a responder algo), salva uma consulta SQL de leitura como habilidade com nome, descrição e parâmetros (:nome no SQL). Teste antes com consulta_livre. Vira um botão Confirmar; depois aparece como ferramenta h_<nome> em todas as conversas.",
+        esquema: { type: "object", properties: { nome: { type: "string", description: "minúsculas e _ (ex.: km_por_veiculo)" }, descricao: { type: "string" },
+            base: { type: "string", enum: ["central", "planilha"] }, sql: { type: "string" },
+            parametros: { type: "array", items: { type: "object", properties: { nome: { type: "string" }, tipo: { type: "string" }, descricao: { type: "string" }, exemplo: {} } } } },
+            required: ["nome", "descricao", "base", "sql"] } },
     { nome: "maturidade_da_ia", grava: false, executar: maturidadeDaIa,
         descricao: "Última medição de acerto da IA contra as notas aprovadas (estágio, notas inteiras certas, campos que mais erram).", esquema: { type: "object", properties: {} } },
     { nome: "cadastros", grava: false, executar: consultarCadastros,
@@ -323,11 +352,16 @@ const FERRAMENTAS = [
 ];
 
 const porNome = new Map(FERRAMENTAS.map((ferramenta) => [ferramenta.nome, ferramenta]));
-function obter(nome) {
-    const ferramenta = porNome.get(nome);
+/** Ferramentas fixas + habilidades criadas pelo usuario (h_<nome>). */
+function todas(db) {
+    if (!db) return FERRAMENTAS;
+    try { return [...FERRAMENTAS, ...require("./consultas").listarHabilidades(db).map(require("./consultas").ferramentaDaHabilidade)]; } catch (_) { return FERRAMENTAS; }
+}
+function obter(nome, db = null) {
+    const ferramenta = porNome.get(nome) || (db && String(nome).startsWith("h_") ? todas(db).find((f) => f.nome === nome) : null);
     if (!ferramenta) throw new Error(`Ferramenta "${nome}" não existe.`);
     return ferramenta;
 }
-async function executar(nome, parametros, ctx) { return obter(nome).executar(ctx, parametros || {}); }
+async function executar(nome, parametros, ctx) { return obter(nome, ctx?.db).executar(ctx, parametros || {}); }
 
-module.exports = { FERRAMENTAS, obter, executar, despesasCentral, relatorioDoTreino, json };
+module.exports = { FERRAMENTAS, todas, obter, executar, despesasCentral, relatorioDoTreino, json };
