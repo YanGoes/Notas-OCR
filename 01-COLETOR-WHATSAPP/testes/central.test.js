@@ -163,19 +163,19 @@ test("abastecimento: descricao literal, anexo Documento fiscal e cartao do conte
     assert.equal(despesa.estado, "CLASSIFICADO");
 });
 
-test("abastecimento sem hodometro fica pendente e nao inventa descricao", () => {
+test("abastecimento sem hodometro: descricao no padrao com o lugar do numero vazio, sem travar", () => {
     const db = novoBanco();
     lote(db, ALMIR, "Despesas 30/09/2026\nCentro de custo\nGoinfra G.O\nCRÉDITO C6");
     const semKm = { ...POSTO, texto: POSTO.texto.replace("KM: 145225\n", "") };
     const [despesa] = foto(db, { bruto: azure([semKm]) }).lidas;
-    assert.equal(despesa.campos.descricao.valor, null);
-    assert.equal(despesa.estado, "AGUARDANDO_REVISAO");
-    assert.ok(despesa.pendencias.some((texto) => /hodômetro/.test(texto)));
+    assert.equal(despesa.campos.descricao.valor, "35,43L od - SGR4B54");
+    assert.ok(!despesa.pendencias.some((texto) => /hodômetro/.test(texto)), "nao vira pendencia");
+    assert.ok(despesa.avisos.some((texto) => /sem hodômetro/.test(texto)));
 });
 
 test("formatador de abastecimento segue exatamente o padrao VMac", () => {
     assert.equal(regras.descricaoAbastecimento({ litros: 35.43, odometro: 145225, placa: "jkn-2876" }), "35,43L od 145.225 - JKN2876");
-    assert.equal(regras.descricaoAbastecimento({ litros: 35.43, odometro: null, placa: "JKN2876" }), null);
+    assert.equal(regras.descricaoAbastecimento({ litros: 35.43, odometro: null, placa: "JKN2876" }), "35,43L od - JKN2876");
     assert.equal(regras.descricaoRefeicao("JANTAR", 3), "JANTAR - 3 PESSOAS");
     assert.equal(regras.descricaoRefeicao("ALMOCO", 1), "ALMOÇO - 1 PESSOA");
 });

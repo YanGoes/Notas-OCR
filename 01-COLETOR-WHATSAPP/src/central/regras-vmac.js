@@ -60,8 +60,10 @@ function milharBr(numero) {
  * Devolve null se faltar qualquer um dos tres dados (nunca completa sozinho).
  */
 function descricaoAbastecimento({ litros, odometro, placa }) {
-    if (!(Number(litros) > 0) || !(Number(odometro) > 0) || !placa) return null;
-    return `${litrosBr(litros)}L od ${milharBr(odometro)} - ${cadastros.placaCanonica(placa)}`;
+    if (!(Number(litros) > 0) || !placa) return null;
+    // Nota sem hodometro: mesmo padrao, com o lugar do numero vazio ("45,34L od - OVN1505").
+    const od = Number(odometro) > 0 ? `od ${milharBr(odometro)}` : "od";
+    return `${litrosBr(litros)}L ${od} - ${cadastros.placaCanonica(placa)}`;
 }
 
 /** "JANTAR - 3 PESSOAS" / "ALMOÇO - 1 PESSOA" */
@@ -464,7 +466,9 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
                 pendencias.push(`Placa ilegível na nota ("${ocr.placa_bruta}").`);
             }
         }
-        const faltando = [!litros && "litros", !odometro && "hodômetro", !placaLida && !ocr?.placa_bruta && "placa"].filter(Boolean);
+        // Sem hodometro na nota nao trava: a descricao sai sem o numero (orientacao do Yan, 18/10/2026).
+        if (!odometro && litros && (placaLida || ocr?.placa_bruta)) avisos.push("Nota sem hodômetro: descrição sem o número do odômetro (ex.: 45,34L od - OVN1505).");
+        const faltando = [!litros && "litros", !odometro && !litros && "hodômetro", !placaLida && !ocr?.placa_bruta && "placa"].filter(Boolean);
         if (faltando.length) pendencias.push(`Abastecimento sem ${faltando.join(", ")} legível na nota; fica pendente até conferência.`);
 
         const motoParticular = regrasPessoa.find((regra) => regra.tipo === "ABASTECIMENTO_MOTO_PARTICULAR");
