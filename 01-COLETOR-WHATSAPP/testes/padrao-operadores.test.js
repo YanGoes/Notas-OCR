@@ -449,3 +449,9 @@ test("descricao livre na legenda + so palpite do Azure: nao vira lanche", () => 
         legenda: legenda("Pano de chão").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(previa.campos.tipo.valor, "OUTROS");
 });
+
+test("posto 'Auto Center'/'Lubrificantes' com legenda Abastecimento nao vira manutencao", () => {
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2025-11-19", valor: 210, fornecedor: "AUTO POSTO E AUTO CENTER SANTA LUZIA LUBRIFICANTES", confianca: 0.99, placa: "RBT2E25", odometro: 150000, litragem: 30.1 },
+        legenda: legenda("Abastecimento").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.tipo.valor, "ABASTECIMENTO");
+});

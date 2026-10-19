@@ -51,6 +51,7 @@ function argumentos(lista = process.argv.slice(2)) {
         if (chave === "executar") opcoes.executar = true;
         else if (chave === "aprovar") opcoes.aprovar = true;
         else if (chave === "recomparar") opcoes.recomparar = true;
+        else if (chave === "completas") opcoes.completas = true;
         else opcoes[chave] = lista[++i];
     }
     opcoes.max = Number(opcoes.max) || 20;
@@ -66,27 +67,48 @@ function fotosDoDrive({ operador, de, ate }) {
     const config = lerJson(fs.readFileSync(path.join(RAIZ, "config.json"), "utf8"), {});
     const drive = config.arquivo_drive || {};
     const fotos = [];
+    const pastas = (dir) => fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    const ehMes = (nome) => /^\d{2}\.\d{2}$/.test(nome);
+    const lerDias = (dirMes, nomeMes, pessoa) => {
+        const [mm, aa] = nomeMes.split(".");
+        for (const dia of pastas(dirMes)) {
+            const dd = (dia.match(/^(\d{1,2})/) || [])[1];
+            if (!dd) continue;
+            const data = `20${aa}-${mm}-${dd.padStart(2, "0")}`;
+            if ((de && data < de) || (ate && data > ate)) continue;
+            const dir = path.join(dirMes, dia);
+            for (const arquivo of fs.readdirSync(dir).filter((n) => EXTENSOES.test(n))) fotos.push({ operador: pessoa, data_pasta: data, caminho: path.join(dir, arquivo) });
+        }
+    };
+    const querOperador = (nome) => !operador || normalizar(nome) === normalizar(operador);
     for (const ano of ["2026", "2025"]) {
-        const base = path.join(drive.raiz, ano, String(drive.modelo_pasta_ano || "Despesas de Campo {ano}").replace("{ano}", ano));
-        if (!fs.existsSync(base)) continue;
-        for (const pessoa of fs.readdirSync(base, { withFileTypes: true }).filter((e) => e.isDirectory())) {
-            if (operador && normalizar(pessoa.name) !== normalizar(operador)) continue;
-            const dirPessoa = path.join(base, pessoa.name);
-            for (const mes of fs.readdirSync(dirPessoa, { withFileTypes: true }).filter((e) => e.isDirectory() && /^\d{2}\.\d{2}$/.test(e.name))) {
-                const [mm, aa] = mes.name.split(".");
-                for (const dia of fs.readdirSync(path.join(dirPessoa, mes.name), { withFileTypes: true }).filter((e) => e.isDirectory())) {
-                    const dd = (dia.name.match(/^(\d{1,2})/) || [])[1];
-                    if (!dd) continue;
-                    const data = `20${aa}-${mm}-${dd.padStart(2, "0")}`;
-                    if ((de && data < de) || (ate && data > ate)) continue;
-                    const dir = path.join(dirPessoa, mes.name, dia.name);
-                    for (const arquivo of fs.readdirSync(dir).filter((n) => EXTENSOES.test(n))) fotos.push({ operador: pessoa.name, data_pasta: data, caminho: path.join(dir, arquivo) });
-                }
+        // O nome da pasta do ano mudou: "Despesas de Campo 2026" / "Despesas Campo 2025".
+        const base = [String(drive.modelo_pasta_ano || "Despesas de Campo {ano}"), "Despesas de Campo {ano}", "Despesas Campo {ano}"]
+            .map((modelo) => path.join(drive.raiz, ano, modelo.replace("{ano}", ano))).find((p) => fs.existsSync(p));
+        if (!base) continue;
+        for (const primeiro of pastas(base)) {
+            if (ehMes(primeiro)) {
+                for (const pessoa of pastas(path.join(base, primeiro)).filter(querOperador)) lerDias(path.join(base, primeiro, pessoa), primeiro, pessoa);
+            } else if (querOperador(primeiro)) {
+                for (const mes of pastas(path.join(base, primeiro)).filter(ehMes)) lerDias(path.join(base, primeiro, mes), mes, primeiro);
             }
         }
     }
     // Mais recentes primeiro: os nomes de centro e as regras atuais valem mais.
     return fotos.sort((a, b) => b.data_pasta.localeCompare(a.data_pasta) || a.caminho.localeCompare(b.caminho));
+}
+
+/**
+ * Lancamento "completo" (--completas): tudo o que a mensagem padrao leva esta
+ * no Conta Azul: centro, cartao e, conforme o tipo, pessoas ou litros+hodometro+placa.
+ */
+function lancamentoCompleto(l) {
+    if (!l?.centro || !cartaoDaConta(l.conta)) return false;
+    const descricao = String(l.descricao || "");
+    const legenda = legendaDoLancamento(l);
+    if (legenda === "Abastecimento") return /\d+[.,]?\d*\s*l(t|itros)?\b.*\bod\b\s*[\d.]{4,}.*[A-Z]{3}-?\d[A-Z0-9]\d{2}/i.test(descricao);
+    if (/^(Café|Almoço|Janta|Lanche|Hospedagem)/.test(legenda)) return /\d/.test(legenda);
+    return Boolean(descricao);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +309,13 @@ async function principal() {
             const achado = acharLancamento(lancamentos, { valor: ocr.valor, data: ocr.data, dataPasta: foto.data_pasta, usados });
             const l = achado && !achado.ambiguo ? achado : null;
             const indice = l ? lancamentos.indexOf(l) : null;
+            if (l && opcoes.completas && !lancamentoCompleto(l)) {
+                placar.incompletas = (placar.incompletas || 0) + 1;
+                registro.fotos[foto.caminho] = { data_pasta: foto.data_pasta, operador: foto.operador, ignorada: "lançamento sem todas as informações (modo completas)", lancamento_visto: indice, em: agora() };
+                fs.writeFileSync(REGISTRO, JSON.stringify(registro, null, 2), "utf8");
+                console.log(`${foto.data_pasta} ${foto.operador} · lançamento incompleto no Conta Azul: não entrou`);
+                continue;
+            }
             if (l) usados.add(indice);
             else {
                 // Sem o lancamento nao ha como montar a mensagem no padrao (tipo,
@@ -321,9 +350,11 @@ async function principal() {
             const resultado = { data_pasta: foto.data_pasta, operador: foto.operador, legenda, despesas, lancamento_indice: indice, em: agora() };
             Object.assign(resultado, avaliar(db, despesas, l, opcoes, placar));
             registro.fotos[foto.caminho] = resultado;
+            placar.registradas = (placar.registradas || 0) + 1;
             fs.mkdirSync(path.dirname(REGISTRO), { recursive: true });
             fs.writeFileSync(REGISTRO, JSON.stringify(registro, null, 2), "utf8");
             console.log(`${foto.data_pasta} ${foto.operador} · "${legenda || "sem lançamento no Conta Azul"}" · despesas ${despesas.join(",") || "-"}`);
+            if (opcoes.registrar && placar.registradas >= Number(opcoes.registrar)) break;
         } catch (erro) {
             placar.erros += 1;
             console.error(`Falhou ${path.basename(foto.caminho)}: ${erro.message}`);
@@ -335,4 +366,4 @@ async function principal() {
 
 if (require.main === module) principal().catch((erro) => { console.error("Falha:", erro.message); process.exitCode = 1; });
 
-module.exports = { acharLancamento, legendaDoLancamento, resumoDoDia, cartaoDaConta, comparar, fotosDoDrive };
+module.exports = { lancamentoCompleto, acharLancamento, legendaDoLancamento, resumoDoDia, cartaoDaConta, comparar, fotosDoDrive };

@@ -171,7 +171,8 @@ function tipoPelaNota(ocr) {
     // Loja de ferragens / material de construcao: antes de "refeicao", porque o
     // Azure as vezes classifica qualquer nota de varejo como refeicao.
     if (ehMaterialDeCampo(estabelecimento, itens)) return { tipo: "OUTROS", origem: "material_de_campo", material: true };
-    if (OFICINAS.some((termo) => contemTermo(estabelecimento, termo))) return { tipo: "MANUTENCAO", origem: "estabelecimento_da_nota" };
+    // Oficina pelo nome so se nao for posto ("Auto Posto e Auto Center", "Lubrificantes" sao postos).
+    if (OFICINAS.some((termo) => contemTermo(estabelecimento, termo)) && !contemTermo(estabelecimento, "posto")) return { tipo: "MANUTENCAO", origem: "nome_do_estabelecimento" };
     if (itensSoDeAgua(ocr)) return { tipo: "AGUA", origem: "itens_da_nota" };
     if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo))) return { tipo: "REFEICAO", origem: "estabelecimento_da_nota" };
     // So o "tipo de recibo" do Azure dizendo refeicao: pista fraca (perde para a legenda).
@@ -205,7 +206,7 @@ function decidirTipo({ ocr, legenda, lote }) {
 
     if (daLegenda) {
         // Legenda e nota discordando de "grupo" (refeicao x posto, por ex.): vale a nota, com revisao.
-        const conflito = daNota && daNota.origem !== "sugestao_azure" && daNota.tipo !== daLegenda && !(ehRefeicao(daNota.tipo) && ehRefeicao(daLegenda));
+        const conflito = daNota && !["sugestao_azure", "nome_do_estabelecimento"].includes(daNota.origem) && daNota.tipo !== daLegenda && !(ehRefeicao(daNota.tipo) && ehRefeicao(daLegenda));
         if (conflito) {
             const decisao = daNota.tipo === "REFEICAO" ? subtipoRefeicao(ocr, lote, daNota.origem) : daNota;
             return { ...decisao, pendencia: `A mensagem diz ${daLegenda.toLowerCase()}, mas a nota indica ${daNota.tipo.toLowerCase()}; confirme o tipo.` };
