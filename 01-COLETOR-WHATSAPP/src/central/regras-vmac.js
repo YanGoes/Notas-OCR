@@ -83,7 +83,9 @@ const COMBUSTIVEIS = ["gasolina", "etanol", "alcool", "diesel", "gnv", "arla"];
 const ITENS_DE_COMIDA = ["prato", "pf", "refeicao", "marmita", "marmitex", "almoco", "jantar", "janta", "lanche", "executivo", "self service", "buffet", "comida",
     "salgado", "pastel", "coxinha", "esfirra", "empada", "pao de queijo", "pao", "sanduiche", "misto", "hamburguer", "x burguer", "x tudo", "pizza", "espetinho",
     "suco", "refrigerante", "refri", "coca", "guarana", "cafe", "cappuccino", "cha", "vitamina", "acai", "sorvete", "bolo", "biscoito", "porcao"];
-const CONCESSIONARIAS =/\b(conc|concession\w*|ecovias|ecorodovias|ecopistas|ecosul|arteris|autoban|autopista\w*|triunfo|viapaulista|rota das bandeiras|entrevias|eixo sp|ccr|motiva)\b/;
+// Prato principal: contado na nota, diz quantas pessoas comeram.
+const PRATOS_PRINCIPAIS = ["prato", "pf", "marmita", "marmitex", "executivo", "refeicao", "almoco", "jantar", "self service", "buffet", "parmegiana", "file"];
+const CONCESSIONARIAS = /\b(conc|concession\w*|ecovias|ecorodovias|ecopistas|ecosul|arteris|autoban|autopista\w*|triunfo|viapaulista|rota das bandeiras|entrevias|eixo sp|ccr|motiva)\b/;
 const OFICINAS = ["oficina", "mecanica", "auto pecas", "autopecas", "auto center", "centro automotivo", "borracharia", "pneus", "retifica", "funilaria", "auto eletrica", "lubrificantes"];
 const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "padaria", "panificadora", "confeitaria",
     "cafeteria", "bar", "self service", "marmitaria", "pastelaria", "hamburgueria", "lanches", "grill", "buffet"];
@@ -234,12 +236,19 @@ function pessoasPelaNota(ocr, tipo) {
     }
     const pratos = (ocr?.itens || []).filter((item) => item.descricao && !NAO_E_PRATO.test(normalizar(item.descricao)));
     if (!pratos.length) return null;
-    const maior = Math.max(...pratos.map((item) => {
+    // Linhas iguais somam (3 linhas de "PRATO FEITO" = 3 pratos).
+    const porItem = new Map();
+    for (const item of pratos) {
         const quantidade = Number(item.quantidade);
         // Quantidade fracionada (kg de self-service) nao conta pessoa: vale 1.
-        return Number.isInteger(quantidade) && quantidade > 0 && quantidade <= 20 ? quantidade : 1;
-    }));
-    return maior >= 1 ? { valor: maior, origem: "itens_da_nota" } : null;
+        const conta = Number.isInteger(quantidade) && quantidade > 0 && quantidade <= 20 ? quantidade : 1;
+        const chave = normalizar(item.descricao);
+        porItem.set(chave, (porItem.get(chave) || 0) + conta);
+    }
+    const [itemMaior, maior] = [...porItem.entries()].sort((x, y) => y[1] - x[1])[0];
+    // Prato principal contado (prato feito, marmita, executivo...): evidencia forte da nota.
+    const ehPrato = PRATOS_PRINCIPAIS.some((termo) => contemTermo(itemMaior, termo));
+    return maior >= 1 ? { valor: Math.min(maior, 20), origem: ehPrato && maior >= 2 ? "pratos_da_nota" : "itens_da_nota" } : null;
 }
 
 function decidirPessoas({ tipo, legenda, lote, ocr = null, habitos = null, recentes = null }) {
@@ -257,6 +266,9 @@ function decidirPessoas({ tipo, legenda, lote, ocr = null, habitos = null, recen
         // Mensagens antigas (antes do padrao): pode ser pessoas ou notas, a confirmar.
         return { valor: qtdLote.quantidade, origem: "quantidade_do_lote_semantica_indeterminada", confirmado: false };
     }
+    // Pratos principais contados na propria nota valem mais que o padrao dos dias (#127).
+    const contados = pessoasPelaNota(ocr, tipo);
+    if (contados?.origem === "pratos_da_nota") return { ...contados, confirmado: false };
     // Padrao do proprio operador nos ultimos dias: o que ele disse no mesmo
     // dia vale como informado; de dias anteriores, so estimativa.
     if (recentes?.valor) {
@@ -511,7 +523,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             pendencias.push(`Pessoas não informadas; estimado ${pessoas.valor} como na nota de ${pessoas.data_referencia.split("-").reverse().slice(0, 2).join("/")}. Confirme.`);
         } else if (pessoas.origem === "habito_do_operador") {
             pendencias.push(`Pessoas não informadas; estimado ${pessoas.valor} pelo costume de ${pessoa?.nome || "deste operador"} (${pessoas.amostras} notas aprovadas). Confirme.`);
-        } else if (pessoas.origem === "itens_da_nota") {
+        } else if (pessoas.origem === "itens_da_nota" || pessoas.origem === "pratos_da_nota") {
             pendencias.push(`${pessoas.valor} ${pessoas.valor === 1 ? "pessoa estimada" : "pessoas estimadas"} pelos itens da nota; confirme.`);
         } else if (pessoas.origem === "valor_da_diaria") {
             pendencias.push(`Pessoas não informadas; estimada 1 pelo valor da diária (até R$ ${LIMITE_DIARIA_UMA_PESSOA}). Confirme.`);

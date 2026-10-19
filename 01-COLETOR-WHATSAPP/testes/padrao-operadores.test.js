@@ -417,3 +417,11 @@ test("posto com item de combustivel continua abastecimento", () => {
         itens: [{ descricao: "GASOLINA COMUM", quantidade: 35.4 }, { descricao: "AGUA MINERAL", quantidade: 1 }] }, legenda: {}, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(previa.campos.tipo.valor, "ABASTECIMENTO");
 });
+
+test("pessoas: linhas iguais de prato somam (3 x 'PRATO FEITO' = 3) e valem mais que o padrao do dia", () => {
+    const ocr = { itens: [{ descricao: "PRATO FEITO NORMAL", quantidade: 1 }, { descricao: "PRATO FEITO NORMAL", quantidade: 1 }, { descricao: "PRATO FEITO NORMAL", quantidade: 1 }, { descricao: "SUCO UVA 1LT", quantidade: 1 }] };
+    const pessoas = regrasVmac.decidirPessoas({ tipo: "ALMOCO", legenda: {}, lote: null, ocr, recentes: { valor: 2, mesmo_dia: true, despesa_id: 1 } });
+    assert.equal(pessoas.valor, 3);
+    assert.equal(pessoas.origem, "pratos_da_nota");
+    assert.equal(pessoas.confirmado, false);
+});
