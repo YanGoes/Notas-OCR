@@ -370,3 +370,21 @@ test("centro digitado na revisao resolve pelo nome, pelo projeto ou por apelido 
     assert.equal(despesa.campos.centro_custo.id, ID_CENTRO);
     assert.equal(despesa.campos.centro_custo.projeto, "CTVM-VDRod. DYNA BR020 e 242");
 });
+
+test("trocar o fornecedor para RESTAURANTES vira refeicao: tipo, categoria e descricao acompanham", () => {
+    const { db, cad, id } = cenario({ bruto: POSTO, legenda: "Abastecimento\nBR020\nCrédito Inter" });
+    cad.fornecedores = { recorrentes: [], genericos_por_tipo: { ABASTECIMENTO: "POSTOS DE COMBUSTÍVEL", JANTAR: "RESTAURANTES", ALMOCO: "RESTAURANTES", CAFE_DA_MANHA: "RESTAURANTES" } };
+    const { despesa } = revisao.corrigir(db, cad, id, [{ campo: "fornecedor", valor: "RESTAURANTES" }, { campo: "pessoas", valor: "3" }], "Yan");
+    assert.ok(["CAFE_DA_MANHA", "ALMOCO", "JANTAR", "LANCHE"].includes(despesa.campos.tipo.valor), "virou refeicao (pelo horario da nota)");
+    assert.match(despesa.campos.descricao.valor, /3 PESSOAS$/);
+    const tipoCorrigido = db.prepare("SELECT tipo_erro, observacao FROM correcoes WHERE despesa_id = ? AND campo = 'tipo'").get(id);
+    assert.equal(tipoCorrigido.tipo_erro, "CLASSIFICACAO", "o tipo errado vira aprendizado");
+});
+
+test("trocar o tipo para JANTAR troca a categoria e o fornecedor generico", () => {
+    const { db, cad, id } = cenario({ bruto: POSTO, legenda: "Abastecimento\nBR020\nCrédito Inter" });
+    cad.fornecedores = { recorrentes: [], genericos_por_tipo: { ABASTECIMENTO: "POSTOS DE COMBUSTÍVEL", JANTAR: "RESTAURANTES" } };
+    const { despesa } = revisao.corrigir(db, cad, id, [{ campo: "tipo", valor: "JANTAR" }], "Yan");
+    assert.equal(despesa.campos.categoria.nome, "Refeição - Jantar");
+    assert.equal(despesa.campos.fornecedor.valor, "RESTAURANTES");
+});

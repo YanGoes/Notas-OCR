@@ -15,7 +15,7 @@ const { agora, json, lerJson, transacao } = require("./banco");
 const cadastros = require("./cadastros");
 const contexto = require("./contexto");
 const { lerDespesa, regenerarPrevia, registrarHistorico, ESTADOS_REGERAVEIS } = require("./orquestrador");
-const { TIPOS, descricaoAbastecimento, descricaoRefeicao } = require("./regras-vmac");
+const { TIPOS, descricaoAbastecimento, descricaoRefeicao, refeicaoPeloHorario } = require("./regras-vmac");
 const { normalizar } = require("./texto");
 
 // Motivo de cada correcao. NAO_INFORMADO = a informacao nao existia (o
@@ -258,6 +258,49 @@ function ajustarCategoriaAdministrativa(cad, campos, registros) {
     if (categoria) campos.categoria = { nome: categoria.nome, id: categoria.id, origem: "despesa_administrativa" };
 }
 
+/** Fornecedor generico -> tipo de despesa (o revisor escolheu o fornecedor; o tipo acompanha). */
+function tipoDoFornecedor(fornecedor, campos) {
+    const nome = normalizar(fornecedor || "");
+    const tipoAtual = campos.tipo?.valor;
+    if (/^(restaurantes?|padaria|lanchonete)$/.test(nome)) {
+        return TIPOS[tipoAtual]?.refeicao ? tipoAtual : refeicaoPeloHorario(campos.hora_da_nota?.valor) || "ALMOCO";
+    }
+    if (/^(hoteis|hotel|pousada)$/.test(nome)) return "HOSPEDAGEM";
+    if (/^postos? de combustive(l|is)$/.test(nome)) return "ABASTECIMENTO";
+    if (/^materiais de campo$/.test(nome)) return "OUTROS";
+    if (/^manutencao veiculos$/.test(nome)) return "MANUTENCAO";
+    return null;
+}
+
+/**
+ * A nota acompanha a mudanca feita na revisao: fornecedor escolhido muda o tipo;
+ * tipo novo traz a categoria e o fornecedor do tipo (quando a pessoa nao os
+ * escolheu). O ajuste automatico do tipo fica registrado como correcao, para
+ * a IA aprender que errou o tipo.
+ */
+function acompanharTipo(cad, campos, registros) {
+    const mudou = (chave) => registros.some((item) => item.chave === chave);
+    if (mudou("fornecedor") && !mudou("tipo")) {
+        const novo = tipoDoFornecedor(campos.fornecedor?.valor, campos);
+        const anterior = campos.tipo?.valor;
+        if (novo && novo !== anterior) {
+            campos.tipo = { valor: novo, origem: "correcao_humana", via: "fornecedor" };
+            registros.push({ chave: "tipo", anterior, novo, tipoErro: "CLASSIFICACAO", observacao: `ajustado pelo fornecedor escolhido (${campos.fornecedor.valor})` });
+        }
+    }
+    if (!mudou("tipo")) return;
+    const tipo = campos.tipo?.valor;
+    if (!mudou("categoria") && campos.categoria?.origem !== "correcao_humana" && tipo !== "ABASTECIMENTO") {
+        const doTipo = TIPOS[tipo]?.categoria ? cadastros.categoriaPorNome(cad, TIPOS[tipo].categoria) : null;
+        campos.categoria = doTipo ? { nome: doTipo.nome, id: doTipo.id, origem: "regra_do_tipo" } : { nome: null, id: null, origem: null };
+    }
+    const generico = cad.fornecedores?.genericos_por_tipo?.[tipo];
+    if (!mudou("fornecedor") && campos.fornecedor?.origem !== "correcao_humana" && generico) {
+        campos.fornecedor = { ...(campos.fornecedor || {}), valor: generico, origem: "fornecedor_generico_do_tipo" };
+    }
+    if (tipo !== "ABASTECIMENTO") delete campos.placa_veiculo;
+}
+
 function atualizarDescricao(campos) {
     if (campos.descricao?.origem === "correcao_humana") return;
     const tipo = campos.tipo?.valor;
@@ -301,6 +344,7 @@ function corrigir(db, cad, despesaId, alteracoes, autor) {
         registros.push({ chave, anterior, novo, tipoErro, observacao: observacao || null });
     }
     if (!registros.length) return { despesa, alteradas: 0 };
+    acompanharTipo(cad, campos, registros);
     atualizarDescricao(campos);
     ajustarCategoriaAdministrativa(cad, campos, registros);
 

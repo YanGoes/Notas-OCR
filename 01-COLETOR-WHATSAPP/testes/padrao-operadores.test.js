@@ -397,3 +397,23 @@ test("reembolso: descricao do anexo vira 'REEMBOLSO <OPERADOR>' (mesmo com so 'R
         legenda: legenda("Almoço 2").dados, identificacao: lorran, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(normal.campos.anexo.descricao, null);
 });
+
+// --- Nota analisada por inteiro (achado do Yan, 18/10/2026: #127) ----------------
+
+test("posto com lanchonete: itens de comida (sem combustivel) = refeicao, mesmo com '1LT' do suco", () => {
+    const ocr = { data: "2026-09-26", hora: "11:52", valor: 87, fornecedor: "POSTO DE SERVICOS BEIRA RIO", nome_fantasia: "POSTO BEIRA RIO", confianca: 0.99, litragem: 1, placa: "ATC0786",
+        itens: [{ descricao: "PRATO FEITO NORMAL", quantidade: 1 }, { descricao: "PRATO FEITO NORMAL", quantidade: 1 }, { descricao: "PRATO FEITO NORMAL", quantidade: 1 }, { descricao: "SUCO LA FRUIT UVA 1LT", quantidade: 1 }] };
+    const cad = { ...cadastros(), fornecedores: { recorrentes: [], genericos_por_tipo: { ALMOCO: "RESTAURANTES", ABASTECIMENTO: "POSTOS DE COMBUSTÍVEL" } } };
+    const comLegenda = regrasVmac.montarPrevia({ ocr, legenda: legenda("Almoço").dados, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(comLegenda.campos.tipo.valor, "ALMOCO");
+    assert.equal(comLegenda.campos.fornecedor.valor, "RESTAURANTES");
+    assert.equal(comLegenda.campos.abastecimento, undefined, "nada de litros/placa em refeicao");
+    const semLegenda = regrasVmac.montarPrevia({ ocr, legenda: {}, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.ok(regrasVmac.TIPOS[semLegenda.campos.tipo.valor]?.refeicao, "itens de comida = refeicao");
+});
+
+test("posto com item de combustivel continua abastecimento", () => {
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-09-26", valor: 200, fornecedor: "AUTO POSTO X", confianca: 0.99, litragem: 35.4, placa: "SGR4B54", odometro: 145225,
+        itens: [{ descricao: "GASOLINA COMUM", quantidade: 35.4 }, { descricao: "AGUA MINERAL", quantidade: 1 }] }, legenda: {}, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.tipo.valor, "ABASTECIMENTO");
+});

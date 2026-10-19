@@ -326,10 +326,50 @@ function blocoMotivo(campo, valorAtual) {
     return el("div", { class: "tipo-erro" }, el("span", {}, "Motivo da correção:"), motivo, explicacao);
 }
 
+const TIPOS_COM_PESSOAS = ["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE", "HOSPEDAGEM"];
+/** Campo que so faz sentido em certos tipos (litros/placa so em abastecimento; pessoas em refeicao/hospedagem). */
+function campoCabeNoTipo(chave, tipo) {
+    if (CAMPOS_ABASTECIMENTO.includes(chave)) return tipo === "ABASTECIMENTO";
+    if (chave === "pessoas") return TIPOS_COM_PESSOAS.includes(tipo);
+    return true;
+}
+
+// Fornecedor generico escolhido -> tipo (espelha o servidor: revisao.tipoDoFornecedor).
+function tipoPeloFornecedor(fornecedor, tipoAtual, horaNota) {
+    const nome = semAcento(fornecedor).trim();
+    if (/^(restaurantes?|padaria|lanchonete)$/.test(nome)) {
+        if (["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE"].includes(tipoAtual)) return tipoAtual;
+        const [h, m] = String(horaNota || "").split(":").map(Number);
+        if (Number.isNaN(h)) return "ALMOCO";
+        const minutos = h * 60 + (m || 0);
+        return minutos >= 300 && minutos < 630 ? "CAFE_DA_MANHA" : minutos < 930 ? "ALMOCO" : minutos < 1080 ? "LANCHE" : "JANTAR";
+    }
+    if (/^(hoteis|hotel|pousada)$/.test(nome)) return "HOSPEDAGEM";
+    if (/^postos? de combustive(l|is)$/.test(nome)) return "ABASTECIMENTO";
+    if (/^materiais de campo$/.test(nome)) return "OUTROS";
+    if (/^manutencao veiculos$/.test(nome)) return "MANUTENCAO";
+    return null;
+}
+
+/** A previa acompanha a revisao: tipo mostra/esconde campos; fornecedor escolhido muda o tipo. */
+function ligarCamposDependentes(campos, detalhe) {
+    const entrada = (chave) => campos.querySelector(`#c-${chave}`);
+    const tipo = entrada("tipo");
+    const fornecedor = entrada("fornecedor");
+    const aplicar = () => {
+        const atual = tipo ? valorDoControle(tipo) : detalhe.valores.tipo;
+        for (const linha of campos.querySelectorAll(".campo")) linha.classList.toggle("oculto", !campoCabeNoTipo(linha.dataset.chave, atual));
+    };
+    tipo?.addEventListener("change", aplicar);
+    fornecedor?.addEventListener("change", () => {
+        if (!tipo || typeof tipo.definir !== "function") return;
+        const novo = tipoPeloFornecedor(valorDoControle(fornecedor), valorDoControle(tipo), detalhe.campos.hora_da_nota?.valor);
+        if (novo && novo !== valorDoControle(tipo)) tipo.definir(novo);
+    });
+    aplicar();
+}
+
 function linhaCampo(campo, detalhe) {
-    const tipoAtual = detalhe.valores.tipo;
-    if (CAMPOS_ABASTECIMENTO.includes(campo.chave) && tipoAtual !== "ABASTECIMENTO" && detalhe.valores[campo.chave] == null) return null;
-    if (campo.chave === "pessoas" && !["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE", "HOSPEDAGEM"].includes(tipoAtual) && detalhe.valores.pessoas == null) return null;
     const valor = detalhe.valores[campo.chave];
     const origem = origemDe(detalhe.campos, campo.chave);
     const entrada = controle(campo, valor, !detalhe.editavel);
@@ -464,6 +504,7 @@ function desenharDetalhe() {
     const detalhe = estado.detalhe;
     const [nomeEstado, classeEstado] = NOMES_ESTADO[detalhe.estado] || [detalhe.estado, ""];
     const campos = el("div", { class: "campos" }, estado.opcoes.campos.map((campo) => linhaCampo(campo, detalhe)));
+    ligarCamposDependentes(campos, detalhe);
     const acoes = el("div", { class: "acoes" });
     if (detalhe.editavel) {
         acoes.append(

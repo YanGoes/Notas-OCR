@@ -79,7 +79,11 @@ function descricaoRefeicao(tipo, pessoas) {
 
 const COMBUSTIVEIS = ["gasolina", "etanol", "alcool", "diesel", "gnv", "arla"];
 // Concessionarias de rodovia: a nota de pedagio vem com o nome delas ("Conc. ECOVIAS").
-const CONCESSIONARIAS = /\b(conc|concession\w*|ecovias|ecorodovias|ecopistas|ecosul|arteris|autoban|autopista\w*|triunfo|viapaulista|rota das bandeiras|entrevias|eixo sp|ccr|motiva)\b/;
+// Itens que indicam refeicao (posto com lanchonete, conveniencia).
+const ITENS_DE_COMIDA = ["prato", "pf", "refeicao", "marmita", "marmitex", "almoco", "jantar", "janta", "lanche", "executivo", "self service", "buffet", "comida",
+    "salgado", "pastel", "coxinha", "esfirra", "empada", "pao de queijo", "pao", "sanduiche", "misto", "hamburguer", "x burguer", "x tudo", "pizza", "espetinho",
+    "suco", "refrigerante", "refri", "coca", "guarana", "cafe", "cappuccino", "cha", "vitamina", "acai", "sorvete", "bolo", "biscoito", "porcao"];
+const CONCESSIONARIAS =/\b(conc|concession\w*|ecovias|ecorodovias|ecopistas|ecosul|arteris|autoban|autopista\w*|triunfo|viapaulista|rota das bandeiras|entrevias|eixo sp|ccr|motiva)\b/;
 const OFICINAS = ["oficina", "mecanica", "auto pecas", "autopecas", "auto center", "centro automotivo", "borracharia", "pneus", "retifica", "funilaria", "auto eletrica", "lubrificantes"];
 const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "padaria", "panificadora", "confeitaria",
     "cafeteria", "bar", "self service", "marmitaria", "pastelaria", "hamburgueria", "lanches", "grill", "buffet"];
@@ -128,8 +132,15 @@ function tipoPelaNota(ocr) {
     const texto = String(ocr?.texto_bruto || "");
     const combustivelNoTexto = COMBUSTIVEIS.some((termo) => contemTermo(texto, termo))
         && (contemTermo(estabelecimento, "posto") || contemTermo(texto, "posto") || /\b(bico|bomba|abastec\w*)\b/i.test(texto) || temLitros);
-    if (COMBUSTIVEIS.some((termo) => contemTermo(itens, termo)) || (temLitros && contemTermo(estabelecimento, "posto"))
-        || ocr?.tipo_despesa_sugerido === "combustivel" || combustivelNoTexto) {
+    // A nota e analisada por INTEIRO: com itens lidos, so e abastecimento se algum
+    // item for combustivel. "Posto" no nome e "1LT" do suco nao bastam (#127).
+    const itensLidos = (ocr?.itens || []).filter((item) => item.descricao);
+    const itemDeCombustivel = itensLidos.some((item) => COMBUSTIVEIS.some((termo) => contemTermo(item.descricao, termo)));
+    if (itensLidos.length && !itemDeCombustivel) {
+        const comida = itensLidos.filter((item) => ITENS_DE_COMIDA.some((termo) => contemTermo(item.descricao, termo)));
+        if (comida.length && comida.length >= itensLidos.length / 2 && !itensSoDeAgua(ocr)) return { tipo: "REFEICAO", origem: "itens_da_nota" };
+    } else if (itemDeCombustivel || COMBUSTIVEIS.some((termo) => contemTermo(ocr?.produto_principal || "", termo))
+        || (!itensLidos.length && ((temLitros && contemTermo(estabelecimento, "posto")) || ocr?.tipo_despesa_sugerido === "combustivel" || combustivelNoTexto))) {
         return { tipo: "ABASTECIMENTO", origem: "itens_da_nota" };
     }
     if (HOTEIS.some((termo) => contemTermo(estabelecimento, termo)) || contemTermo(itens, "diaria")) {
