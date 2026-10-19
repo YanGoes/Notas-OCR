@@ -134,3 +134,25 @@ test("limite do plano vira 'indisponivel' com aviso claro", async () => {
     assert.equal(r.tipo, "indisponivel");
     assert.match(r.texto, /limite/);
 });
+
+test("depois de confirmar, o assistente escreve a resposta com o resultado (relatorio)", async () => {
+    const db = bancoComDespesas();
+    const rodar = async ({ texto }) => (/treino|confirmou/.test(texto) && /Resultado/.test(texto)
+        ? { tipo: "resposta", texto: "Relatório: maturidade subiu.", sessao: "s2", propostas: [] }
+        : { tipo: "resposta", texto: "Preparei.", sessao: "s1", propostas: [{ ferramenta: "preparar_lancamento", parametros: { ids: [10] } }] });
+    const r = await servico.enviar(db, { pessoa: "Yan", texto: "lança a 10", rodar });
+    const decisao = await servico.decidir(db, r.proposta.id, { pessoa: "Yan", aceito: true, rodar });
+    assert.equal(decisao.relatorio, "Relatório: maturidade subiu.");
+    const conversa = servico.lerConversa(db, r.conversa_id);
+    assert.equal(conversa.mensagens.at(-1).texto, "Relatório: maturidade subiu.");
+});
+
+test("relatorio do treino compara antes e depois por campo", () => {
+    const { relatorioDoTreino } = require("../src/assistente/ferramentas");
+    const antes = { gerado_em: "a", aprovadas: 80, maturidade: { rotulo: "1", notas_inteiras: { certas: 40, de: 80, taxa: 0.5, minimo_garantido: 0.4 } }, por_campo: { valor: { rotulo: "Valor", total: 80, acertos: 76 } } };
+    const depois = { gerado_em: "b", aprovadas: 100, maturidade: { rotulo: "1", notas_inteiras: { certas: 60, de: 100, taxa: 0.6, minimo_garantido: 0.5 }, proximo: "x" }, por_campo: { valor: { rotulo: "Valor", total: 100, acertos: 99 } }, diferencas: ["#1 valor"] };
+    const r = relatorioDoTreino(antes, depois);
+    assert.equal(r.antes.taxa_pct, 50);
+    assert.equal(r.depois.taxa_pct, 60);
+    assert.deepEqual(r.campos_do_pior_para_o_melhor[0], { campo: "Valor", acerto_pct: 99, de: 100, acerto_na_medicao_anterior_pct: 95 });
+});

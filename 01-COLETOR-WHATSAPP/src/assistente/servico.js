@@ -91,7 +91,33 @@ function parar() {
 }
 
 /** Confirmar ou cancelar uma proposta. So Yan, Jhonathan e Vanessa podem confirmar. */
-async function decidir(db, propostaId, { pessoa, aceito, ctx = {} }) {
+/**
+ * Depois de executar (ou falhar), o assistente le o resultado e escreve a
+ * resposta na conversa (ex.: relatorio do treino: antes x depois, o que
+ * melhorou, onde ainda erra). `rodar` = motor do assistente (ausente nos testes).
+ */
+async function relatar(db, proposta, quem, texto, rodar, emitir) {
+    if (typeof rodar !== "function") return null;
+    const conversa = db.prepare("SELECT * FROM assistente_conversas WHERE id = ?").get(proposta.conversa_id);
+    emAndamento = { conversaId: conversa.id, sinal: {} };
+    try {
+        const resultado = await rodar({ texto, sessao: conversa.sessao, pessoa: quem, conversaId: conversa.id, emitir: emitir || (() => {}) });
+        if (resultado.sessao) db.prepare("UPDATE assistente_conversas SET sessao = ? WHERE id = ?").run(resultado.sessao, conversa.id);
+        registrarMensagem(db, conversa.id, "assistente", resultado.texto || "(sem resposta)", { tipo: resultado.tipo });
+        return resultado.texto;
+    } catch (_) {
+        return null;
+    } finally {
+        emAndamento = null;
+    }
+}
+
+const PEDIDO_DE_RELATORIO = {
+    treinar_ia: "Escreva para a pessoa um RELATÓRIO do treino, curto e claro, em português: (1) maturidade antes → depois (estágio, notas inteiras certas, mínimo garantido); (2) tabela dos campos com acerto agora e na medição anterior, destacando o que melhorou e o que piorou; (3) os 3 problemas que mais seguram a IA, com exemplos dos erros que restam; (4) o que fazer agora (ex.: revisar tal tipo de nota) e quanto falta para o próximo estágio. Não invente números: use só o resultado acima.",
+    preparar_lancamento: "Explique em 2 ou 3 linhas o que aconteceu com o lançamento (enviado ou não, e por quê).",
+};
+
+async function decidir(db, propostaId, { pessoa, aceito, ctx = {}, rodar = null, emitir = null }) {
     const quem = conferirPessoa(pessoa);
     const proposta = db.prepare("SELECT * FROM assistente_propostas WHERE id = ?").get(Number(propostaId));
     if (!proposta) throw new Error("Proposta não encontrada.");
@@ -109,7 +135,10 @@ async function decidir(db, propostaId, { pessoa, aceito, ctx = {} }) {
             db.prepare("UPDATE assistente_propostas SET status = 'EXECUTADA', resultado = ? WHERE id = ?").run(json(resultado), proposta.id);
             registrarMensagem(db, proposta.conversa_id, "sistema", `${quem} confirmou: ${proposta.resumo}.`, { resultado });
         });
-        return { status: "EXECUTADA", resultado };
+        const pedido = PEDIDO_DE_RELATORIO[proposta.ferramenta] || "Explique em poucas linhas o resultado.";
+        const relatorio = await relatar(db, proposta, quem,
+            `[Programa] ${quem} confirmou "${proposta.resumo}" e a ação terminou. Resultado (dados do programa):\n${JSON.stringify(resultado).slice(0, 15000)}\n\n${pedido}`, rodar, emitir);
+        return { status: "EXECUTADA", resultado, relatorio };
     } catch (erro) {
         db.prepare("UPDATE assistente_propostas SET status = 'FALHOU', resultado = ? WHERE id = ?").run(json({ erro: erro.message }), proposta.id);
         registrarMensagem(db, proposta.conversa_id, "sistema", `Falhou: ${proposta.resumo}. ${erro.message}`);

@@ -155,6 +155,7 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.post("/assistente/propostas/:id", async (req, res, next) => {
         try {
             res.json(await assistente.decidir(db(), idDe(req), { pessoa: req.body?.pessoa, aceito: req.body?.aceito === true,
+                rodar: require("../assistente/assinatura").rodarTurno,
                 ctx: { cad: cad(), regerar: () => revisao.regenerarPendentes(db(), cad(), { regras: regras() }).regeradas } }));
         } catch (erro) { next(erro); }
     });

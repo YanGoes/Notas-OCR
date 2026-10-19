@@ -1,6 +1,6 @@
 {
   "_leia_me": "Gerado por ferramentas/importar-catalogo-conta-azul.js a partir da exportação do Conta Azul. Não edite à mão: exporte de novo e rode a ferramenta.",
-  "gerado_em": "2026-10-16T12:56:42.548Z",
+  "gerado_em": "2026-10-19T13:45:03.819Z",
   "fonte": "visao_contas_a_pagar (3).xlsx",
   "lancamentos": 14073,
   "centros": [
@@ -12,12 +12,12 @@
     {
       "nome": "53.655.381/0001-03",
       "usos": 643,
-      "ultimo_uso": "2026-10-10"
+      "ultimo_uso": "2026-10-18"
     },
     {
       "nome": "INVESTIMENTO",
       "usos": 594,
-      "ultimo_uso": "2026-10-13"
+      "ultimo_uso": "2026-10-19"
     },
     {
       "nome": "DYNATEST INVT. NORDESTE",
@@ -494,7 +494,7 @@
     {
       "nome": "Empréstimos de Outras Instituições",
       "usos": 123,
-      "ultimo_uso": "2026-09-26"
+      "ultimo_uso": "2026-10-19"
     },
     {
       "nome": "Combustivel Outros",
@@ -504,7 +504,7 @@
     {
       "nome": "FGTS",
       "usos": 122,
-      "ultimo_uso": "2026-09-18"
+      "ultimo_uso": "2026-10-18"
     },
     {
       "nome": "Plano de Saúde Sócios",

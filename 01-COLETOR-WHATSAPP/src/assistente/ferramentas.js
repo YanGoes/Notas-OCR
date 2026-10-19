@@ -253,9 +253,32 @@ async function treinarConfirmado(ctx) {
         await rodar([path.join("ferramentas", "importar-catalogo-conta-azul.js"), planilha]);
         await rodar([path.join("ferramentas", "treinar-central.js"), planilha]);
     }
-    const medicao = await rodar([path.join("ferramentas", "medir-contra-aprovadas.js")]);
+    const arquivoMedicao = path.join(RAIZ, "dados", "aprendizado", "medicao-aprovadas.json");
+    const lerMedicao = () => (fs.existsSync(arquivoMedicao) ? JSON.parse(fs.readFileSync(arquivoMedicao, "utf8")) : null);
+    const antes = lerMedicao();
+    await rodar([path.join("ferramentas", "medir-contra-aprovadas.js")]);
+    const depois = lerMedicao();
     const regeradas = typeof ctx.regerar === "function" ? ctx.regerar() : null;
-    return { treinado: Boolean(planilha), resumo: medicao.split(/\r?\n/).filter((l) => /notas inteiras|TOTAL|MATURIDADE|Próximo estágio/.test(l)).join("\n"), previas_refeitas: regeradas };
+    return relatorioDoTreino(antes, depois, { treinado: Boolean(planilha), regeradas });
+}
+
+/** Antes x depois do treino, para o assistente escrever o relatorio. */
+function relatorioDoTreino(antes, depois, { treinado = true, regeradas = null } = {}) {
+    const pct = (v) => (v == null ? null : Math.round(v * 1000) / 10);
+    const resumo = (m) => (m ? { medido_em: m.gerado_em, aprovadas: m.aprovadas, estagio: m.maturidade?.rotulo,
+        notas_inteiras_certas: m.maturidade?.notas_inteiras?.certas, de: m.maturidade?.notas_inteiras?.de,
+        taxa_pct: pct(m.maturidade?.notas_inteiras?.taxa), minimo_garantido_pct: pct(m.maturidade?.notas_inteiras?.minimo_garantido) } : null);
+    const campos = Object.entries(depois?.por_campo || {}).map(([chave, c]) => {
+        const anterior = antes?.por_campo?.[chave];
+        return { campo: c.rotulo, acerto_pct: c.total ? pct(c.acertos / c.total) : null, de: c.total,
+            acerto_na_medicao_anterior_pct: anterior?.total ? pct(anterior.acertos / anterior.total) : null };
+    }).sort((a, b) => (a.acerto_pct ?? 100) - (b.acerto_pct ?? 100));
+    return {
+        treinado_com_planilha: treinado, previas_em_revisao_refeitas: regeradas,
+        antes: resumo(antes), depois: resumo(depois), proximo_estagio: depois?.maturidade?.proximo || null,
+        campos_do_pior_para_o_melhor: campos,
+        exemplos_de_erros_que_restam: (depois?.diferencas || []).slice(0, 12),
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -307,4 +330,4 @@ function obter(nome) {
 }
 async function executar(nome, parametros, ctx) { return obter(nome).executar(ctx, parametros || {}); }
 
-module.exports = { FERRAMENTAS, obter, executar, despesasCentral, json };
+module.exports = { FERRAMENTAS, obter, executar, despesasCentral, relatorioDoTreino, json };

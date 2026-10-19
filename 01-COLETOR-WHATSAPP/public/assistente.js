@@ -81,6 +81,9 @@
         }
         const decidir = async (aceito) => {
             try {
+                if (aceito) status(proposta.ferramenta === "treinar_ia"
+                    ? "Treinando a IA e medindo… leva alguns minutos. O relatório aparece aqui no fim."
+                    : "Executando… a resposta aparece aqui em seguida.");
                 const r = await api(`/propostas/${proposta.id}`, { pessoa: chat.pessoa, aceito });
                 await abrirConversa(chat.conversa);
                 status(aceito ? (r.status === "EXECUTADA" ? "Confirmado." : `Não executado: ${r.erro || ""}`) : "Cancelado.", r.status === "FALHOU");
