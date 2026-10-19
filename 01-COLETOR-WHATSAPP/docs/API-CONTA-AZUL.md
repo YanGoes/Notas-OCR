@@ -207,6 +207,25 @@ Vale memorizar, porque custou caro:
 | Composição do valor | `detalhe_valor` | `valor_composicao` |
 | Centro de custo | `rateio_centro_custo[].id_centro_custo` | `centros_de_custo[]` (na busca) |
 
+## Envio da Central (testado em 19/10/2026, empresa de teste)
+
+Caminho usado por `src/central/envio.js` e `ferramentas/enviar-teste-conta-azul.js`:
+
+`POST /v1/financeiro/contas-a-pagar` (endpoint novo, resposta direta com `id` e parcelas) **grava**
+categoria, centro de custo, fornecedor (`id_fornecedor`, obrigatório), conta financeira, descrição,
+observação e forma de pagamento. Conferido relendo a parcela e a busca de contas a pagar.
+
+- **Fornecedor:** `GET /v1/pessoas?documentos=<CNPJ>` acha pelo CNPJ lido na nota; `?busca=<nome>`
+  acha por nome. O envio nunca cria fornecedor: sem cadastro, recusa.
+- **Foto:** a API não tem envio de anexo. A foto fica no arquivo do Drive.
+- **Captura + aceite não serve:** a prévia não aceita edição (`PATCH/PUT /v1/captura/{id}` → 405) e a
+  categoria fica a que a Captura escolheu, sem centro de custo. A Captura também não deixa a foto em
+  `anexos` da parcela.
+- **PATCH da parcela não muda categoria nem centro:** o contrato só tem `nota`, `descricao`, `vencimento`,
+  `composicao_valor`, `metodo_pagamento`, `id_conta_financeira`… O `rateio` enviado é ignorado sem erro.
+- Trava: só envia se a empresa conectada for `config.central.envio_conta_azul.somente_empresa_id`.
+  Cada envio fica em `envios_conta_azul` (não reenvia a mesma despesa).
+
 ## Captura (extração por IA), para comparação
 
 Fluxo que funciona, medido em ~24 s numa foto de cupom:

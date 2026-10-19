@@ -255,6 +255,23 @@ const MIGRACOES = [
         ativa INTEGER NOT NULL DEFAULT 1
     );
     `,
+    // 8 — Envios ao Conta Azul: evita enviar a mesma despesa duas vezes e
+    // guarda a conferencia campo a campo do que ficou gravado.
+    `
+    CREATE TABLE envios_conta_azul (
+        id INTEGER PRIMARY KEY,
+        despesa_id INTEGER NOT NULL REFERENCES despesas(id),
+        empresa_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        evento_id TEXT,
+        parcela_id TEXT,
+        relatorio TEXT,
+        autor TEXT,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL
+    );
+    CREATE INDEX idx_envios_despesa ON envios_conta_azul (despesa_id);
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

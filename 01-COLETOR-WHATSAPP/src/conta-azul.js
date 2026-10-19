@@ -167,6 +167,18 @@ async function criarContaPagar(corpo) {
     return requisicao("/v1/financeiro/eventos-financeiros/contas-a-pagar", opcoesJson("POST", corpo));
 }
 
+// Endpoint novo (resposta direta, sem protocolo): grava fornecedor, conta,
+// categoria, centro e observacao. Nao aceita anexo.
+async function criarContaPagarDireta(corpo) {
+    return requisicao("/v1/financeiro/contas-a-pagar", opcoesJson("POST", corpo));
+}
+
+async function buscarPessoas(filtros = {}) {
+    const parametros = new URLSearchParams({ pagina: "1", tamanho_pagina: "20", ...filtros });
+    const resposta = await requisicao(`/v1/pessoas?${parametros.toString()}`);
+    return resposta?.items || resposta?.itens || [];
+}
+
 async function obterParcelaFinanceira(idParcela) {
     return requisicao(`/v1/financeiro/eventos-financeiros/parcelas/${encodeURIComponent(idParcela)}`);
 }
@@ -300,7 +312,7 @@ function iniciarMonitor(pastaEntrada, opcoes) {
 module.exports = {
     API_URL, TOKEN_URL, credenciais, caminhoTokens, trocarCodigo, tokenValido, requisicao,
     empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
-    buscarContasPagar, criarContaPagar, obterParcelaFinanceira, obterPessoaPorId,
+    buscarContasPagar, criarContaPagar, criarContaPagarDireta, buscarPessoas, obterParcelaFinanceira, obterPessoaPorId,
     buscarParcelasDoEvento, patchParcela,
     enviarDocumento, aguardarCaptura, obterPreviaCaptura, aceitarCaptura,
     iniciarMonitor, descricaoDaImagem,
