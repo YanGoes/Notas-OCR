@@ -199,8 +199,8 @@ test("orientacao nao vale para nota fora do periodo", () => {
 test("'Correção: Janta 2' respondendo a foto refaz a previa com o que foi corrigido", () => {
     const db = banco.abrir(":memory:");
     const cad = cadastros();
-    const id = fotoDoLorran(db, cad, { legendaFoto: "Almoço 1\nIMTRAFF CICLO II MT", idMensagem: "foto-2" });
-    assert.equal(orquestrador.lerDespesa(db, id).campos.tipo.valor, "ALMOCO");
+    const id = fotoDoLorran(db, cad, { legendaFoto: "Janta 1\nIMTRAFF CICLO II MT", idMensagem: "foto-2" });
+    assert.equal(orquestrador.lerDespesa(db, id).campos.pessoas.valor, 1);
 
     orquestrador.processarMensagemTexto(db, cad, { grupoId: GRUPO, mensagemId: "c-1", remetenteId: LORRAN, remetenteNome: "Lorran",
         enviadaEm: "2026-10-10T21:05:00-03:00", texto: "Correção: Janta 2", citadoId: "foto-2" }, { hoje: new Date("2026-10-14T12:00:00Z") });
@@ -424,4 +424,28 @@ test("pessoas: linhas iguais de prato somam (3 x 'PRATO FEITO' = 3) e valem mais
     assert.equal(pessoas.valor, 3);
     assert.equal(pessoas.origem, "pratos_da_nota");
     assert.equal(pessoas.confirmado, false);
+});
+
+// --- Achados dos comentarios do Yan (19/10/2026) ------------------------------
+
+test("litros pela conta (litros x preco = valor) quando a unidade veio torta ('20,524 IT')", () => {
+    const ocr = { data: "2026-09-20", valor: 133.20, fornecedor: "AUTO POSTO X", confianca: 0.99, placa: "OVN1505", odometro: 270872, litragem: null,
+        itens: [{ descricao: "GASOLINA C COMUM" }], texto_bruto: "GASOLINA C COMUN\n6.490\n20,524 IT\nTOTAL 133,20" };
+    const previa = regrasVmac.montarPrevia({ ocr, legenda: legenda("Abastecimento").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.abastecimento.litros.valor, 20.524);
+    assert.equal(previa.campos.descricao.valor, "20,524L od 270.872 - OVN1505");
+    assert.ok(previa.avisos.some((a) => /Litros calculados/.test(a)));
+});
+
+test("legenda diz Jantar mas a nota e do meio-dia: vale a nota (almoco), com aviso", () => {
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-09-25", hora: "12:40", valor: 90, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: legenda("Janta 3").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.tipo.valor, "ALMOCO");
+    assert.ok(previa.avisos.some((a) => /12:40/.test(a)));
+});
+
+test("descricao livre na legenda + so palpite do Azure: nao vira lanche", () => {
+    const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-09-25", hora: "16:00", valor: 30, fornecedor: "COMERCIAL SANTOS", confianca: 0.99, tipo_despesa_sugerido: "alimentacao" },
+        legenda: legenda("Pano de chão").dados, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(previa.campos.tipo.valor, "OUTROS");
 });

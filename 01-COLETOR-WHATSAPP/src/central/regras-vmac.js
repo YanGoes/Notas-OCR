@@ -109,6 +109,17 @@ function textoDoEstabelecimento(ocr) {
     return [ocr?.fornecedor, ocr?.nome_fantasia].filter(Boolean).join(" ");
 }
 
+/** Refeicao pelo horario so quando o horario e claro (longe das fronteiras entre refeicoes). */
+function refeicaoClaraPeloHorario(hora) {
+    const achado = String(hora || "").match(/^(\d{1,2}):(\d{2})/);
+    if (!achado) return null;
+    const minutos = Number(achado[1]) * 60 + Number(achado[2]);
+    if (minutos >= 330 && minutos < 600) return "CAFE_DA_MANHA";  // 05h30-10h
+    if (minutos >= 660 && minutos < 870) return "ALMOCO";          // 11h-14h30
+    if (minutos >= 1110 || minutos < 120) return "JANTAR";         // 18h30-02h
+    return null;
+}
+
 /** Pista de horario: 05h-10h29 cafe, 10h30-15h29 almoco, 15h30-17h59 lanche, resto jantar. */
 function refeicaoPeloHorario(hora) {
     const achado = String(hora || "").match(/^(\d{1,2}):(\d{2})/);
@@ -200,8 +211,16 @@ function decidirTipo({ ocr, legenda, lote }) {
             return { ...decisao, pendencia: `A mensagem diz ${daLegenda.toLowerCase()}, mas a nota indica ${daNota.tipo.toLowerCase()}; confirme o tipo.` };
         }
         if (daLegenda === "REFEICAO") return subtipoRefeicao(ocr, lote, "legenda_da_foto");
+        // Refeicao: a NOTA manda. Legenda "Jantar" numa nota das 12:40 e almoco (#132).
+        if (["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE"].includes(daLegenda) && ocr?.hora) {
+            const pelaHora = refeicaoClaraPeloHorario(ocr.hora);
+            if (pelaHora && pelaHora !== daLegenda) {
+                return { tipo: pelaHora, origem: "horario_da_nota", aviso: `Mensagem diz ${TIPOS[daLegenda].rotulo.toLowerCase()}, mas a nota é das ${String(ocr.hora).slice(0, 5)}: lançado como ${TIPOS[pelaHora].rotulo.toLowerCase()} (vale a nota).` };
+            }
+        }
         return { tipo: daLegenda, origem: "legenda_da_foto" };
     }
+    if (daNota?.origem === "sugestao_azure" && (legenda?.observacoes || []).length) return { tipo: "OUTROS", origem: "legenda_da_foto" };
     if (daNota) return daNota.tipo === "REFEICAO" ? subtipoRefeicao(ocr, lote, daNota.origem) : daNota;
 
     // Lote com um unico tipo citado ("Abastecimento") vale como pista fraca.
@@ -397,6 +416,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         ? decidirTipo({ ocr, legenda, lote })
         : { tipo: (legenda?.tipos || [])[0] || "OUTROS", origem: legenda?.tipos?.length ? "mensagem" : null };
     if (decisaoTipo.pendencia) pendencias.push(decisaoTipo.pendencia);
+    if (decisaoTipo.aviso) avisos.push(decisaoTipo.aviso);
     let tipo = decisaoTipo.tipo;
     // "Material - parafusos" na legenda: material de campo, salvo tipos que a
     // nota identifica sem duvida (posto, hotel, pedagio, estacionamento).
@@ -458,6 +478,15 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             }
         }
         // Litros com o separador de milhar perdido ("61618" = 61,618 L), conferido pelo preco por litro.
+        if (!litrosInfo.valor && valorNota) {
+            const calculado = litrosPelaConta(ocr?.texto_bruto, valorNota);
+            if (calculado) {
+                litrosInfo.valor = calculado.litros;
+                litrosInfo.origem = calculado.origem;
+                if (calculado.origem === "conta_litros_x_preco") avisos.push(`Litros calculados pela conta: ${litrosBr(calculado.litros)} L × R$ ${String(calculado.preco).replace(".", ",")} = valor da nota (unidade ilegível na leitura).`);
+                else pendencias.push(`Litros não lidos; calculados como valor ÷ preço (R$ ${String(calculado.preco).replace(".", ",")}) = ${litrosBr(calculado.litros)} L. Confirme.`);
+            }
+        }
         const ajusteLitros = corrigirLitros(litrosInfo.valor, valorNota);
         if (ajusteLitros.corrigido) {
             avisos.push(`Litros lidos como ${litrosInfo.valor} corrigidos para ${litrosBr(ajusteLitros.litros)} L (separador perdido na leitura; preço por litro confere).`);
@@ -787,6 +816,26 @@ function tipoDoEstabelecimento(ocr) {
     if (contemTermo(estabelecimento, "posto") || COMBUSTIVEIS.some((termo) => contemTermo(estabelecimento, termo))) return "ABASTECIMENTO";
     if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo))) return "REFEICAO";
     return null;
+}
+
+/**
+ * Litros quando a unidade veio ilegivel ("20,524 IT", "27.344 1.1"): procura a
+ * quantidade com 3 casas que, vezes um preco por litro (R$ 3 a 9,99), da o
+ * valor da nota (±2%). Sem isso, valor ÷ preco (so com um unico preco).
+ */
+function litrosPelaConta(texto, valor) {
+    if (!(valor > 0)) return null;
+    const t = String(texto || "");
+    const precos = [...t.matchAll(/(?<![\d.,])([3-9][.,]\d{2,3})(?![\d.,])/g)].map((m) => Number(m[1].replace(",", "."))).filter((p) => p >= 3 && p < 10);
+    const quantidades = [...t.matchAll(/(?<![\d.,])(\d{1,3})[.,](\d{3})(?![\d.,])/g)].map((m) => Number(`${m[1]}.${m[2]}`)).filter((q) => q >= 1 && q <= 300);
+    let melhor = null;
+    for (const q of quantidades) for (const p of precos) {
+        const erro = Math.abs(q * p - valor) / valor;
+        if (erro <= 0.02 && (!melhor || erro < melhor.erro)) melhor = { litros: q, preco: p, erro, origem: "conta_litros_x_preco" };
+    }
+    if (melhor) return melhor;
+    const unicos = [...new Set(precos)];
+    return unicos.length === 1 ? { litros: Math.round((valor / unicos[0]) * 1000) / 1000, preco: unicos[0], origem: "valor_dividido_pelo_preco" } : null;
 }
 
 const TIPOS_COM_NOTA_PROPRIA = ["ABASTECIMENTO", "HOSPEDAGEM", "PEDAGIO", "ESTACIONAMENTO"];
