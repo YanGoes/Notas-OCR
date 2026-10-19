@@ -367,7 +367,7 @@ function faltandoParaAprovar(campos) {
     return OBRIGATORIOS_PARA_APROVAR.filter((chave) => {
         const valor = valorDe(campos, chave);
         return valor === null || valor === undefined || valor === "";
-    }).map((chave) => CAMPOS[chave].rotulo);
+    });
 }
 
 /** Entrada do exemplo: so o que a IA tinha no momento (leitura + mensagem), nunca a resposta. */
@@ -404,6 +404,12 @@ function rotulosDoExemplo(campos, naoUsar = []) {
     return rotulos;
 }
 
+/** Campos que faltaram na aprovacao: fora do treino e da medicao (vazio nao e resposta certa). */
+function rotulosComFaltantes(rotulos, faltando) {
+    if (!faltando.length) return rotulos;
+    return { ...rotulos, _faltou_na_aprovacao: faltando, _nao_usar_no_treino: [...new Set([...(rotulos._nao_usar_no_treino || []), ...faltando])] };
+}
+
 function mudarEstado(db, despesa, para, motivo, autor) {
     db.prepare("UPDATE despesas SET estado = ?, revisado_por = ?, revisado_em = ?, atualizado_em = ? WHERE id = ?")
         .run(para, autor, agora(), agora(), despesa.id);
@@ -421,13 +427,18 @@ function aprovar(db, despesaId, autor, { naoUsarNoTreino = [] } = {}) {
     if (!despesa) throw new Error(`Despesa #${despesaId} não encontrada.`);
     if (!EDITAVEIS.includes(despesa.estado)) throw new Error(`Despesa #${despesaId} está ${despesa.estado}; não pode ser aprovada.`);
     const faltando = faltandoParaAprovar(despesa.campos);
-    if (faltando.length) throw new Error(`Preencha antes de aprovar: ${faltando.join(", ")}.`);
+    // Faltou informacao (operador nao mandou): aprova so com o porque escrito no
+    // comentario para a IA; os campos faltantes ficam fora do treino.
+    if (faltando.length && !String(despesa.comentario_ia || "").trim()) {
+        const nomes = faltando.map((chave) => CAMPOS[chave]?.rotulo || chave);
+        throw new Error(`Preencha antes de aprovar: ${nomes.join(", ")}. Ou escreva no "Comentário para a IA" por que está aprovando assim.`);
+    }
     transacao(db, () => {
         mudarEstado(db, despesa, ESTADOS.APROVADO, "aprovada_na_central", quem);
         db.prepare(`INSERT INTO exemplos_treino (despesa_id, rotulos, entrada, aprovado_por, aprovado_em) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(despesa_id) DO UPDATE SET rotulos = excluded.rotulos, entrada = excluded.entrada,
                 aprovado_por = excluded.aprovado_por, aprovado_em = excluded.aprovado_em`)
-            .run(despesaId, json(rotulosDoExemplo(despesa.campos, naoUsarNoTreino)), json(entradaDoExemplo(db, despesa)), quem, agora());
+            .run(despesaId, json(rotulosComFaltantes(rotulosDoExemplo(despesa.campos, naoUsarNoTreino), faltando)), json(entradaDoExemplo(db, despesa)), quem, agora());
     });
     return lerDespesa(db, despesaId);
 }

@@ -388,3 +388,15 @@ test("trocar o tipo para JANTAR troca a categoria e o fornecedor generico", () =
     assert.equal(despesa.campos.categoria.nome, "Refeição - Jantar");
     assert.equal(despesa.campos.fornecedor.valor, "RESTAURANTES");
 });
+
+test("nota com campo faltando: aprova so com comentario justificando; faltantes ficam fora do treino", () => {
+    const { db, cad, id } = cenario({ legenda: "Jantar" });
+    db.prepare("UPDATE despesas SET campos = json_set(campos, '$.centro_custo.nome', NULL) WHERE id = ?").run(id);
+    assert.throws(() => revisao.aprovar(db, id, "Yan"), /Comentário para a IA/);
+    revisao.comentarParaIa(db, id, "Operador não informou o centro; aprovado assim mesmo para não travar.", "Yan");
+    const aprovada = revisao.aprovar(db, id, "Yan");
+    assert.equal(aprovada.estado, "APROVADO");
+    const rotulos = JSON.parse(db.prepare("SELECT rotulos FROM exemplos_treino WHERE despesa_id = ?").get(id).rotulos);
+    assert.ok(rotulos._nao_usar_no_treino.includes("centro_custo"));
+    assert.ok(rotulos._faltou_na_aprovacao.includes("centro_custo"));
+});
