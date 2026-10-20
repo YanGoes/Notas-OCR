@@ -576,7 +576,8 @@ function resumo(linha) {
 }
 
 const DATA_DA_NOTA_SQL = "json_extract(d.campos, '$.data_competencia.valor')";
-const DATA_RECEBIDA_SQL = "substr(COALESCE(m.recebida_em, d.criado_em), 1, 10)";
+// recebida_em e UTC: foto das 23h de Brasilia ja e "amanha" em UTC. Brasil sem horario de verao.
+const DATA_RECEBIDA_SQL = "date(COALESCE(m.recebida_em, d.criado_em), '-3 hours')";
 const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
