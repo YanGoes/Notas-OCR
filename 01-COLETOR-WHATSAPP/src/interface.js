@@ -28,6 +28,8 @@ const porta = Number(process.env.PORT || 3211);
 // O upload manual manda a foto em base64 (fotos de celular passam de 5 MB);
 // as demais rotas continuam com limite pequeno.
 app.use("/api/documentos/upload", express.json({ limit: "15mb" }));
+// Anexos do assistente (imagens, videos, PDFs) tambem vao em base64.
+app.use("/api/central/assistente/enviar", express.json({ limit: "150mb" }));
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
     if (req.path === "/" || /\.(?:html|js|css)$/i.test(req.path)) {

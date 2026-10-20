@@ -63,8 +63,8 @@ function localizarClaude(configurado = "") {
 }
 
 /** Linha de comando do `claude -p` (sem shell: os argumentos vao exatos). */
-function comando({ configMcp, sessao = null, modelo = "", esforco = "" }) {
-    const args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+function comando({ configMcp, sessao = null, modelo = "", esforco = "", entradaJson = false }) {
+    const args = ["-p", ...(entradaJson ? ["--input-format", "stream-json"] : []), "--output-format", "stream-json", "--verbose", "--include-partial-messages",
         "--tools", "", "--strict-mcp-config", "--mcp-config", configMcp, "--allowedTools", "mcp__vmac",
         "--system-prompt", SISTEMA, "--permission-mode", "default"];
     if (modelo) args.push("--model", modelo);
@@ -116,8 +116,13 @@ class LeitorEventos {
  * Roda um turno. `iniciar` permite trocar o spawn nos testes.
  * @returns {Promise<{tipo:"resposta"|"indisponivel"|"erro", texto:string, sessao:string|null, propostas:object[]}>}
  */
-async function rodarTurno({ texto, sessao = null, pessoa = "", conversaId = null, emitir = () => {}, executavel = localizarClaude(), modelo = "", esforco = "",
+async function rodarTurno({ texto, blocos = [], sessao = null, pessoa = "", conversaId = null, emitir = () => {}, executavel = localizarClaude(), modelo = "", esforco = "",
     iniciar = spawn, pasta = path.join(RAIZ, "dados", "assistente"), sinal = null }) {
+    // Com anexos (imagem, PDF, quadros de video) a mensagem vai como stream-json.
+    const entradaJson = blocos.length > 0;
+    const entrada = entradaJson
+        ? `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: texto }, ...blocos] } })}\n`
+        : texto;
     if (!executavel) return { tipo: "indisponivel", texto: MSG_SEM_CLI, sessao, propostas: [] };
     fs.mkdirSync(pasta, { recursive: true });
     const ident = crypto.randomUUID();
@@ -130,7 +135,7 @@ async function rodarTurno({ texto, sessao = null, pessoa = "", conversaId = null
     const codigo = await new Promise((resolver) => {
         let processo;
         try {
-            processo = iniciar(executavel, comando({ configMcp, sessao, modelo, esforco }), { cwd: pasta, env: ambiente, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+            processo = iniciar(executavel, comando({ configMcp, sessao, modelo, esforco, entradaJson }), { cwd: pasta, env: ambiente, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
         } catch (_) { resolver(-2); return; }
         const relogio = setTimeout(() => processo.kill(), TEMPO_LIMITE_MS);
         if (sinal) sinal.parar = () => processo.kill();
@@ -145,7 +150,7 @@ async function rodarTurno({ texto, sessao = null, pessoa = "", conversaId = null
         processo.stderr.on("data", (pedaco) => leitor.outras.push(pedaco.toString("utf8").trim()));
         processo.on("error", () => { clearTimeout(relogio); resolver(-2); });
         processo.on("close", (codigoSaida) => { clearTimeout(relogio); if (resto) leitor.ler(resto); resolver(codigoSaida ?? 0); });
-        processo.stdin.end(texto);
+        processo.stdin.end(entrada);
     });
     const propostas = lerFila(fila);
     for (const arquivo of [fila, configMcp]) try { fs.rmSync(arquivo, { force: true }); } catch (_) { /* temporario */ }

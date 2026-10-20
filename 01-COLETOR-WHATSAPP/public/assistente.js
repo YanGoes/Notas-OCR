@@ -9,7 +9,11 @@
 (() => {
     const API = "/api/central/assistente";
     const MODELOS = [["", "Padrão"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku"]];
-    const chat = { conversa: null, pessoa: null, ocupado: false, estado: null, aberto: false, montado: false };
+    const chat = { conversa: null, pessoa: null, ocupado: false, estado: null, aberto: false, montado: false, anexos: [] };
+    // Mesmos limites do servidor (src/assistente/anexos.js).
+    const LIMITE_MB = { imagem: 20, pdf: 30, video: 80, outro: 10 };
+    const MAX_ANEXOS = 10;
+    const ACEITOS = "image/*,video/*,.pdf,.xlsx,.docx,.txt,.csv,.tsv,.json,.md,.log,.xml,.html,.sql,.yaml,.yml";
 
     const guardar = (chave, valor) => { try { if (valor === undefined) return localStorage.getItem(chave); localStorage.setItem(chave, valor); } catch (_) { return null; } return null; };
     const quando = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); };
@@ -70,9 +74,75 @@
         return div;
     }
 
+    const tamanho = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+    const classeDe = (nome, tipo = "") => {
+        if (/^image\//.test(tipo) || /\.(png|jpe?g|gif|webp|bmp|heic|heif)$/i.test(nome)) return "imagem";
+        if (/^video\//.test(tipo) || /\.(mp4|mov|avi|mkv|webm|3gp|m4v|wmv)$/i.test(nome)) return "video";
+        if (/\.pdf$/i.test(nome) || tipo === "application/pdf") return "pdf";
+        return "outro";
+    };
+    const ICONES = { pdf: "📄", video: "🎬", imagem: "🖼", outro: "📎" };
+
+    /** Anexos ja enviados, dentro da mensagem (imagem e video aparecem; o resto vira link). */
+    function anexosDaMensagem(lista) {
+        if (!lista?.length) return null;
+        return el("div", { class: "ass-anexos-msg" }, lista.map((a) => {
+            const url = a.url || `${API}/anexos/${encodeURIComponent(a.conversa)}/${encodeURIComponent(a.arquivo)}`;
+            const classe = a.classe || classeDe(a.nome);
+            if (classe === "imagem") return el("a", { href: url, target: "_blank", rel: "noopener", class: "ass-miniatura", title: a.nome }, el("img", { src: url, alt: a.nome, loading: "lazy" }));
+            if (classe === "video") return el("video", { src: url, controls: true, preload: "metadata", class: "ass-video", title: a.nome });
+            return el("a", { href: url, target: "_blank", rel: "noopener", class: "ass-chip" }, `${ICONES[classe] || "📎"} ${a.nome}`, a.tamanho ? el("small", {}, tamanho(a.tamanho)) : null);
+        }));
+    }
+
     function bolha(papel, texto, extra = null) {
         const quem = papel === "pessoa" ? (extra?.pessoa || "Você") : papel === "assistente" ? "Assistente" : "Programa";
-        return el("div", { class: `ass-msg ass-${papel}` }, el("div", { class: "ass-quem" }, quem), papel === "assistente" ? markdown(texto) : el("div", {}, texto));
+        const avatar = el("span", { class: `ass-avatar ass-avatar-${papel}`, "aria-hidden": "true" }, papel === "assistente" ? "✦" : (quem[0] || "?").toUpperCase());
+        return el("div", { class: `ass-msg ass-${papel}` },
+            el("div", { class: "ass-quem" }, avatar, el("span", {}, quem)),
+            papel === "pessoa" ? anexosDaMensagem(extra?.anexos) : null,
+            papel === "assistente" ? markdown(texto) : el("div", { class: "ass-texto" }, texto));
+    }
+
+    // ---- Anexos pendentes (antes de enviar) ----
+    function lerArquivo(arquivo) {
+        return new Promise((resolver, rejeitar) => {
+            const leitor = new FileReader();
+            leitor.onload = () => resolver(String(leitor.result));
+            leitor.onerror = () => rejeitar(new Error(`Não consegui ler "${arquivo.name}".`));
+            leitor.readAsDataURL(arquivo);
+        });
+    }
+
+    async function adicionarArquivos(arquivos) {
+        for (const arquivo of [...arquivos]) {
+            if (chat.anexos.length >= MAX_ANEXOS) { status(`No máximo ${MAX_ANEXOS} arquivos por mensagem.`, true); break; }
+            const nome = arquivo.name || `colado-${Date.now()}.png`;
+            const classe = classeDe(nome, arquivo.type);
+            const limite = LIMITE_MB[classe] || LIMITE_MB.outro;
+            if (arquivo.size > limite * 1048576) { status(`"${nome}" passa de ${limite} MB.`, true); continue; }
+            try {
+                const dados = await lerArquivo(arquivo);
+                chat.anexos.push({ nome, tipo: arquivo.type || "", tamanho: arquivo.size, classe, dados, url: URL.createObjectURL(arquivo) });
+            } catch (erro) { status(erro.message, true); }
+        }
+        desenharAnexos();
+    }
+
+    function desenharAnexos() {
+        const caixa = document.getElementById("assAnexos");
+        caixa.hidden = chat.anexos.length === 0;
+        caixa.replaceChildren(...chat.anexos.map((a, i) => el("span", { class: "ass-chip", title: `${a.nome} · ${tamanho(a.tamanho)}` },
+            a.classe === "imagem" ? el("img", { src: a.url, alt: "" }) : el("span", { "aria-hidden": "true" }, ICONES[a.classe] || "📎"),
+            el("span", { class: "ass-chip-nome" }, a.nome),
+            el("button", { type: "button", class: "ass-chip-x", title: "Remover", "aria-label": `Remover ${a.nome}`,
+                onclick: () => { URL.revokeObjectURL(a.url); chat.anexos.splice(i, 1); desenharAnexos(); } }, "×"))));
+    }
+
+    function ajustarAltura() {
+        const caixa = document.getElementById("assTexto");
+        caixa.style.height = "auto";
+        caixa.style.height = `${Math.min(caixa.scrollHeight, 220)}px`;
     }
 
     function cartaoProposta(proposta) {
@@ -125,17 +195,22 @@
     async function enviar() {
         const caixa = document.getElementById("assTexto");
         const texto = caixa.value.trim();
-        if (!texto || chat.ocupado) return;
+        if ((!texto && !chat.anexos.length) || chat.ocupado) return;
         chat.pessoa = document.getElementById("assPessoa").value;
         if (!chat.pessoa) { status("Escolha quem está falando (no topo do painel).", true); document.getElementById("assPessoa").focus(); return; }
         guardar("vmac-chat-pessoa", chat.pessoa);
         chat.ocupado = true;
         document.getElementById("assEnviar").disabled = true;
         document.getElementById("assParar").hidden = false;
+        const enviados = chat.anexos;
+        chat.anexos = [];
+        desenharAnexos();
         caixa.value = "";
+        ajustarAltura();
         const area = document.getElementById("assMensagens");
         if (!chat.conversa) area.replaceChildren();
-        area.append(bolha("pessoa", texto, { pessoa: chat.pessoa }));
+        area.append(bolha("pessoa", texto || "(anexos)", { pessoa: chat.pessoa, anexos: enviados }));
+        if (enviados.length) status(`Enviando ${enviados.length} anexo(s)…`);
         const resposta = el("div", { class: "ass-msg ass-assistente" }, el("div", { class: "ass-quem" }, "Assistente"), el("div", { class: "ass-md" }, el("span", { class: "ass-pensando" }, "Pensando…")));
         area.append(resposta);
         area.scrollTop = area.scrollHeight;
@@ -143,7 +218,9 @@
         let final = null;
         try {
             const http = await fetch(`${API}/enviar`, { method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ pessoa: chat.pessoa, texto, conversa_id: chat.conversa, modelo: document.getElementById("assModelo").value }) });
+                body: JSON.stringify({ pessoa: chat.pessoa, texto, conversa_id: chat.conversa, modelo: document.getElementById("assModelo").value,
+                    anexos: enviados.map((a) => ({ nome: a.nome, tipo: a.tipo, dados: a.dados })) }) });
+            if (!http.ok || !http.body) throw new Error(http.status === 413 ? "Anexos grandes demais para enviar de uma vez." : `Erro ${http.status}`);
             const leitor = http.body.getReader();
             const decodificador = new TextDecoder();
             let resto = "";
@@ -158,10 +235,19 @@
                     if (ev.tipo === "texto_parcial") { parcial += ev.texto; resposta.lastChild.replaceWith(markdown(parcial)); area.scrollTop = area.scrollHeight; }
                     else if (ev.tipo === "ferramenta") status(`Consultando: ${ev.nome.replaceAll("_", " ")}…`);
                     else if (ev.tipo === "uso_plano") mostrarUso(ev);
+                    else if (ev.tipo === "anexos") status(ev.texto);
+                    else if (ev.tipo === "inicio") status("");
                     else if (ev.tipo === "final" || ev.tipo === "falha") final = ev;
                 }
             }
-            if (final?.tipo === "falha") throw new Error(final.erro);
+            if (final?.tipo === "falha") {
+                // Nada foi enviado: devolve os anexos para a caixa para tentar de novo.
+                chat.anexos = enviados;
+                desenharAnexos();
+                if (!caixa.value) caixa.value = texto;
+                throw new Error(final.erro);
+            }
+            for (const a of enviados) URL.revokeObjectURL(a.url);
             await abrirConversa(final?.conversa_id || chat.conversa);
             status(final?.resultado === "indisponivel" || final?.resultado === "erro" ? final.texto : "", final?.resultado !== "resposta");
         } catch (erro) {
@@ -207,19 +293,40 @@
                     el("button", { type: "button", class: "ghost", title: "Fechar (Ctrl+Shift+A)", onclick: () => alternar(false) }, "✕"))),
             el("div", { class: "ass-opcoes" },
                 el("select", { id: "assPessoa", "aria-label": "Quem está falando" }),
-                el("select", { id: "assModelo", "aria-label": "Modelo" }, MODELOS.map(([v, r]) => el("option", { value: v }, r))),
                 el("select", { id: "assConversas", "aria-label": "Conversas anteriores" })),
             el("div", { id: "assMensagens", class: "ass-mensagens" }),
             el("div", { id: "assSugestoes", class: "ass-sugestoes", hidden: true }),
             el("div", { id: "assStatus", class: "ass-status", role: "status" }),
             el("footer", { class: "ass-envio" },
-                el("textarea", { id: "assTexto", rows: 3, placeholder: "Pergunte algo… (Enter envia · Shift+Enter quebra linha)" }),
+                el("div", { class: "ass-composer" },
+                    el("div", { id: "assAnexos", class: "ass-anexos", hidden: true }),
+                    el("textarea", { id: "assTexto", rows: 1, placeholder: "Pergunte algo ou anexe arquivos… (Enter envia · Shift+Enter quebra linha)" }),
+                    el("div", { class: "ass-barra" },
+                        el("input", { id: "assArquivo", type: "file", multiple: true, accept: ACEITOS, hidden: true }),
+                        el("button", { type: "button", class: "ass-icone", title: "Anexar imagens, vídeos, PDFs, planilhas… (ou arraste / cole com Ctrl+V)", "aria-label": "Anexar arquivos",
+                            onclick: () => document.getElementById("assArquivo").click() }, "📎"),
+                        el("select", { id: "assModelo", class: "ass-modelo", "aria-label": "Modelo" }, MODELOS.map(([v, r]) => el("option", { value: v }, r))),
+                        el("span", { class: "ass-espaco" }),
+                        el("button", { id: "assParar", type: "button", class: "ass-icone", hidden: true, title: "Parar", "aria-label": "Parar", onclick: () => api("/parar", {}) }, "■"),
+                        el("button", { id: "assEnviar", type: "button", class: "ass-enviar", title: "Enviar (Enter)", "aria-label": "Enviar", onclick: enviar }, "➤"))),
                 el("div", { class: "ass-rodape" },
                     el("button", { id: "assSugestoesBotao", type: "button", class: "ghost", onclick: () => { const c = document.getElementById("assSugestoes"); c.hidden = !c.hidden; mostrarSugestoes(); } }, "Sugestões"),
-                    el("small", { id: "assUso" }, ""),
-                    el("button", { id: "assParar", type: "button", class: "ghost", hidden: true, onclick: () => api("/parar", {}) }, "Parar"),
-                    el("button", { id: "assEnviar", type: "button", class: "primary", onclick: enviar }, "Enviar"))));
+                    el("small", { id: "assUso" }, ""))),
+            el("div", { id: "assSoltar", class: "ass-soltar", hidden: true }, "Solte os arquivos para anexar"));
         document.body.append(painel);
+        document.getElementById("assArquivo").addEventListener("change", (e) => { adicionarArquivos(e.target.files); e.target.value = ""; });
+        document.getElementById("assTexto").addEventListener("input", ajustarAltura);
+        document.getElementById("assTexto").addEventListener("paste", (e) => {
+            const arquivos = [...(e.clipboardData?.files || [])];
+            if (arquivos.length) { e.preventDefault(); adicionarArquivos(arquivos); }
+        });
+        let arrastando = 0;
+        const soltar = document.getElementById("assSoltar");
+        const temArquivos = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+        painel.addEventListener("dragenter", (e) => { if (!temArquivos(e)) return; e.preventDefault(); arrastando += 1; soltar.hidden = false; });
+        painel.addEventListener("dragover", (e) => { if (temArquivos(e)) e.preventDefault(); });
+        painel.addEventListener("dragleave", () => { arrastando = Math.max(0, arrastando - 1); if (!arrastando) soltar.hidden = true; });
+        painel.addEventListener("drop", (e) => { if (!temArquivos(e)) return; e.preventDefault(); arrastando = 0; soltar.hidden = true; adicionarArquivos(e.dataTransfer.files); });
         document.getElementById("assTexto").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } });
         document.getElementById("assModelo").value = guardar("vmac-chat-modelo") || "";
         document.getElementById("assModelo").addEventListener("change", (e) => guardar("vmac-chat-modelo", e.target.value));

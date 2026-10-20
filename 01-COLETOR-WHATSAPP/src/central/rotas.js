@@ -137,6 +137,11 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.get("/assistente/conversas/:id", responder((req) => assistente.lerConversa(db(), idDe(req))));
     rotas.get("/assistente/sugestoes", responder(() => assistente.sugestoes(db())));
     rotas.post("/assistente/sugestoes/:id", responder((req) => assistente.mudarSugestao(db(), idDe(req), String(req.body?.status || ""))));
+    rotas.get("/assistente/anexos/:conversa/:arquivo", (req, res) => {
+        const caminho = require("../assistente/anexos").caminhoDoAnexo(req.params.conversa, req.params.arquivo);
+        if (!caminho) return res.status(404).json({ erro: "Anexo não encontrado." });
+        return res.sendFile(caminho);
+    });
     rotas.post("/assistente/parar", responder(() => ({ parado: assistente.parar() })));
     // Resposta ao vivo: uma linha JSON por evento (texto chegando, ferramenta, fim).
     rotas.post("/assistente/enviar", async (req, res) => {
@@ -145,7 +150,7 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
         const escrever = (evento) => { try { res.write(`${JSON.stringify(evento)}\n`); } catch (_) { /* tela fechada */ } };
         try {
             const final = await assistente.enviar(db(), {
-                pessoa: req.body?.pessoa, texto: req.body?.texto, conversaId: req.body?.conversa_id || null,
+                pessoa: req.body?.pessoa, texto: req.body?.texto, anexos: Array.isArray(req.body?.anexos) ? req.body.anexos : [], conversaId: req.body?.conversa_id || null,
                 modelo: String(req.body?.modelo || ""), emitir: escrever, sinal: {},
             });
             escrever({ ...final, resultado: final.tipo, tipo: "final" });

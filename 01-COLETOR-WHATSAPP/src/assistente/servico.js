@@ -6,6 +6,7 @@
 const { agora, json, lerJson, transacao } = require("../central/banco");
 const ferramentas = require("./ferramentas");
 const assinatura = require("./assinatura");
+const anexos = require("./anexos");
 
 // Quem conversa e quem pode confirmar (decisao do Yan em 14/10/2026).
 const USUARIOS = ["Yan", "Jhonathan", "Vanessa", "Cauã"];
@@ -44,9 +45,10 @@ function registrarMensagem(db, conversaId, papel, texto, dados = null) {
  * Envia uma mensagem e espera a resposta. `emitir` recebe os eventos ao vivo.
  * @param {object} opcoes.rodar — troca o motor (testes)
  */
-async function enviar(db, { pessoa, texto, conversaId = null, emitir = () => {}, rodar = assinatura.rodarTurno, modelo = "", sinal = null }) {
+async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = null, emitir = () => {}, rodar = assinatura.rodarTurno, modelo = "", sinal = null, pastaAnexos = undefined }) {
     const quem = conferirPessoa(pessoa);
-    const pergunta = String(texto || "").trim();
+    const temAnexo = Array.isArray(arquivos) && arquivos.length > 0;
+    const pergunta = String(texto || "").trim() || (temAnexo ? "Veja o(s) anexo(s)." : "");
     if (!pergunta) throw new Error("Escreva a mensagem.");
     if (emAndamento) throw new Error("O assistente está respondendo outra pergunta. Espere um pouco.");
     let id = conversaId ? Number(conversaId) : null;
@@ -60,11 +62,21 @@ async function enviar(db, { pessoa, texto, conversaId = null, emitir = () => {},
             .run(quem, pergunta.slice(0, 80), agora(), agora()).lastInsertRowid);
     }
     const conversa = db.prepare("SELECT * FROM assistente_conversas WHERE id = ?").get(id);
-    registrarMensagem(db, id, "pessoa", pergunta, { pessoa: quem });
     emAndamento = { conversaId: id, sinal };
     try {
+        if (temAnexo) emitir({ tipo: "anexos", texto: "Lendo os anexos…" });
+        let preparados = { blocos: [], resumo: [] };
+        try {
+            if (temAnexo) preparados = await anexos.preparar(arquivos, { conversaId: id, pasta: pastaAnexos });
+        } catch (erro) {
+            // Conversa nova que nem chegou a ter mensagem: nao deixa uma vazia na lista.
+            if (!conversaId) db.prepare("DELETE FROM assistente_conversas WHERE id = ? AND NOT EXISTS (SELECT 1 FROM assistente_mensagens WHERE conversa_id = ?)").run(id, id);
+            throw erro;
+        }
+        const { blocos, resumo } = preparados;
+        registrarMensagem(db, id, "pessoa", pergunta, { pessoa: quem, ...(resumo.length ? { anexos: resumo } : {}) });
         const prompt = `[${quem} está falando · ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}]\n\n${pergunta}`;
-        const resultado = await rodar({ texto: prompt, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, sinal });
+        const resultado = await rodar({ texto: prompt, blocos, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, sinal });
         if (resultado.sessao) db.prepare("UPDATE assistente_conversas SET sessao = ? WHERE id = ?").run(resultado.sessao, id);
         registrarMensagem(db, id, "assistente", resultado.texto || "(sem resposta)", { tipo: resultado.tipo });
         // So a primeira proposta da resposta vale (o assistente e instruido a parar nela).
