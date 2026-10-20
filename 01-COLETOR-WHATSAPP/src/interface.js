@@ -466,6 +466,8 @@ const servidor = app.listen(porta, "127.0.0.1", () => {
     if (process.platform === "win32" && process.env.NAO_ABRIR_NAVEGADOR !== "1") execFile("explorer.exe", [url], () => {});
     // Copia diaria do banco da Central e dos cadastros (dados/backups, 14 dias).
     require("./backup").agendarBackups(() => require("./central/banco").banco());
+    // Fotos das notas aprovadas para o Drive (central.arquivo_drive), a cada 10 min.
+    require("./central/arquivo-drive").agendar(() => require("./central/banco").banco(), () => require("./central/cadastros").carregar());
 });
 
 // Trava de instancia unica. Duas copias abertas ao mesmo tempo compartilham a

@@ -272,6 +272,18 @@ const MIGRACOES = [
     );
     CREATE INDEX idx_envios_despesa ON envios_conta_azul (despesa_id);
     `,
+    // 9 — Fotos copiadas para o Drive (uma por foto e por pasta raiz).
+    `
+    CREATE TABLE arquivos_drive (
+        id INTEGER PRIMARY KEY,
+        midia_id INTEGER NOT NULL REFERENCES midias(id),
+        raiz TEXT NOT NULL,
+        caminho TEXT NOT NULL,
+        despesas TEXT,
+        em TEXT NOT NULL,
+        UNIQUE (midia_id, raiz)
+    );
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

@@ -193,10 +193,26 @@ function desenharFiltroPeriodo(resumo) {
         onchange: (evento) => mudarPeriodo({ pela: evento.target.value }) },
     el("option", { value: "nota", selected: p.pela !== "recebida" }, "pela data da nota"),
     el("option", { value: "recebida", selected: p.pela === "recebida" }, "pela data em que chegou"));
+    // Na aba Aprovadas: copia agora as fotos para o Drive (o programa tambem faz sozinho a cada 10 min).
+    const botaoDrive = estado.aba === "aprovadas" ? el("button", {
+        type: "button", class: "chip-operador", title: "Copia as fotos das notas aprovadas para a pasta do operador, no mês e dia da nota",
+        onclick: (evento) => executar(async () => {
+            evento.target.disabled = true;
+            try {
+                const r = await api("/arquivo-drive/executar", {});
+                if (r.desligado) throw new Error("Arquivo no Drive desligado (config: central.arquivo_drive.habilitado).");
+                if (r.erro) throw new Error(r.erro);
+                const partes = [`${r.copiadas.length} foto(s) copiada(s)`, r.movidas.length ? `${r.movidas.length} movida(s)` : null,
+                    `${r.ja_estavam} já estavam lá`, r.pastas_novas.length ? `pasta(s) nova(s): ${r.pastas_novas.join(", ")}` : null,
+                    r.erros.length ? `${r.erros.length} com erro: ${r.erros.slice(0, 3).map((e) => `#${e.despesas.join("-")} ${e.erro}`).join("; ")}` : null].filter(Boolean);
+                avisar(`Drive: ${partes.join(" · ")}`, r.erros.length ? "erro" : "ok");
+            } finally { evento.target.disabled = false; }
+        }),
+    }, "📁 Enviar fotos ao Drive") : null;
     $("#filtroPeriodo").replaceChildren(
         el("span", { class: "rotulo-operadores" }, "Período:"), ...chips,
         controle ? controle() : null, p.modo !== "todas" ? pela : null,
-        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null);
+        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null, botaoDrive);
 }
 
 async function carregarLista() {

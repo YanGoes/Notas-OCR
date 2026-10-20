@@ -132,6 +132,7 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     });
     // --- Assistente (chat pela assinatura Claude da empresa) -------------------
     const assistente = require("../assistente/servico");
+    rotas.post("/arquivo-drive/executar", responder((req) => require("./arquivo-drive").arquivarPendentes(db(), cad(), { simular: req.body?.simular === true })));
     rotas.get("/assistente/estado", responder(() => assistente.estado()));
     rotas.get("/assistente/conversas", responder((req) => assistente.listarConversas(db(), { pessoa: req.query.pessoa ? String(req.query.pessoa) : null })));
     rotas.get("/assistente/conversas/:id", responder((req) => assistente.lerConversa(db(), idDe(req))));
