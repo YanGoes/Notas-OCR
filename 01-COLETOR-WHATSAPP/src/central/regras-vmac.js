@@ -493,6 +493,28 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             avisos.push(`Litros lidos como ${litrosInfo.valor} corrigidos para ${litrosBr(ajusteLitros.litros)} L (separador perdido na leitura; preço por litro confere).`);
             litrosInfo.valor = ajusteLitros.litros;
         }
+        // Litros × preco por litro tem que dar o valor da nota. "32 350 L" lido como 350 L
+        // (virgula virou espaco) e corrigido pelo numero colado ao "L" que fecha a conta.
+        if (litrosInfo.origem === "nota" || !litrosInfo.valor) {
+            // Nota com oleo/Arla junto: a conta usa o valor da linha do combustivel, nao o total.
+            const itemCombustivel = (ocr?.itens || []).find((item) => /gasolina|diesel|etanol|alcool|álcool|gnv/i.test(String(item.descricao || "")))
+                || (ocr?.itens || []).find((item) => Number(item.valor_unitario) > 0);
+            const precoItem = Number(itemCombustivel?.valor_unitario) > 0 ? Number(itemCombustivel.valor_unitario) : null;
+            const valorCombustivel = Number(itemCombustivel?.valor_total) > 0 ? Number(itemCombustivel.valor_total) : valorNota;
+            const conferido = conferirLitros({ litros: litrosInfo.valor, valores: [valorCombustivel, valorNota], precoItem, texto: ocr?.texto_bruto });
+            const preco = conferido.preco ? String(conferido.preco).replace(".", ",") : "";
+            if (conferido.mudou && !conferido.confirmar) {
+                avisos.push(`Litros ${litrosInfo.valor ? `lidos como ${litrosBr(litrosInfo.valor)} ` : ""}corrigidos para ${litrosBr(conferido.litros)} L: ${litrosBr(conferido.litros)} × R$ ${preco} = valor da nota${conferido.como === "numero_junto_do_L" ? " (número junto do \"L\" na nota)" : ""}.`);
+                litrosInfo.valor = conferido.litros;
+                litrosInfo.origem = "nota";
+            } else if (conferido.mudou) {
+                pendencias.push(`Litros ${litrosInfo.valor ? `lidos (${litrosBr(litrosInfo.valor)}) não fecham com o valor; ` : "não lidos; "}calculados como valor ÷ preço (R$ ${preco}) = ${litrosBr(conferido.litros)} L. Confirme na foto.`);
+                litrosInfo.valor = conferido.litros;
+                litrosInfo.origem = "valor_dividido_pelo_preco";
+            } else if (conferido.confirmar) {
+                pendencias.push(`Litros ${litrosBr(litrosInfo.valor)} × preço por litro não dá o valor da nota. Confira os litros na foto.`);
+            }
+        }
         const litros = litrosInfo.valor;
         const odometro = odometroInfo.valor;
         campos.abastecimento = {
@@ -839,6 +861,57 @@ function litrosPelaConta(texto, valor) {
     return unicos.length === 1 ? { litros: Math.round((valor / unicos[0]) * 1000) / 1000, preco: unicos[0], origem: "valor_dividido_pelo_preco" } : null;
 }
 
+/**
+ * Numeros colados a unidade de litros: "32,350 L", "32.350LT", "32 350 L"
+ * (virgula lida como espaco), "32,350\nL X R$ 6,64" (unidade na linha de
+ * baixo), "LITROS: 32,350". Devolve todos; quem decide e a conta com o valor.
+ */
+function litrosJuntoDoL(texto) {
+    const t = String(texto || "");
+    const candidatos = [];
+    const somar = (inteiro, decimais) => {
+        const numero = Number(decimais ? `${inteiro}.${decimais}` : inteiro);
+        if (Number.isFinite(numero) && numero >= 1 && numero <= 300 && !candidatos.includes(numero)) candidatos.push(numero);
+    };
+    const UNIDADE = String.raw`(?:L|LT|LTS|LITROS?)(?![A-Za-zÀ-ÿ])`;
+    // Numero (com virgula, ponto ou espaco no lugar da virgula) antes da unidade, na mesma linha ou na de baixo.
+    for (const m of t.matchAll(new RegExp(String.raw`(?<![\d.,])(\d{1,3})(?:[.,]|[ \t]+)(\d{2,3})[ \t]*\r?\n?[ \t]*${UNIDADE}`, "gi"))) somar(m[1], m[2]);
+    for (const m of t.matchAll(new RegExp(String.raw`(?<![\d.,])(\d{1,3})[ \t]*\r?\n?[ \t]*${UNIDADE}`, "gi"))) somar(m[1], null);
+    // Rotulo antes do numero: "LITROS: 32,350", "QTD LT 32,350".
+    for (const m of t.matchAll(/(?:LITROS?|LTS?|QTDE?\.?\s*(?:LT|L)?)\s*[:=]?\s*(\d{1,3})[.,](\d{2,3})(?![\d])/gi)) somar(m[1], m[2]);
+    return candidatos;
+}
+
+/**
+ * Confere os litros pela conta litros × preco por litro = valor da nota (±2%).
+ * Se nao bater, procura o numero colado ao "L"/"LT" que bate; depois a conta
+ * com os precos impressos; por fim valor ÷ preco (pede confirmacao).
+ * @returns {{litros:number|null, mudou:boolean, como?:string, preco?:number, confirmar?:boolean}}
+ */
+function conferirLitros({ litros, valor, valores = null, precoItem = null, texto = "" }) {
+    // Valores que a conta pode fechar: o da linha do combustivel e o total da nota
+    // (qualquer um dos dois pode vir mal lido). O primeiro e o preferido.
+    const alvos = [...new Set((valores || [valor]).map(Number).filter((v) => v > 0))];
+    if (!alvos.length) return { litros, mudou: false };
+    valor = alvos[0];
+    const precosTexto = [...String(texto).matchAll(/(?<![\d.,])([3-9][.,]\d{2,3})(?![\d.,])/g)].map((m) => Number(m[1].replace(",", "."))).filter((p) => p >= 3 && p < 10);
+    const precos = [...new Set([Number(precoItem) > 0 ? Number(precoItem) : null, ...precosTexto].filter(Boolean))];
+    if (!precos.length) return { litros, mudou: false };
+    const bate = (q) => precos.flatMap((p) => alvos.map((v) => ({ p, erro: Math.abs(q * p - v) / v }))).filter((x) => x.erro <= 0.02).sort((a, b) => a.erro - b.erro)[0] || null;
+    if (Number(litros) > 0 && bate(Number(litros))) return { litros, mudou: false };
+    for (const candidato of litrosJuntoDoL(texto)) {
+        const achou = bate(candidato);
+        if (achou) return { litros: candidato, mudou: true, como: "numero_junto_do_L", preco: achou.p };
+    }
+    for (const alvo of alvos) {
+        const pelaConta = litrosPelaConta(texto, alvo);
+        if (pelaConta?.origem === "conta_litros_x_preco") return { litros: pelaConta.litros, mudou: true, como: "conta_litros_x_preco", preco: pelaConta.preco };
+    }
+    const dividido = precos.length === 1 ? Math.round((valor / precos[0]) * 1000) / 1000 : null;
+    if (dividido >= 1 && dividido <= 300) return { litros: dividido, mudou: true, como: "valor_dividido_pelo_preco", preco: precos[0], confirmar: true };
+    return { litros, mudou: false, confirmar: Number(litros) > 0 };
+}
+
 const TIPOS_COM_NOTA_PROPRIA = ["ABASTECIMENTO", "HOSPEDAGEM", "PEDAGIO", "ESTACIONAMENTO"];
 
 /**
@@ -880,5 +953,5 @@ function categoriaLivre(cad, nome, idInformado = null) {
 module.exports = {
     montarPrevia, decidirTipo, decidirPessoas, refeicaoPeloHorario, orientacaoVigente,
     descricaoAbastecimento, descricaoRefeicao, litrosBr, milharBr, TIPOS,
-    TIPO_ANEXO_FISCAL, TIPO_ANEXO_OUTROS,
+    TIPO_ANEXO_FISCAL, TIPO_ANEXO_OUTROS, conferirLitros, litrosJuntoDoL,
 };
