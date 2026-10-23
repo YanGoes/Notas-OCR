@@ -45,6 +45,7 @@ function apiFalsa({ empresa = "999", ignorarCentro = false, fornecedores = null 
             if (filtro.documentos) return pessoas.filter((p) => p.documento === filtro.documentos);
             return pessoas.filter((p) => p.nome.includes(filtro.busca));
         },
+        criarFornecedor: async (dados) => { chamadas.push(["fornecedor", dados]); return { id: "novo", nome: dados.nome }; },
         criarContaPagarDireta: async (corpo) => {
             chamadas.push(["criar", corpo]);
             criado = corpo;
@@ -117,4 +118,33 @@ test("aponta o que nao ficou gravado", async () => {
     assert.equal(r.status, "ENVIADO_INCOMPLETO");
     assert.deepEqual(r.faltou, ["centro de custo"]);
     assert.match(envio.relatorioEmTexto(r), /✗ centro de custo/);
+});
+
+test("na conta de teste cadastra o fornecedor que falta: CNPJ + nome lido, ou o generico aprovado", async () => {
+    const db = banco.abrir(":memory:");
+    const comCnpj = criarDespesa(db);
+    const api = apiFalsa({ fornecedores: [] });
+    const r = await envio.enviar(db, comCnpj, { api, config: CONFIG, criarFornecedor: true });
+    assert.notEqual(r.status, "FALHOU");
+    assert.deepEqual(api.chamadas.find((c) => c[0] === "fornecedor")[1], { nome: "SUPER LIDER ALIMENTOS LTDA", documento: "07605075001036" });
+
+    const semCnpj = criarDespesa(db, "APROVADO", { ...CAMPOS, fornecedor: { valor: "RESTAURANTES", nome_lido: "Sua senha" } });
+    const api2 = apiFalsa({ fornecedores: [] });
+    await envio.enviar(db, semCnpj, { api: api2, config: CONFIG, criarFornecedor: true });
+    assert.deepEqual(api2.chamadas.find((c) => c[0] === "fornecedor")[1], { nome: "RESTAURANTES" });
+});
+
+test("lista so as aprovadas que ainda nao subiram", async () => {
+    const db = banco.abrir(":memory:");
+    const a = criarDespesa(db);
+    const b = criarDespesa(db);
+    criarDespesa(db, "AGUARDANDO_REVISAO");
+    await envio.enviar(db, a, { api: apiFalsa(), config: CONFIG });
+    assert.deepEqual(envio.pendentesDeEnvio(db, "999"), [b]);
+});
+
+test("na conta de teste, material de campo vira a categoria equivalente", () => {
+    const m = envio.mapear({ categoria: "MATERIAL DE CAMPO", tipo: "OUTROS" },
+        { categorias: [{ id: "x", nome: "Materiais Aplicados na Prestação de Serviços" }, { id: "y", nome: "Despesas a identificar" }], centros: [] }, { teste: true });
+    assert.equal(m.categoria.id, "x");
 });

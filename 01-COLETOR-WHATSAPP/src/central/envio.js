@@ -36,6 +36,12 @@ const SUBSTITUTOS_TESTE = {
     HOSPEDAGEM: "HOSPEDAGEM",
     MANUTENCAO: "Manutenção de Veículos",
     ESTACIONAMENTO: "Estacionamento",
+    MERCADO: "Lanches e Refeições",
+    OUTROS: "Despesas a identificar",
+};
+// Categorias da VMac sem tipo proprio que tem equivalente na conta de teste.
+const SUBSTITUTOS_TESTE_POR_CATEGORIA = {
+    "material de campo": "Materiais Aplicados na Prestação de Serviços",
 };
 const CENTRO_TESTE = "TESTE CC";
 
@@ -89,7 +95,7 @@ function mapear(dados, { categorias, centros }, { teste }) {
     const substituicoes = [];
     let categoria = acharPorNome(categorias, dados.categoria);
     if (!categoria && teste) {
-        categoria = acharPorNome(categorias, SUBSTITUTOS_TESTE[dados.tipo]);
+        categoria = acharPorNome(categorias, SUBSTITUTOS_TESTE_POR_CATEGORIA[normalizar(dados.categoria)] || SUBSTITUTOS_TESTE[dados.tipo]);
         if (categoria) substituicoes.push(`categoria "${dados.categoria}" não existe na conta de teste → usada "${categoria.nome.trim()}"`);
     }
     let centro = acharPorNome(centros, dados.centro);
@@ -101,21 +107,31 @@ function mapear(dados, { categorias, centros }, { teste }) {
 }
 
 /**
- * Fornecedor: primeiro pelo CNPJ lido na nota, depois pelo nome lido, depois
- * pelo fornecedor generico aprovado (ex.: RESTAURANTES). Nunca cria cadastro.
+ * Fornecedor: pelo CNPJ lido na nota; sem CNPJ, pelo fornecedor generico
+ * aprovado na revisao (ex.: RESTAURANTES) — nunca por um nome lido sem CNPJ,
+ * que costuma ser lixo do cupom ("Sua senha").
+ * `criar` (so na conta de teste) cadastra o que faltar: CNPJ + nome lido, ou
+ * o generico aprovado.
  */
-async function resolverFornecedor(api, dados) {
+async function resolverFornecedor(api, dados, { criar = false } = {}) {
     const ativo = (lista) => lista.find((p) => p.ativo !== false && (p.perfis || []).includes("Fornecedor")) || null;
-    if (dados.fornecedor_cnpj) {
+    const cnpjValido = [11, 14].includes(String(dados.fornecedor_cnpj || "").length);
+    if (cnpjValido) {
         const achado = ativo(await api.buscarPessoas({ documentos: dados.fornecedor_cnpj }));
         if (achado) return { ...achado, por: "CNPJ da nota" };
+        if (criar && dados.fornecedor_nome_lido) {
+            const novo = await api.criarFornecedor({ nome: dados.fornecedor_nome_lido, documento: dados.fornecedor_cnpj });
+            return { ...novo, por: "CNPJ da nota (cadastrado agora na conta de teste)" };
+        }
     }
-    for (const [nome, por] of [[dados.fornecedor_nome_lido, "nome lido na nota"], [dados.fornecedor, "fornecedor aprovado"]]) {
-        if (!nome) continue;
-        const lista = await api.buscarPessoas({ busca: nome });
-        const exato = lista.filter((p) => normalizar(p.nome) === normalizar(nome));
-        const achado = ativo(exato);
-        if (achado) return { ...achado, por };
+    if (dados.fornecedor) {
+        const lista = await api.buscarPessoas({ busca: dados.fornecedor });
+        const achado = ativo(lista.filter((p) => normalizar(p.nome) === normalizar(dados.fornecedor)));
+        if (achado) return { ...achado, por: "fornecedor aprovado" };
+        if (criar) {
+            const novo = await api.criarFornecedor({ nome: dados.fornecedor });
+            return { ...novo, por: "fornecedor aprovado (cadastrado agora na conta de teste)" };
+        }
     }
     return null;
 }
@@ -144,23 +160,36 @@ function envioAnterior(db, despesaId, empresaId) {
         AND status IN ('ENVIADO', 'ENVIADO_INCOMPLETO', 'EM_ANDAMENTO', 'INCERTO') ORDER BY id DESC LIMIT 1`).get(despesaId, empresaId);
 }
 
+/** Categorias, centros e contas da empresa conectada (uma leitura por lote). */
+async function carregarCatalogo(api) {
+    const [categorias, centros, contas] = await Promise.all([api.listarCategoriasDespesa(), api.listarCentrosCusto(), api.listarContasFinanceiras()]);
+    return { categorias, centros, contas };
+}
+
+/** Despesas aprovadas que ainda nao subiram (ou cuja tentativa falhou sem criar nada). */
+function pendentesDeEnvio(db, empresaId) {
+    return db.prepare(`SELECT d.id FROM despesas d WHERE d.estado = 'APROVADO' AND NOT EXISTS (
+        SELECT 1 FROM envios_conta_azul e WHERE e.despesa_id = d.id AND e.empresa_id = ?
+        AND e.status IN ('ENVIADO', 'ENVIADO_INCOMPLETO', 'EM_ANDAMENTO', 'INCERTO')) ORDER BY d.id`).all(empresaId).map((l) => l.id);
+}
+
 /** Monta o plano sem gravar nada no Conta Azul (so leituras). */
-async function planejar(db, despesaId, { api, config = lerConfig() } = {}) {
-    const empresa = await exigirEmpresaDeTeste(api, config);
+async function planejar(db, despesaId, { api, config = lerConfig(), catalogo = null, criarFornecedor = false, empresa: empresaConferida = null } = {}) {
+    const empresa = empresaConferida || await exigirEmpresaDeTeste(api, config);
     const despesa = carregarDespesa(db, despesaId);
     if (despesa.estado !== "APROVADO") throw new Error(`Despesa #${despesaId} está ${despesa.estado}; só aprovadas são enviadas.`);
     const anterior = envioAnterior(db, despesaId, empresa.id);
     if (anterior) throw new Error(`Despesa #${despesaId} já foi enviada para esta empresa (envio ${anterior.id}, ${anterior.status}).`);
     const dados = dadosDaDespesa(despesa.campos);
     if (!(dados.valor > 0) || !dados.data) throw new Error(`Despesa #${despesaId} sem valor ou data.`);
-    const [categorias, centros, contas] = await Promise.all([api.listarCategoriasDespesa(), api.listarCentrosCusto(), api.listarContasFinanceiras()]);
+    const { categorias, centros, contas } = catalogo || await carregarCatalogo(api);
     const mapa = mapear(dados, { categorias, centros }, { teste: true });
     if (!mapa.categoria) throw new Error(`Categoria "${dados.categoria}" não encontrada no Conta Azul.`);
     // Conta de teste tem uma unica conta financeira ("Teste"); a conta oficial
     // vai precisar do de-para cartao -> conta financeira.
     const conta = contas.find((c) => c.conta_padrao) || contas[0] || null;
     if (!conta) throw new Error("Nenhuma conta financeira ativa no Conta Azul.");
-    const fornecedor = await resolverFornecedor(api, dados);
+    const fornecedor = await resolverFornecedor(api, dados, { criar: criarFornecedor });
     if (!fornecedor) throw new Error(`Fornecedor não encontrado no Conta Azul (CNPJ ${dados.fornecedor_cnpj || "não lido"}, nome "${dados.fornecedor_nome_lido || dados.fornecedor || "-"}"). Cadastre-o no Conta Azul antes de enviar.`);
     return { empresa, despesa_id: despesaId, foto: localizarFoto(despesa.arquivo), dados, mapa, conta, fornecedor };
 }
@@ -218,8 +247,8 @@ function conferir(plano, corpo, { criado, parcela, busca }) {
  * Envia de verdade. Sempre devolve um relatorio e registra em
  * envios_conta_azul para nunca enviar a mesma despesa duas vezes.
  */
-async function enviar(db, despesaId, { api, config = lerConfig(), autor = "sistema" } = {}) {
-    const plano = await planejar(db, despesaId, { api, config });
+async function enviar(db, despesaId, { api, config = lerConfig(), autor = "sistema", ...opcoes } = {}) {
+    const plano = await planejar(db, despesaId, { api, config, ...opcoes });
     const agora = () => new Date().toISOString();
     const envioId = Number(db.prepare(`INSERT INTO envios_conta_azul (despesa_id, empresa_id, status, autor, criado_em, atualizado_em)
         VALUES (?, ?, 'EM_ANDAMENTO', ?, ?, ?)`).run(despesaId, plano.empresa.id, autor, agora(), agora()).lastInsertRowid);
@@ -236,7 +265,7 @@ async function enviar(db, despesaId, { api, config = lerConfig(), autor = "siste
         criado = await api.criarContaPagarDireta(corpo);
     } catch (erro) {
         // Erro de validacao (400) = nada foi criado. Outros (rede, 500) = pode ter criado: conferir antes de reenviar.
-        const nadaCriado = /Conta Azul (400|401|422):/.test(erro.message);
+        const nadaCriado = /Conta Azul (400|401|422|429):/.test(erro.message);
         return salvar(nadaCriado ? "FALHOU" : "INCERTO", { erro: erro.message });
     }
     relatorio.evento_id = criado?.id || null;
@@ -275,5 +304,6 @@ function relatorioEmTexto(r) {
 
 module.exports = {
     SUBSTITUTOS_TESTE, dadosDaDespesa, mapear, resolverFornecedor, exigirEmpresaDeTeste, planejar,
+    carregarCatalogo, pendentesDeEnvio,
     corpoDoLancamento, enviar, conferir, relatorioEmTexto, localizarFoto,
 };

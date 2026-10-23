@@ -179,6 +179,15 @@ async function buscarPessoas(filtros = {}) {
     return resposta?.items || resposta?.itens || [];
 }
 
+// O documento vai em `cnpj`/`cpf` (o campo `documento` e aceito e descartado).
+async function criarFornecedor({ nome, documento = null }) {
+    const digitos = String(documento || "").replace(/\D/g, "");
+    const corpo = { nome, tipo_pessoa: digitos.length === 11 ? "Física" : "Jurídica", perfis: [{ tipo_perfil: "Fornecedor" }] };
+    if (digitos.length === 14) corpo.cnpj = digitos;
+    else if (digitos.length === 11) corpo.cpf = digitos;
+    return requisicao("/v1/pessoas", opcoesJson("POST", corpo));
+}
+
 async function obterParcelaFinanceira(idParcela) {
     return requisicao(`/v1/financeiro/eventos-financeiros/parcelas/${encodeURIComponent(idParcela)}`);
 }
@@ -312,7 +321,7 @@ function iniciarMonitor(pastaEntrada, opcoes) {
 module.exports = {
     API_URL, TOKEN_URL, credenciais, caminhoTokens, trocarCodigo, tokenValido, requisicao,
     empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
-    buscarContasPagar, criarContaPagar, criarContaPagarDireta, buscarPessoas, obterParcelaFinanceira, obterPessoaPorId,
+    buscarContasPagar, criarContaPagar, criarContaPagarDireta, buscarPessoas, criarFornecedor,obterParcelaFinanceira, obterPessoaPorId,
     buscarParcelasDoEvento, patchParcela,
     enviarDocumento, aguardarCaptura, obterPreviaCaptura, aceitarCaptura,
     iniciarMonitor, descricaoDaImagem,
