@@ -47,7 +47,18 @@
     /** Markdown simples e seguro: escapa tudo e so entao aplica negrito, codigo, listas e tabelas. */
     function markdown(texto) {
         const escapar = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-        const inline = (s) => escapar(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+        // Links so para o proprio programa (/api/...) ou http(s); imagem so do programa.
+        const urlSegura = (url) => (/^\/api\/central\//.test(url) || /^https?:\/\//i.test(url) ? url.replace(/&amp;/g, "&").replace(/"/g, "%22") : null);
+        const inline = (s) => escapar(s)
+            .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (todo, alt, url) => {
+                const u = urlSegura(url);
+                return u && u.startsWith("/api/") ? `<a href="${u}" target="_blank" rel="noopener"><img class="ass-img" src="${u}" alt="${alt}"></a>` : todo;
+            })
+            .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (todo, texto, url) => {
+                const u = urlSegura(url);
+                return u ? `<a href="${u}" target="_blank" rel="noopener">${u.startsWith("/api/") ? "📎 " : ""}${texto}</a>` : todo;
+            })
+            .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
         const linhas = String(texto || "").split(/\r?\n/);
         const saida = [];
         for (let i = 0; i < linhas.length; i += 1) {
@@ -233,7 +244,7 @@
                 for (const linha of linhas.filter(Boolean)) {
                     const ev = JSON.parse(linha);
                     if (ev.tipo === "texto_parcial") { parcial += ev.texto; resposta.lastChild.replaceWith(markdown(parcial)); area.scrollTop = area.scrollHeight; }
-                    else if (ev.tipo === "ferramenta") status(`Consultando: ${ev.nome.replaceAll("_", " ")}…`);
+                    else if (ev.tipo === "ferramenta") status(descreverFerramenta(ev));
                     else if (ev.tipo === "uso_plano") mostrarUso(ev);
                     else if (ev.tipo === "anexos") status(ev.texto);
                     else if (ev.tipo === "inicio") status("");
@@ -258,6 +269,27 @@
             document.getElementById("assParar").hidden = true;
             caixa.focus();
         }
+    }
+
+    /** "Lendo C:\...\nota.jpg…", "Rodando comando…": o que o assistente esta fazendo agora. */
+    function descreverFerramenta(ev) {
+        const e = ev.entrada || {};
+        const curto = (t) => { const s = String(t || ""); return s.length > 70 ? `…${s.slice(-70)}` : s; };
+        const rotulos = {
+            Read: () => `Lendo ${curto(e.file_path)}`, Write: () => `Criando arquivo ${curto(e.file_path)}`, Edit: () => `Alterando ${curto(e.file_path)}`,
+            Glob: () => `Procurando arquivos ${curto(e.pattern)}`, Grep: () => `Procurando "${curto(e.pattern)}" nos arquivos`,
+            Bash: () => `Rodando comando${e.description ? `: ${curto(e.description)}` : ""}`, WebSearch: () => `Pesquisando na web: ${curto(e.query)}`,
+            WebFetch: () => `Abrindo ${curto(e.url)}`,
+        };
+        return `${(rotulos[ev.nome] || (() => `Consultando: ${String(ev.nome).replaceAll("_", " ")}`))()}…`;
+    }
+
+    /** Modo completo (arquivos, comandos, Drive, web) so para quem pode confirmar acoes. */
+    function mostrarModo() {
+        if (!chat.estado) return;
+        const completo = (chat.estado.podem_confirmar || []).includes(chat.pessoa);
+        document.getElementById("assEstado").textContent = !chat.estado.disponivel ? chat.estado.mensagem
+            : `Claude da empresa · ${completo ? "modo completo: arquivos, comandos, Drive e web" : "só consultas do programa"}`;
     }
 
     function mostrarUso(ev) {
@@ -330,7 +362,7 @@
         document.getElementById("assTexto").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } });
         document.getElementById("assModelo").value = guardar("vmac-chat-modelo") || "";
         document.getElementById("assModelo").addEventListener("change", (e) => guardar("vmac-chat-modelo", e.target.value));
-        document.getElementById("assPessoa").addEventListener("change", (e) => { chat.pessoa = e.target.value; guardar("vmac-chat-pessoa", e.target.value); });
+        document.getElementById("assPessoa").addEventListener("change", (e) => { chat.pessoa = e.target.value; guardar("vmac-chat-pessoa", e.target.value); mostrarModo(); });
         document.getElementById("assConversas").addEventListener("change", (e) => abrirConversa(e.target.value ? Number(e.target.value) : null).catch((erro) => status(erro.message, true)));
     }
 
@@ -340,7 +372,7 @@
         const seletor = document.getElementById("assPessoa");
         seletor.replaceChildren(el("option", { value: "" }, "Quem está falando?"), ...chat.estado.usuarios.map((u) => el("option", { value: u, selected: u === salvo }, u)));
         chat.pessoa = seletor.value || null;
-        document.getElementById("assEstado").textContent = chat.estado.disponivel ? "Claude da empresa · sem custo de API" : chat.estado.mensagem;
+        mostrarModo();
         document.getElementById("assEnviar").disabled = !chat.estado.disponivel;
         await abrirConversa(chat.conversa);
         await mostrarSugestoes();

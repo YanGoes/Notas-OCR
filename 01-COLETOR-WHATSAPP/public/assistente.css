@@ -70,3 +70,5 @@ body.ass-aberto .ass-botao { display: none; }
 .ass-soltar { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(0, 0, 0, .35); color: #fff; font-weight: 700; font-size: 16px; border: 3px dashed #fff; pointer-events: none; }
 .ass-soltar[hidden] { display: none; }
 .ass-rodape { display: flex; align-items: center; gap: 6px; } .ass-rodape small { flex: 1; color: var(--muted); font-size: 11px; }
+.ass-img { display: block; max-width: 100%; max-height: 260px; border-radius: 8px; border: 1px solid var(--line); margin: 4px 0; }
+.ass-md a { color: var(--brand); word-break: break-all; }

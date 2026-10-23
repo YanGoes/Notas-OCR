@@ -467,6 +467,9 @@ const servidor = app.listen(porta, "127.0.0.1", () => {
     // Copia diaria do banco da Central e dos cadastros (dados/backups, 14 dias).
     require("./backup").agendarBackups(() => require("./central/banco").banco());
     // Fotos das notas aprovadas para o Drive (central.arquivo_drive), a cada 10 min.
+    // Mensagens da gerencia (Vanessa, Murillo) lidas pela IA a cada 2 min: mudanca de projeto/cartao vira aviso na Central.
+    require("./central/avisos-gerencia").agendar(() => require("./central/banco").banco(), () => require("./central/cadastros").carregar(),
+        { perguntar: require("./assistente/assinatura").perguntar });
     require("./central/arquivo-drive").agendar(() => require("./central/banco").banco(), () => require("./central/cadastros").carregar());
 });
 

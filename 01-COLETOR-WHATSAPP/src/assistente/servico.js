@@ -76,7 +76,8 @@ async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = n
         const { blocos, resumo } = preparados;
         registrarMensagem(db, id, "pessoa", pergunta, { pessoa: quem, ...(resumo.length ? { anexos: resumo } : {}) });
         const prompt = `[${quem} está falando · ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}]\n\n${pergunta}`;
-        const resultado = await rodar({ texto: prompt, blocos, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, sinal });
+        // Modo completo (arquivos, comandos, Drive, web) so para quem pode confirmar acoes.
+        const resultado = await rodar({ texto: prompt, blocos, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, sinal, completo: PODEM_CONFIRMAR.includes(quem) });
         if (resultado.sessao) db.prepare("UPDATE assistente_conversas SET sessao = ? WHERE id = ?").run(resultado.sessao, id);
         registrarMensagem(db, id, "assistente", resultado.texto || "(sem resposta)", { tipo: resultado.tipo });
         // So a primeira proposta da resposta vale (o assistente e instruido a parar nela).

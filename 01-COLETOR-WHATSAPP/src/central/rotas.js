@@ -145,6 +145,10 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.post("/regras-operador/confirmar", responder((req) => aprender.confirmarEReclassificar(db(), cad(),
         Array.isArray(req.body?.regras) ? req.body.regras : [], String(req.body?.autor || "?"), { regenerar: regerarUma, opcoes: { regras: regras() } })));
     rotas.post("/regras-operador/reclassificar", responder(() => aprender.reclassificar(db(), cad(), { regenerar: regerarUma, opcoes: { regras: regras() } })));
+    const avisosGerencia = require("./avisos-gerencia");
+    rotas.get("/avisos-gerencia", responder(() => avisosGerencia.pendentes(db(), cad())));
+    rotas.post("/avisos-gerencia/:id", responder((req) => avisosGerencia.decidir(db(), cad(), idDe(req), {
+        aceito: req.body?.aceito === true, autor: String(req.body?.autor || ""), regenerar: regerarUma, opcoes: { regras: regras() } })));
     rotas.post("/regras-operador/:id/desativar", responder((req) => regrasOp.desativar(db(), idDe(req))));
     rotas.post("/arquivo-drive/executar", responder((req) => require("./arquivo-drive").arquivarPendentes(db(), cad(), { simular: req.body?.simular === true })));
     rotas.get("/assistente/estado", responder(() => assistente.estado()));
@@ -152,6 +156,13 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.get("/assistente/conversas/:id", responder((req) => assistente.lerConversa(db(), idDe(req))));
     rotas.get("/assistente/sugestoes", responder(() => assistente.sugestoes(db())));
     rotas.post("/assistente/sugestoes/:id", responder((req) => assistente.mudarSugestao(db(), idDe(req), String(req.body?.status || ""))));
+    // Arquivo criado ou achado pelo assistente (modo completo): so dentro das pastas liberadas, nunca segredos.
+    rotas.get("/assistente/arquivo", (req, res) => {
+        const caminho = require("../assistente/assinatura").arquivoLiberado(req.query.caminho);
+        if (!caminho) return res.status(404).json({ erro: "Arquivo não encontrado ou fora das pastas liberadas." });
+        if (req.query.baixar === "1") return res.download(caminho);
+        return res.sendFile(caminho, { dotfiles: "allow" });
+    });
     rotas.get("/assistente/anexos/:conversa/:arquivo", (req, res) => {
         const caminho = require("../assistente/anexos").caminhoDoAnexo(req.params.conversa, req.params.arquivo);
         if (!caminho) return res.status(404).json({ erro: "Anexo não encontrado." });

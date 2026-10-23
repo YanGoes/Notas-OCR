@@ -301,6 +301,20 @@ const MIGRACOES = [
     );
     CREATE INDEX idx_regras_operador ON regras_operador (pessoa_id, campo);
     `,
+    // 11 — Mensagens da gerencia lidas pela IA: se mudam projeto/cartao de um
+    // operador, viram aviso com Confirmar/Ignorar no topo da Central.
+    `
+    CREATE TABLE avisos_gerencia (
+        id INTEGER PRIMARY KEY,
+        mensagem_ref INTEGER NOT NULL UNIQUE REFERENCES mensagens(id),
+        status TEXT NOT NULL,
+        regras TEXT,
+        erro TEXT,
+        decidido_por TEXT,
+        decidido_em TEXT,
+        em TEXT NOT NULL
+    );
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

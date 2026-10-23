@@ -262,6 +262,20 @@
         "IMTRAFF CICLO 2 MT"
       ],
       "cartao": "INTER"
+    },
+    {
+      "nome_oficial": "IMTRAFF - MOTIVA RIO/SP (FWD/ADE)",
+      "id_sistema_projetos": null,
+      "centro_conta_azul": "IMTRAFF - MOTIVA RIO/SP (FWD/ADE)",
+      "id_conta_azul": null,
+      "ativo": true,
+      "servico": "FWD E ADE",
+      "apelidos": [
+        "Dutra Rio SP",
+        "Dutra SP"
+      ],
+      "busca_centro_conta_azul": "IMTRAFF - MOTIVA RIO/SP (FWD/ADE)",
+      "cartao": "INTER"
     }
   ]
 }

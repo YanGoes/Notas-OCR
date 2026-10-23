@@ -136,6 +136,13 @@ details.leitura pre { max-height: 280px; overflow: auto; font-size: 12px; white-
 .chip-operador[aria-pressed="true"] .n { background: rgba(255, 255, 255, .22); color: #fff; }
 .chip-operador.zerado:not([aria-pressed="true"]) { color: var(--muted); font-weight: 500; }
 .chip-operador.sem-operador:not([aria-pressed="true"]) { border-style: dashed; }
+/* Avisos da gerencia (mudanca de projeto/cartao) */
+.avisos-gerencia { display: grid; gap: 8px; margin: 0 0 12px; }
+.aviso-gerencia { border: 2px solid var(--brand); border-radius: 10px; padding: 10px 12px; background: var(--brand-soft, #eef4ff); display: grid; gap: 6px; font-size: 14px; }
+.aviso-gerencia q { font-style: italic; }
+.aviso-gerencia ul { margin: 0; padding-left: 18px; }
+.aviso-gerencia li.recusada { color: var(--muted); }
+.aviso-gerencia .acoes { display: flex; gap: 8px; }
 /* Janela "Reclassificar com minhas observações" */
 .janela-fundo { position: fixed; inset: 0; z-index: 960; background: rgba(0, 0, 0, .45); display: grid; place-items: center; padding: 16px; }
 .janela { width: min(720px, 100%); max-height: 88vh; overflow-y: auto; background: var(--surface, #fff); color: var(--ink); border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, .3); }

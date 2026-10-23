@@ -53,6 +53,41 @@ function el(tag, atributos = {}, ...filhos) {
  * Aviso no topo quando a coleta para (programa fora do ar) ou o WhatsApp cai.
  * Confere a cada 30 s; a bandeja do Windows religa o programa sozinha.
  */
+// ---------------------------------------------------------------------------
+// Avisos da gerencia: mensagem da Vanessa/Murillo que muda projeto ou cartao
+// ---------------------------------------------------------------------------
+
+const ROTULOS_REGRA = { centro: "centro", cartao: "cartão" };
+const dataCurtaBr = (iso) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
+
+async function carregarAvisosGerencia() {
+    const caixa = $("#avisosGerencia");
+    let avisos = [];
+    try { avisos = await api("/avisos-gerencia"); } catch (_) { return; }
+    caixa.classList.toggle("oculto", !avisos.length);
+    caixa.replaceChildren(...avisos.map((a) => {
+        const hora = new Date(a.em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        const validas = a.regras.filter((r) => !r.erro);
+        const decidir = (aceito) => executar(async () => {
+            const r = await api(`/avisos-gerencia/${a.id}`, { aceito, autor: revisor() });
+            await carregarAvisosGerencia();
+            if (aceito && r.resumo) {
+                avisar(`Regra confirmada. ${r.resumo.reclassificadas} nota(s) em revisão refeitas: ${r.resumo.centros_preenchidos} centro(s) e ${r.resumo.cartoes_preenchidos} cartão(ões) preenchidos.`, "ok");
+                await carregarLista();
+            }
+        });
+        return el("div", { class: "aviso-gerencia" },
+            el("div", {}, el("b", {}, `📣 ${a.quem}, ${hora}`), a.operadores_do_grupo.length ? ` (grupo de ${a.operadores_do_grupo.join(", ")})` : "", ": ",
+                el("q", {}, a.texto.length > 220 ? `${a.texto.slice(0, 220)}…` : a.texto)),
+            el("ul", {}, a.regras.map((r) => el("li", { class: r.erro ? "recusada" : "" },
+                r.erro ? `Não reconhecido: ${r.pessoa_id} · ${ROTULOS_REGRA[r.campo] || r.campo} "${r.valor}" (${r.erro})`
+                    : `→ ${r.operador}: ${ROTULOS_REGRA[r.campo]} ${r.nome || r.valor} desde ${dataCurtaBr(r.desde)}${r.ate ? ` até ${dataCurtaBr(r.ate)}` : ""}`))),
+            el("div", { class: "acoes" },
+                validas.length ? el("button", { type: "button", class: "primary", onclick: () => decidir(true) }, "Confirmar") : null,
+                el("button", { type: "button", class: "ghost", onclick: () => decidir(false) }, "Ignorar")));
+    }));
+}
+
 function vigiarColeta() {
     const faixa = document.getElementById("statusColeta");
     const mostrar = (texto, parada) => {
@@ -1054,6 +1089,8 @@ async function iniciar() {
     });
     for (const botao of document.querySelectorAll(".abas button")) botao.addEventListener("click", () => trocarAba(botao.dataset.aba));
     vigiarColeta();
+    carregarAvisosGerencia();
+    setInterval(carregarAvisosGerencia, 60000);
     try {
         estado.opcoes = await api("/opcoes");
         const rotuloCentro = (centro) => `${centro.projeto && centro.projeto !== centro.nome ? `${centro.projeto} · ` : ""}${centro.ativo === true ? "ativo" : centro.ativo === false ? "inativo" : "não confirmado"}${centro.id ? "" : " · sem ID"}`;
