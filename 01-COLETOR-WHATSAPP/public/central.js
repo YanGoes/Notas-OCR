@@ -212,7 +212,60 @@ function desenharFiltroPeriodo(resumo) {
     $("#filtroPeriodo").replaceChildren(
         el("span", { class: "rotulo-operadores" }, "Período:"), ...chips,
         controle ? controle() : null, p.modo !== "todas" ? pela : null,
-        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null, botaoDrive);
+        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null, botaoDrive,
+        estado.aba === "revisar" ? el("button", { type: "button", class: "chip-operador", title: "A IA lê suas observações e as mensagens da gerência, propõe regras (centro e cartão de cada operador) e reclassifica as notas em revisão. Não lê as fotos de novo.",
+            onclick: () => executar(abrirReclassificacao) }, "🔁 Reclassificar com minhas observações") : null);
+}
+
+// ---------------------------------------------------------------------------
+// Reclassificar com as observacoes (regras do operador aprendidas)
+// ---------------------------------------------------------------------------
+
+const dataBrCurta = (iso) => (iso ? iso.split("-").reverse().join("/") : "");
+const ROTULO_CAMPO = { centro: "Centro de custo", cartao: "Cartão" };
+
+function fecharJanela() { $("#janelaRegras")?.remove(); }
+
+async function abrirReclassificacao() {
+    fecharJanela();
+    const corpo = el("div", { class: "janela-corpo" }, el("p", { class: "origem" }, "Lendo suas observações e as mensagens da gerência… (pode levar até 1 minuto; nenhuma foto é lida de novo)"));
+    const janela = el("div", { class: "janela-fundo", id: "janelaRegras", onclick: (e) => { if (e.target.id === "janelaRegras") fecharJanela(); } },
+        el("div", { class: "janela", role: "dialog", "aria-label": "Reclassificar com minhas observações" },
+            el("div", { class: "janela-topo" }, el("b", {}, "🔁 Reclassificar com minhas observações"), el("button", { type: "button", class: "ghost", onclick: fecharJanela }, "✕")),
+            corpo));
+    document.body.append(janela);
+    const [r, vigentes] = await Promise.all([api("/regras-operador/propor", {}), api("/regras-operador")]);
+    const marcadas = new Set(r.propostas.map((_, i) => i));
+    const linhaProposta = (p, i) => el("label", { class: "regra" },
+        el("input", { type: "checkbox", checked: true, onchange: (e) => (e.target.checked ? marcadas.add(i) : marcadas.delete(i)) }),
+        el("span", {}, el("b", {}, `${p.operador} · ${ROTULO_CAMPO[p.campo]}: ${p.nome || p.valor}`), ` · desde ${dataBrCurta(p.desde)}${p.ate ? ` até ${dataBrCurta(p.ate)}` : ""}`,
+            el("small", {}, `${p.motivo || ""}${p.correcoes ? ` · ${p.correcoes} correção(ões) suas` : ""}${p.fonte ? ` · "${String(p.fonte).slice(0, 140)}"` : ""}`)));
+    const ativas = vigentes.filter((v) => v.ativa);
+    const reclassificar = async (comRegras) => {
+        const regras = comRegras ? r.propostas.filter((_, i) => marcadas.has(i)) : [];
+        corpo.replaceChildren(el("p", { class: "origem" }, "Reclassificando as notas em revisão…"));
+        const resumo = comRegras && regras.length
+            ? await api("/regras-operador/confirmar", { regras, autor: revisor() })
+            : await api("/regras-operador/reclassificar", {});
+        fecharJanela();
+        avisar(`${regras.length ? `${regras.length} regra(s) confirmada(s). ` : ""}${resumo.reclassificadas} nota(s) reclassificada(s): ${resumo.centros_preenchidos} centro(s) e ${resumo.cartoes_preenchidos} cartão(ões) preenchidos, ${resumo.placas_deduzidas} placa(s) pelo km, ${resumo.sem_pendencia} ficaram sem pendência.`, "ok");
+        await carregarLista();
+    };
+    corpo.replaceChildren(
+        el("p", { class: "origem" }, `Lido: ${r.fontes.correcoes} correção(ões) de centro/cartão, ${r.fontes.comentarios} comentário(s) para a IA e ${r.fontes.mensagens_gerencia} mensagem(ns) da gerência (últimos 45 dias).`),
+        r.aviso_ia ? el("p", { class: "aviso-ia" }, `A IA não respondeu (${r.aviso_ia}); abaixo só as regras tiradas das suas correções repetidas.`) : null,
+        el("h4", {}, r.propostas.length ? "Regras novas para confirmar" : "Nenhuma regra nova encontrada"),
+        ...r.propostas.map(linhaProposta),
+        r.descartadas.length ? el("details", {}, el("summary", {}, `${r.descartadas.length} sugestão(ões) recusada(s) pelo cadastro`),
+            ...r.descartadas.map((d) => el("div", { class: "regra recusada" }, `${d.pessoa_id} · ${ROTULO_CAMPO[d.campo] || d.campo}: ${d.valor} — ${d.erro}`))) : null,
+        ativas.length ? el("details", {}, el("summary", {}, `Regras em vigor (${ativas.length})`),
+            ...ativas.map((v) => el("div", { class: "regra" }, el("span", {}, `${v.pessoa_id} · ${ROTULO_CAMPO[v.campo]}: ${v.valor} · desde ${dataBrCurta(v.desde)}${v.ate ? ` até ${dataBrCurta(v.ate)}` : ""}`),
+                el("button", { type: "button", class: "ghost", onclick: async (e) => { await api(`/regras-operador/${v.id}/desativar`, {}); e.target.closest(".regra").remove(); } }, "desativar")))) : null,
+        el("p", { class: "origem" }, "Só as notas em revisão sem correção sua são refeitas. Aprovadas e simuladas não mudam."),
+        el("div", { class: "janela-acoes" },
+            r.propostas.length ? el("button", { type: "button", class: "primary", onclick: () => executar(() => reclassificar(true)) }, "Confirmar regras e reclassificar") : null,
+            el("button", { type: "button", class: "secondary", onclick: () => executar(() => reclassificar(false)) }, r.propostas.length ? "Só reclassificar (sem regras novas)" : "Reclassificar com as regras em vigor"),
+            el("button", { type: "button", class: "ghost", onclick: fecharJanela }, "Cancelar")));
 }
 
 async function carregarLista() {

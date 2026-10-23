@@ -20,6 +20,7 @@
 const { normalizar, contemTermo, centavos } = require("./texto");
 const modeloCentral = require("./modelo");
 const cadastros = require("./cadastros");
+const { veiculoPeloKm, regraPara } = require("./regras-operador");
 
 const TIPOS = Object.freeze({
     CAFE_DA_MANHA: { rotulo: "CAFÉ DA MANHÃ", categoria: "CAFE DA MANHA", refeicao: true },
@@ -351,7 +352,8 @@ function corrigirLitros(litros, valor) {
     return { litros, corrigido: false };
 }
 
-function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo, habitos = null, pessoasRecentes = null }) {
+function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo, habitos = null, pessoasRecentes = null,
+    frotaRecente = null, regrasOperador = [] }) {
     const pendencias = [];
     const avisos = [];
     const campos = {};
@@ -468,6 +470,24 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         for (const [nome, info] of [["Placa", placaInfo], ["Litros", litrosInfo], ["Hodômetro", odometroInfo]]) {
             if (info.origem === "mensagem_do_operador") avisos.push(`${nome} não lido na nota; usado o valor digitado pelo operador.`);
         }
+        // Sem placa na nota: deduz pelo km entre os veiculos que o operador abasteceu
+        // nos ultimos dias (o km so aumenta). Sem km, so sugere.
+        let sugestaoDaFrota = null;
+        if (!placaInfo.valor && frotaRecente && !legenda?.gerador) {
+            const dataNota = ocr?.data || legenda?.data_declarada || lote?.data_declarada || null;
+            const frota = frotaRecente(dataNota) || [];
+            const pelaKm = veiculoPeloKm(frota, odometroInfo.valor, dataNota);
+            if (pelaKm?.placa) {
+                placaInfo.valor = pelaKm.placa;
+                placaInfo.origem = "deduzida_pelo_km";
+                const [, mm, dd] = pelaKm.referencia.data.split("-");
+                avisos.push(`Placa não lida na nota; deduzida pelo km: ${cadastros.placaCanonica(pelaKm.placa)} estava com ${milharBr(pelaKm.referencia.odometro)} km em ${dd}/${mm} (+${milharBr(pelaKm.distancia)} km).`);
+            } else if (frota.length) {
+                const opcoes = (pelaKm?.ambiguo || frota).map((v) => cadastros.placaCanonica(v.placa));
+                sugestaoDaFrota = opcoes;
+                pendencias.push(`Placa não lida na nota${odometroInfo.valor ? "" : " e sem km"}. Veículos de ${pessoa?.nome || "o operador"} nos últimos dias: ${opcoes.join(", ")}. Confirme qual é.`);
+            }
+        }
         const placaLida = placaInfo.valor;
         let veiculo = placaLida ? cadastros.resolverVeiculo(cad, placaLida) : null;
         // "SGR4854" lida = SGR4B54 da frota (8 no lugar de B): so troca de caractere parecido e um unico veiculo.
@@ -543,7 +563,8 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         }
         // Sem hodometro na nota nao trava: a descricao sai sem o numero (orientacao do Yan, 18/10/2026).
         if (!odometro && litros && (placaLida || ocr?.placa_bruta)) avisos.push("Nota sem hodômetro: descrição sem o número do odômetro (ex.: 45,34L od - OVN1505).");
-        const faltando = [!litros && "litros", !odometro && !litros && "hodômetro", !placaLida && !ocr?.placa_bruta && "placa"].filter(Boolean);
+        const faltando = [!litros && "litros", !odometro && !litros && "hodômetro", !placaLida && !ocr?.placa_bruta && !sugestaoDaFrota && "placa"].filter(Boolean);
+        if (sugestaoDaFrota?.length === 1) campos.abastecimento.placa.sugestao = { valor: sugestaoDaFrota[0], origem: "frota_recente_do_operador" };
         if (faltando.length) pendencias.push(`Abastecimento sem ${faltando.join(", ")} legível na nota; fica pendente até conferência.`);
 
         const motoParticular = regrasPessoa.find((regra) => regra.tipo === "ABASTECIMENTO_MOTO_PARTICULAR");
@@ -660,8 +681,29 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
 
     // Projeto / centro de custo: regra especial > orientacao da gerencia (Vanessa,
     // para o grupo/periodo) > legenda da foto > contexto do operador
-    const orientacao = orientacaoVigente(contexto.orientacoes, ocr?.data || legenda?.data_declarada || lote?.data_declarada, contexto.momento);
-    const projetoDoOperador = legenda?.projeto_texto || contexto.projeto?.texto || null;
+    let orientacao = orientacaoVigente(contexto.orientacoes, ocr?.data || legenda?.data_declarada || lote?.data_declarada, contexto.momento);
+    // Regras confirmadas do operador (botao "Reclassificar com minhas observações"):
+    // valem quando a foto e o cabecalho do dia nao dizem o centro/cartao. Regra
+    // mais nova que a orientacao da gerencia vence (o operador mudou de projeto).
+    const dataDaNota = ocr?.data || legenda?.data_declarada || lote?.data_declarada || String(contexto.momento || "").slice(0, 10) || null;
+    const regraCentro = regraPara(regrasOperador, "centro", dataDaNota);
+    const regraCartao = regraPara(regrasOperador, "cartao", dataDaNota);
+    const inicioOrientacao = (o) => o?.periodo?.de || String(o?.desde || "").slice(0, 10);
+    if (orientacao && regraCentro && regraCentro.desde > inicioOrientacao(orientacao)) orientacao = { ...orientacao, projeto_texto: null, cartao: regraCartao && regraCartao.desde > inicioOrientacao(orientacao) ? null : orientacao.cartao };
+    let projetoDoOperador = legenda?.projeto_texto || contexto.projeto?.texto || null;
+    let centroPelaRegra = false;
+    if (regraCentro && !centroDaRegra && !orientacao?.projeto_texto) {
+        const nomeOperador = pessoa?.nome || "o operador";
+        if (!projetoDoOperador) {
+            projetoDoOperador = regraCentro.valor;
+            centroPelaRegra = true;
+            avisos.push(`Centro de custo não informado; usado o de ${nomeOperador} pela regra confirmada (desde ${regraCentro.desde.split("-").reverse().join("/")}).`);
+        } else if (cadastros.resolverProjeto(cad, projetoDoOperador, pessoa).status !== "RESOLVIDO") {
+            avisos.push(`"${projetoDoOperador}" não é um centro cadastrado; usado o de ${nomeOperador} pela regra confirmada (${regraCentro.valor}).`);
+            projetoDoOperador = regraCentro.valor;
+            centroPelaRegra = true;
+        }
+    }
     const projetoInformado = orientacao?.projeto_texto || projetoDoOperador;
     const projetoTexto = centroDaRegra || projetoInformado;
     if (!centroDaRegra && orientacao?.projeto_texto && projetoDoOperador && normalizar(projetoDoOperador) !== normalizar(orientacao.projeto_texto)) {
@@ -680,7 +722,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     const projetoAchado = resolucao?.projeto || null;
     campos.centro_custo = {
         texto_informado: projetoTexto,
-        origem: centroDaRegra ? "regra_especial" : orientacao?.projeto_texto ? "orientacao_da_gerencia" : legenda?.projeto_texto ? "mensagem_da_foto" : contexto.projeto?.origem || null,
+        origem: centroDaRegra ? "regra_especial" : orientacao?.projeto_texto ? "orientacao_da_gerencia" : centroPelaRegra ? "regra_do_operador" : legenda?.projeto_texto ? "mensagem_da_foto" : contexto.projeto?.origem || null,
         nome: projetoAchado ? cadastros.nomeCentro(projetoAchado) : null,
         projeto: projetoAchado?.nome_oficial || null,
         id: resolucao?.status === "RESOLVIDO" ? projetoAchado.id_conta_azul || null : null,
@@ -737,9 +779,11 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     // Sem politica do projeto, vale o cartao da orientacao da gerencia para o
     // grupo; sem ela, o cartao cadastrado no proprio centro de custo.
     if (!politica?.cartao && orientacao?.cartao) politica = { cartao: orientacao.cartao, origem: "orientacao_da_gerencia" };
+    if (!politica?.cartao && regraCartao) politica = { cartao: regraCartao.valor, origem: "regra_do_operador" };
     if (!politica?.cartao && projetoAchado?.cartao) politica = { cartao: projetoAchado.cartao, origem: "cartao_do_centro_de_custo" };
     const fontePolitica = politica?.origem === "cartao_do_centro_de_custo" ? "o cartão cadastrado no centro de custo" : "a orientação da gerência para o projeto";
-    if (declaradoPag?.cartao && politica?.cartao && declaradoPag.cartao !== politica.cartao) {
+    // A regra do operador e so o padrao: o que ele declarar na mensagem vale sem conflito.
+    if (declaradoPag?.cartao && politica?.cartao && declaradoPag.cartao !== politica.cartao && politica.origem !== "regra_do_operador") {
         pendencias.push(`Cartão informado (${declaradoPag.rotulo}) diverge d${fontePolitica} (${politica.cartao}).`);
         pagamento = { forma: declaradoPag.forma, cartao: declaradoPag.cartao, origem: origemDeclarado, conflito_com_politica: politica };
     } else if (declaradoPag) {

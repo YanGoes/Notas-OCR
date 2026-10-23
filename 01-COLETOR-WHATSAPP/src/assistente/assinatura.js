@@ -168,9 +168,42 @@ async function rodarTurno({ texto, blocos = [], sessao = null, pessoa = "", conv
     return { tipo: "resposta", texto: resposta, sessao: novaSessao, propostas };
 }
 
+/**
+ * Pergunta avulsa (sem conversa, sem ferramentas, sem MCP), pela mesma
+ * assinatura. Usada pelo programa para tarefas internas, como transformar as
+ * observacoes do revisor em regras. Devolve o texto da resposta.
+ */
+async function perguntar({ sistema, texto, modelo = "", executavel = localizarClaude(), iniciar = spawn, tempoMs = 5 * 60 * 1000 }) {
+    if (!executavel) throw new Error(MSG_SEM_CLI);
+    const ambiente = Object.fromEntries(Object.entries(process.env).filter(([chave]) => !VARIAVEIS_FORA.includes(chave)));
+    const args = ["-p", "--output-format", "json", "--tools", "", "--strict-mcp-config", "--system-prompt", sistema, ...(modelo ? ["--model", modelo] : [])];
+    const { codigo, saida, erros } = await new Promise((resolver) => {
+        let processo;
+        try { processo = iniciar(executavel, args, { cwd: os.tmpdir(), env: ambiente, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }); } catch (erro) { resolver({ codigo: -2, saida: "", erros: erro.message }); return; }
+        let saida = "";
+        let erros = "";
+        const relogio = setTimeout(() => processo.kill(), tempoMs);
+        processo.stdout.on("data", (p) => { saida += p.toString("utf8"); });
+        processo.stderr.on("data", (p) => { erros += p.toString("utf8"); });
+        processo.on("error", (erro) => { clearTimeout(relogio); resolver({ codigo: -2, saida, erros: erro.message }); });
+        processo.on("close", (c) => { clearTimeout(relogio); resolver({ codigo: c ?? 0, saida, erros }); });
+        processo.stdin.end(texto);
+    });
+    let dados = null;
+    try { dados = JSON.parse(saida); } catch (_) { /* saida nao-JSON */ }
+    const resposta = String(dados?.result || "").trim();
+    if (codigo || !dados || dados.is_error) {
+        const minusculo = `${resposta} ${erros}`.toLowerCase();
+        if (PISTAS_LIMITE.some((p) => minusculo.includes(p))) throw new Error(MSG_LIMITE);
+        if (PISTAS_LOGIN.some((p) => minusculo.includes(p))) throw new Error(MSG_LOGIN);
+        throw new Error(`O Claude não respondeu: ${resposta || erros.slice(-300) || `código ${codigo}`}`);
+    }
+    return resposta;
+}
+
 function lerFila(fila) {
     if (!fs.existsSync(fila)) return [];
     return fs.readFileSync(fila, "utf8").split(/\r?\n/).filter(Boolean).map((linha) => { try { return JSON.parse(linha); } catch (_) { return null; } }).filter(Boolean);
 }
 
-module.exports = { localizarClaude, comando, rodarTurno, LeitorEventos, SISTEMA, MSG_SEM_CLI, MSG_LIMITE, MSG_LOGIN };
+module.exports = { localizarClaude, comando, rodarTurno, perguntar, LeitorEventos, SISTEMA, MSG_SEM_CLI, MSG_LIMITE, MSG_LOGIN };

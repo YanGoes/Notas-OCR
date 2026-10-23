@@ -17,6 +17,13 @@ const contexto = require("./contexto");
 const { dividirDocumentos, chaveNfce, impressaoDigital } = require("./documentos");
 const { montarPrevia } = require("./regras-vmac");
 const { habitosDoOperador, pessoasDeclaradasRecentes } = require("./habitos");
+const regrasOperador = require("./regras-operador");
+
+/** Regras confirmadas e frota recente do operador, para a classificacao. */
+const doOperador = (db, pessoaId, excluir = []) => ({
+    regrasOperador: pessoaId ? regrasOperador.listar(db, { pessoaId }) : [],
+    frotaRecente: regrasOperador.frotaRecente(db, { pessoaId, excluir }),
+});
 
 /** Callback para a regra perguntar "quantas pessoas este operador disse recentemente?". */
 const consultaPessoas = (db, { pessoaId, remetenteId, excluir = [] }) =>
@@ -139,7 +146,7 @@ function processarFoto(db, cad, { arquivo, sha256, meta = {}, brutoAzure = null,
         // obterHabitos: a medicao passa os habitos de OUTRO banco (sem a propria nota).
         const habitos = obterHabitos ? obterHabitos(registro.pessoa?.pessoa?.id) : habitosDoOperador(db, registro.pessoa?.pessoa?.id);
         const base = { legenda, contexto: ctx, politica: politicaVigente, identificacao: registro.pessoa, cad, regras, hoje, habitos,
-            pessoasRecentes: consultaPessoas(db, { pessoaId: registro.pessoa?.pessoa?.id, remetenteId }) };
+            pessoasRecentes: consultaPessoas(db, { pessoaId: registro.pessoa?.pessoa?.id, remetenteId }), ...doOperador(db, registro.pessoa?.pessoa?.id) };
 
         if (!brutoAzure) {
             const previa = montarPrevia({ ...base, ocr: { erro_leitura: erroLeitura } });
@@ -221,7 +228,7 @@ function processarMensagemTexto(db, cad, msg, { regras = {}, hoje = new Date() }
     const projetoTexto = legenda.projeto_texto || ctx.projeto?.texto;
     const politica = contexto.politicaCartao(db, projetoTexto ? contexto.chaveProjeto(cad, projetoTexto).chave : null, msg.enviadaEm);
     const previa = montarPrevia({ ocr: null, legenda, contexto: ctx, politica, identificacao: registro.pessoa, cad, regras, hoje,
-        habitos: habitosDoOperador(db, registro.pessoa?.pessoa?.id) });
+        habitos: habitosDoOperador(db, registro.pessoa?.pessoa?.id), ...doOperador(db, registro.pessoa?.pessoa?.id) });
     const id = transacao(db, () => inserirDespesa(db, { mensagemRef: registro.mensagemRef, loteId: ctx.lote?.id, previa, estado: "AGUARDANDO_REVISAO" }));
     return { ...registro, despesa: id };
 }
@@ -273,7 +280,7 @@ function regenerarPrevia(db, cad, despesaId, { regras = {}, hoje = new Date() } 
 
     const previa = montarPrevia({ ocr, legenda, contexto: ctx, politica, identificacao, cad, regras, hoje,
         pessoasRecentes: consultaPessoas(db, { pessoaId: identificacao.pessoa?.id, remetenteId: mensagem.remetente_id, excluir: [despesaId] }),
-        habitos: habitosDoOperador(db, identificacao.pessoa?.id) });
+        habitos: habitosDoOperador(db, identificacao.pessoa?.id), ...doOperador(db, identificacao.pessoa?.id, [despesaId]) });
     if (leituraFalhou) previa.pendencias.unshift("Leitura automática falhou. Leia a imagem manualmente.");
     if (despesa.duplicada_de) previa.pendencias.push(`Possível duplicidade com a despesa #${despesa.duplicada_de} (mesmo emissor, data, valor e hora). Confirme se são compras diferentes.`);
     const estado = previa.pendencias.length ? "AGUARDANDO_REVISAO" : "CLASSIFICADO";

@@ -284,6 +284,23 @@ const MIGRACOES = [
         UNIQUE (midia_id, raiz)
     );
     `,
+    // 10 — Regras confirmadas por operador (centro e cartao padrao, com periodo),
+    // aprendidas das observacoes do revisor e das mensagens da gerencia.
+    `
+    CREATE TABLE regras_operador (
+        id INTEGER PRIMARY KEY,
+        pessoa_id TEXT NOT NULL,
+        campo TEXT NOT NULL,
+        valor TEXT NOT NULL,
+        desde TEXT NOT NULL,
+        ate TEXT,
+        fonte TEXT,
+        criada_por TEXT,
+        em TEXT NOT NULL,
+        ativa INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE INDEX idx_regras_operador ON regras_operador (pessoa_id, campo);
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

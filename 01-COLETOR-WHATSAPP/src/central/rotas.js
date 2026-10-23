@@ -132,6 +132,20 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     });
     // --- Assistente (chat pela assinatura Claude da empresa) -------------------
     const assistente = require("../assistente/servico");
+    // Regras do operador aprendidas das observacoes (botao "Reclassificar com minhas observações").
+    const aprender = require("./aprender-regras");
+    const regrasOp = require("./regras-operador");
+    const regerarUma = require("./orquestrador").regenerarPrevia;
+    rotas.get("/regras-operador", responder(() => regrasOp.listar(db(), { todas: true })));
+    rotas.post("/regras-operador/propor", async (req, res, next) => {
+        try {
+            res.json(await aprender.propor(db(), cad(), { perguntar: require("../assistente/assinatura").perguntar, modelo: String(req.body?.modelo || "") }));
+        } catch (erro) { next(erro); }
+    });
+    rotas.post("/regras-operador/confirmar", responder((req) => aprender.confirmarEReclassificar(db(), cad(),
+        Array.isArray(req.body?.regras) ? req.body.regras : [], String(req.body?.autor || "?"), { regenerar: regerarUma, opcoes: { regras: regras() } })));
+    rotas.post("/regras-operador/reclassificar", responder(() => aprender.reclassificar(db(), cad(), { regenerar: regerarUma, opcoes: { regras: regras() } })));
+    rotas.post("/regras-operador/:id/desativar", responder((req) => regrasOp.desativar(db(), idDe(req))));
     rotas.post("/arquivo-drive/executar", responder((req) => require("./arquivo-drive").arquivarPendentes(db(), cad(), { simular: req.body?.simular === true })));
     rotas.get("/assistente/estado", responder(() => assistente.estado()));
     rotas.get("/assistente/conversas", responder((req) => assistente.listarConversas(db(), { pessoa: req.query.pessoa ? String(req.query.pessoa) : null })));
