@@ -386,13 +386,18 @@ test("palpite do Azure ('parece refeicao') nao vence a legenda do operador", () 
     assert.equal(previa.campos.tipo.valor, "MANUTENCAO");
 });
 
-test("reembolso: descricao do anexo vira 'REEMBOLSO <OPERADOR>' (mesmo com so 'Reembolso' na legenda)", () => {
+// Regra mudada pelo Yan em 25/10/2026: reembolso e Pix vao na DESCRICAO da nota, nao na do anexo.
+test("reembolso: a descricao da nota termina em 'REEMBOLSO <OPERADOR>'; a do anexo fica vazia", () => {
     const lorran = { pessoa: { id: "lorran", nome: "Lorran" }, origem: "telefone" };
     const so = legenda("Almoço 2 - Reembolso").dados;
     assert.equal(so.reembolso, true);
     const previa = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 58, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
         legenda: so, identificacao: lorran, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
-    assert.equal(previa.campos.anexo.descricao, "REEMBOLSO LORRAN");
+    assert.equal(previa.campos.descricao.valor, "ALMOÇO - 2 PESSOAS - REEMBOLSO LORRAN");
+    assert.equal(previa.campos.anexo.descricao, null);
+    const pix = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 58, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
+        legenda: legenda("Almoço 2 - Pix - pago por Murillo").dados, identificacao: lorran, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
+    assert.equal(pix.campos.descricao.valor, "ALMOÇO - 2 PESSOAS - PAGO PIX MURILLO");
     const normal = regrasVmac.montarPrevia({ ocr: { data: "2026-10-10", valor: 58, fornecedor: "RESTAURANTE SABOR", confianca: 0.99 },
         legenda: legenda("Almoço 2").dados, identificacao: lorran, cad: cadastros(), hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(normal.campos.anexo.descricao, null);

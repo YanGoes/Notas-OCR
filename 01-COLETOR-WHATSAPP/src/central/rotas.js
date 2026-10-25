@@ -147,6 +147,10 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.post("/regras-operador/reclassificar", responder(() => aprender.reclassificar(db(), cad(), { regenerar: regerarUma, opcoes: { regras: regras() } })));
     const avisosGerencia = require("./avisos-gerencia");
     rotas.get("/avisos-gerencia", responder(() => avisosGerencia.pendentes(db(), cad())));
+    rotas.post("/avisos-gerencia/ler-agora", async (req, res, next) => {
+        try { res.json(await avisosGerencia.lerAgora(db(), cad(), { perguntar: require("../assistente/assinatura").perguntar, origem: String(req.body?.origem || "botao") })); } catch (erro) { next(erro); }
+    });
+    rotas.get("/avisos-gerencia/ultima-leitura", responder(() => avisosGerencia.ultimaLeitura()));
     rotas.post("/avisos-gerencia/:id", responder((req) => avisosGerencia.decidir(db(), cad(), idDe(req), {
         aceito: req.body?.aceito === true, autor: String(req.body?.autor || ""), regenerar: regerarUma, opcoes: { regras: regras() } })));
     rotas.post("/regras-operador/:id/desativar", responder((req) => regrasOp.desativar(db(), idDe(req))));

@@ -126,19 +126,55 @@ function decidir(db, cad, avisoId, { aceito, autor, regenerar, opcoes = {} }) {
     return { status: aceito ? "CONFIRMADO" : "IGNORADO", resumo };
 }
 
-/** Roda sozinho a cada 2 minutos. */
-function agendar(obterBanco, obterCadastros, { perguntar, intervaloMs = 2 * 60 * 1000 } = {}) {
-    let ocupado = false;
-    const rodar = async () => {
-        if (ocupado) return;
-        ocupado = true;
-        try {
-            const r = await analisarNovas(obterBanco(), obterCadastros(), { perguntar });
-            if (r.avisos) console.log(`Gerência: ${r.avisos} mensagem(ns) com mudança de projeto/cartão aguardando confirmação.`);
-        } catch (erro) { console.error("Leitura das mensagens da gerência falhou:", erro?.message || erro); } finally { ocupado = false; }
-    };
-    setTimeout(rodar, 45 * 1000).unref();
-    setInterval(rodar, intervaloMs).unref();
+// ---------------------------------------------------------------------------
+// Uma vez por dia (fim da tarde, 18:30 por padrao) para poupar a assinatura;
+// o botao da Central e o assistente leem na hora quando alguem pedir.
+// ---------------------------------------------------------------------------
+const fs = require("fs");
+const path = require("path");
+const ARQUIVO_ULTIMA = path.join(__dirname, "..", "..", "dados", "avisos-gerencia.json");
+const HORARIO_PADRAO = "18:30";
+
+function hojeEmBrasilia(agoraData = new Date()) {
+    const local = new Date(agoraData.getTime() - 3 * 3600000);
+    return { dia: local.toISOString().slice(0, 10), minutos: local.getUTCHours() * 60 + local.getUTCMinutes() };
 }
 
-module.exports = { naoAnalisadas, analisar, analisarNovas, pendentes, decidir, agendar, SISTEMA };
+function ultimaLeitura() {
+    try { return JSON.parse(fs.readFileSync(ARQUIVO_ULTIMA, "utf8")); } catch (_) { return {}; }
+}
+
+let lendo = null;
+/** Le agora (botao, assistente ou horario do dia). Duas chamadas juntas esperam a mesma leitura. */
+function lerAgora(db, cad, { perguntar, origem = "botao" } = {}) {
+    if (!lendo) {
+        lendo = analisarNovas(db, cad, { perguntar, limite: 50 })
+            .then((r) => {
+                const agora = new Date().toISOString();
+                const anterior = ultimaLeitura();
+                const registro = { ...anterior, em: agora, origem, ...r, ...(origem === "horario" ? { horario_em: agora } : {}) };
+                try { fs.writeFileSync(ARQUIVO_ULTIMA, JSON.stringify(registro, null, 2)); } catch (_) { /* sem disco */ }
+                return { ...r, pendentes: pendentes(db, cad).length };
+            })
+            .finally(() => { lendo = null; });
+    }
+    return lendo;
+}
+
+/** Confere a cada minuto: passou do horario e ainda nao leu hoje -> le. */
+function agendar(obterBanco, obterCadastros, { perguntar, horario = HORARIO_PADRAO } = {}) {
+    const [hh, mm] = String(horario).split(":").map(Number);
+    const alvo = hh * 60 + (mm || 0);
+    const conferir = async () => {
+        const { dia, minutos } = hojeEmBrasilia();
+        if (minutos < alvo || String(ultimaLeitura().horario_em || "").slice(0, 10) === dia) return;
+        try {
+            const r = await lerAgora(obterBanco(), obterCadastros(), { perguntar, origem: "horario" });
+            console.log(`Gerência (${horario}): ${r.analisadas} mensagem(ns) lida(s), ${r.avisos} aviso(s) novo(s).`);
+        } catch (erro) { console.error("Leitura das mensagens da gerência falhou:", erro?.message || erro); }
+    };
+    setTimeout(conferir, 60 * 1000).unref();
+    setInterval(conferir, 60 * 1000).unref();
+}
+
+module.exports = { naoAnalisadas, analisar, analisarNovas, pendentes, decidir, agendar, lerAgora, ultimaLeitura, hojeEmBrasilia, SISTEMA };

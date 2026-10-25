@@ -36,6 +36,11 @@ const PAGAMENTOS_EXTRA = [["CARTAO_CREDITO", "Cartão de crédito (banco não in
 // Utilitarios
 // ---------------------------------------------------------------------------
 
+/** replaceChildren do navegador escreve "null" para item vazio (bug "nullnullnullnull"): troca so pelos itens reais. */
+function trocarFilhos(no, ...filhos) {
+    no.replaceChildren(...filhos.flat().filter((filho) => filho !== null && filho !== undefined && filho !== false));
+}
+
 function el(tag, atributos = {}, ...filhos) {
     const no = document.createElement(tag);
     for (const [chave, valor] of Object.entries(atributos)) {
@@ -244,12 +249,22 @@ function desenharFiltroPeriodo(resumo) {
             } finally { evento.target.disabled = false; }
         }),
     }, "📁 Enviar fotos ao Drive") : null;
-    $("#filtroPeriodo").replaceChildren(
+    trocarFilhos($("#filtroPeriodo"),
         el("span", { class: "rotulo-operadores" }, "Período:"), ...chips,
         controle ? controle() : null, p.modo !== "todas" ? pela : null,
         resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null, botaoDrive,
         estado.aba === "revisar" ? el("button", { type: "button", class: "chip-operador", title: "A IA lê suas observações e as mensagens da gerência, propõe regras (centro e cartão de cada operador) e reclassifica as notas em revisão. Não lê as fotos de novo.",
-            onclick: () => executar(abrirReclassificacao) }, "🔁 Reclassificar com minhas observações") : null);
+            onclick: () => executar(abrirReclassificacao) }, "🔁 Reclassificar com minhas observações") : null,
+        estado.aba === "revisar" ? el("button", { type: "button", class: "chip-operador", title: "A IA lê agora as mensagens novas da Vanessa e do Murillo (sozinha ela lê uma vez por dia, às 18:30). Mudança de projeto ou cartão aparece no topo para Confirmar.",
+            onclick: (evento) => executar(async () => {
+                evento.target.disabled = true;
+                avisar("Lendo as mensagens da gerência…", "ok");
+                try {
+                    const r = await api("/avisos-gerencia/ler-agora", {});
+                    await carregarAvisosGerencia();
+                    avisar(r.adiadas ? "A assinatura do Claude não respondeu agora; tente mais tarde." : `Gerência: ${r.analisadas} mensagem(ns) nova(s) lida(s), ${r.avisos} com mudança de projeto/cartão.`, r.adiadas ? "erro" : "ok");
+                } finally { evento.target.disabled = false; }
+            }) }, "📣 Ler mensagens da gerência") : null);
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +301,7 @@ async function abrirReclassificacao() {
         avisar(`${regras.length ? `${regras.length} regra(s) confirmada(s). ` : ""}${resumo.reclassificadas} nota(s) reclassificada(s): ${resumo.centros_preenchidos} centro(s) e ${resumo.cartoes_preenchidos} cartão(ões) preenchidos, ${resumo.placas_deduzidas} placa(s) pelo km, ${resumo.sem_pendencia} ficaram sem pendência.`, "ok");
         await carregarLista();
     };
-    corpo.replaceChildren(
+    trocarFilhos(corpo,
         el("p", { class: "origem" }, `Lido: ${r.fontes.correcoes} correção(ões) de centro/cartão, ${r.fontes.comentarios} comentário(s) para a IA e ${r.fontes.mensagens_gerencia} mensagem(ns) da gerência (últimos 45 dias).`),
         r.aviso_ia ? el("p", { class: "aviso-ia" }, `A IA não respondeu (${r.aviso_ia}); abaixo só as regras tiradas das suas correções repetidas.`) : null,
         el("h4", {}, r.propostas.length ? "Regras novas para confirmar" : "Nenhuma regra nova encontrada"),
@@ -676,7 +691,7 @@ function desenharDetalhe() {
     const acoes = el("div", { class: "acoes" });
     if (detalhe.editavel) {
         acoes.append(
-            el("button", { type: "button", class: "secondary", onclick: () => executar(() => salvar(campos), "Correções salvas.") }, "Salvar correções"),
+            el("button", { type: "button", class: "secondary", onclick: () => executar(() => salvar(campos), "Correções e comentário salvos.") }, "Salvar correções"),
             el("button", { type: "button", class: "primary", onclick: () => executar(() => aprovar(campos), "Aprovada. Virou exemplo de treino.") }, "Salvar e aprovar"),
             marcadorNaoUsar(),
             detalhe.correcoes.length ? null : el("button", { type: "button", class: "ghost", title: "Gera a prévia de novo com os cadastros atuais (sem chamar o OCR)", onclick: () => executar(regenerar, "Prévia gerada de novo.") }, "Regerar prévia"));
@@ -745,10 +760,20 @@ function alteracoesDe(campos) {
     }));
 }
 
+/** Comentario para a IA escrito e ainda nao salvo: vai junto com Salvar correcoes e Aprovar. */
+async function salvarComentarioPendente(autor) {
+    const comentario = document.querySelector("#comentarioIa");
+    if (!comentario || comentario.value.trim() === (estado.detalhe.comentario_ia || "").trim()) return false;
+    await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor });
+    return true;
+}
+
 async function salvar(campos) {
+    const autor = revisor();
     const alteracoes = alteracoesDe(campos);
-    if (!alteracoes.length) throw new Error("Nenhum campo foi alterado.");
-    await api(`/despesas/${estado.selecionada}/corrigir`, { alteracoes, autor: revisor() });
+    const comentou = await salvarComentarioPendente(autor);
+    if (!alteracoes.length && !comentou) throw new Error("Nenhum campo foi alterado e não há comentário novo para a IA.");
+    if (alteracoes.length) await api(`/despesas/${estado.selecionada}/corrigir`, { alteracoes, autor });
     await recarregar();
 }
 
@@ -764,11 +789,7 @@ function marcadorNaoUsar() {
 
 async function aprovar(campos) {
     const autor = revisor();
-    // Comentario escrito e nao salvo vai junto com a aprovacao.
-    const comentario = document.querySelector("#comentarioIa");
-    if (comentario && comentario.value.trim() !== (estado.detalhe.comentario_ia || "").trim()) {
-        await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor });
-    }
+    await salvarComentarioPendente(autor);
     const alteracoes = alteracoesDe(campos);
     if (alteracoes.length) await api(`/despesas/${estado.selecionada}/corrigir`, { alteracoes, autor });
     const naoUsar = document.querySelector("#naoUsarCentroPagamento")?.checked ? ["centro_custo", "pagamento"] : [];

@@ -319,6 +319,14 @@ const FERRAMENTAS = [
         esquema: { type: "object", properties: { operador: { type: "string" }, ano: { type: "integer" }, mes: { type: "integer" } } } },
     { nome: "situacao_do_sistema", grava: false, executar: situacaoDoSistema,
         descricao: "Estado do programa: WhatsApp conectado?, grupos e contatos monitorados, cota do Azure, último backup, notas por estado, últimos eventos da conexão.", esquema: { type: "object", properties: {} } },
+    { nome: "ler_mensagens_gerencia", grava: false,
+        executar: async () => {
+            const porta = Number(process.env.PORT || 3211);
+            const r = await fetch(`http://127.0.0.1:${porta}/api/central/avisos-gerencia/ler-agora`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origem: "assistente" }) });
+            return r.json();
+        },
+        descricao: "Lê AGORA as mensagens novas da gerência (Vanessa, Murillo) nos grupos e cria avisos de mudança de projeto/cartão de operador, que aparecem no topo da Central para Confirmar/Ignorar. Normalmente roda sozinho uma vez por dia (18:30); use quando a pessoa pedir para ler antes. Não grava regra nenhuma: só cria o aviso.",
+        esquema: { type: "object", properties: {} } },
     { nome: "comentarios_para_ia", grava: false, executar: (ctx, { limite } = {}) => require("../central/revisao").comentariosParaIa(ctx.db, limite || 30),
         descricao: "Comentários que o revisor escreveu nas notas para a IA aprender (casos especiais: duas notas na mesma foto, reembolso, placa difícil...).",
         esquema: { type: "object", properties: { limite: { type: "integer" } } } },

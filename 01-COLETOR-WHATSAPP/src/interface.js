@@ -467,9 +467,10 @@ const servidor = app.listen(porta, "127.0.0.1", () => {
     // Copia diaria do banco da Central e dos cadastros (dados/backups, 14 dias).
     require("./backup").agendarBackups(() => require("./central/banco").banco());
     // Fotos das notas aprovadas para o Drive (central.arquivo_drive), a cada 10 min.
-    // Mensagens da gerencia (Vanessa, Murillo) lidas pela IA a cada 2 min: mudanca de projeto/cartao vira aviso na Central.
+    // Mensagens da gerencia (Vanessa, Murillo) lidas pela IA uma vez por dia, as 18:30 (central.avisos_gerencia_horario):
+    // mudanca de projeto/cartao vira aviso na Central. O botao e o assistente leem na hora.
     require("./central/avisos-gerencia").agendar(() => require("./central/banco").banco(), () => require("./central/cadastros").carregar(),
-        { perguntar: require("./assistente/assinatura").perguntar });
+        { perguntar: require("./assistente/assinatura").perguntar, horario: (() => { try { return require("../config.json").central?.avisos_gerencia_horario; } catch (_) { return undefined; } })() || "18:30" });
     require("./central/arquivo-drive").agendar(() => require("./central/banco").banco(), () => require("./central/cadastros").carregar());
 });
 

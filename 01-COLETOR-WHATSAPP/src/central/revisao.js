@@ -15,7 +15,7 @@ const { agora, json, lerJson, transacao } = require("./banco");
 const cadastros = require("./cadastros");
 const contexto = require("./contexto");
 const { lerDespesa, regenerarPrevia, registrarHistorico, ESTADOS_REGERAVEIS } = require("./orquestrador");
-const { TIPOS, descricaoAbastecimento, descricaoRefeicao, refeicaoPeloHorario } = require("./regras-vmac");
+const { TIPOS, descricaoAbastecimento, descricaoRefeicao, refeicaoPeloHorario, comComplemento } = require("./regras-vmac");
 const { normalizar } = require("./texto");
 
 // Motivo de cada correcao. NAO_INFORMADO = a informacao nao existia (o
@@ -304,12 +304,15 @@ function acompanharTipo(cad, campos, registros) {
 function atualizarDescricao(campos) {
     if (campos.descricao?.origem === "correcao_humana") return;
     const tipo = campos.tipo?.valor;
+    const complemento = campos.descricao?.complemento || null;
     if (tipo === "ABASTECIMENTO") {
         const ab = campos.abastecimento || {};
         campos.descricao = { valor: descricaoAbastecimento({ litros: ab.litros?.valor, odometro: ab.odometro?.valor, placa: ab.placa?.valor }), origem: "template_abastecimento" };
     } else if (TIPOS[tipo]?.refeicao || tipo === "HOSPEDAGEM") {
         campos.descricao = { valor: descricaoRefeicao(tipo, campos.pessoas?.valor), origem: "template_refeicao", estimada: !campos.pessoas?.confirmado };
     }
+    // "- REEMBOLSO ALMIR" / "- PAGO PIX MURILLO" continua no fim da descricao refeita.
+    if (complemento && campos.descricao) campos.descricao = { ...campos.descricao, valor: comComplemento(campos.descricao.valor, complemento), complemento };
 }
 
 /**

@@ -17,6 +17,8 @@
 // Nada e inventado: o que nao tem evidencia vira PENDENCIA para a Central.
 // =============================================================================
 
+const fs = require("fs");
+const path = require("path");
 const { normalizar, contemTermo, centavos } = require("./texto");
 const modeloCentral = require("./modelo");
 const cadastros = require("./cadastros");
@@ -101,9 +103,34 @@ const LOJAS_MATERIAL = ["ferragem", "ferragens", "material de construcao", "mate
 const ITENS_MATERIAL = ["parafuso", "parafusos", "porca sextavada", "arruela", "cola contato", "cascola", "super cola", "fita isolante", "fita crepe",
     "abracadeira", "lampada", "pincel", "broca", "alicate", "martelo", "trena", "silicone", "cimento", "prego", "dobradica", "cadeado"];
 
-function ehMaterialDeCampo(estabelecimento, itens) {
-    if (LOJAS_MATERIAL.some((termo) => contemTermo(estabelecimento, termo))) return true;
-    return ITENS_MATERIAL.some((termo) => contemTermo(itens, termo));
+// Base de produtos editavel (configuracao/produtos.json): o que a VMac compra em
+// campo (ferramentas, eletrica, colas e fitas, EPI, limpeza, escritorio...).
+let baseProdutos = { lido_em: 0, lojas: [], itens: [] };
+function produtosConhecidos() {
+    const arquivo = path.join(cadastros.PASTA_PADRAO, "produtos.json");
+    try {
+        const mtime = fs.statSync(arquivo).mtimeMs;
+        if (mtime !== baseProdutos.lido_em) {
+            const json = JSON.parse(fs.readFileSync(arquivo, "utf8"));
+            baseProdutos = { lido_em: mtime, lojas: json.material_de_campo?.lojas || [], itens: json.material_de_campo?.itens || [] };
+        }
+    } catch (_) { /* sem a base: so as listas fixas */ }
+    return { lojas: [...LOJAS_MATERIAL, ...baseProdutos.lojas], itens: [...ITENS_MATERIAL, ...baseProdutos.itens] };
+}
+
+const ehItemDeMaterial = (texto) => produtosConhecidos().itens.some((termo) => contemTermo(texto, termo));
+
+/**
+ * Material de campo: loja de material, ou pelo menos metade das linhas de item
+ * sao produtos de material (uma Coca no meio da ferragem nao atrapalha; um pano
+ * no meio da compra de comida nao vira material). Sem linhas, vale o texto.
+ */
+function ehMaterialDeCampo(estabelecimento, itens, linhas = null) {
+    const { lojas } = produtosConhecidos();
+    if (lojas.some((termo) => contemTermo(estabelecimento, termo))) return true;
+    const lista = (linhas || []).filter(Boolean);
+    if (lista.length) return lista.filter(ehItemDeMaterial).length >= lista.length / 2;
+    return ehItemDeMaterial(itens);
 }
 
 function textoDoEstabelecimento(ocr) {
@@ -171,7 +198,7 @@ function tipoPelaNota(ocr) {
     if (contemTermo(estabelecimento, "estacionamento")) return { tipo: "ESTACIONAMENTO", origem: "estabelecimento_da_nota" };
     // Loja de ferragens / material de construcao: antes de "refeicao", porque o
     // Azure as vezes classifica qualquer nota de varejo como refeicao.
-    if (ehMaterialDeCampo(estabelecimento, itens)) return { tipo: "OUTROS", origem: "material_de_campo", material: true };
+    if (ehMaterialDeCampo(estabelecimento, itens, itensLidos.map((item) => item.descricao))) return { tipo: "OUTROS", origem: "material_de_campo", material: true };
     // Oficina pelo nome so se nao for posto ("Auto Posto e Auto Center", "Lubrificantes" sao postos).
     if (OFICINAS.some((termo) => contemTermo(estabelecimento, termo)) && !contemTermo(estabelecimento, "posto")) return { tipo: "MANUTENCAO", origem: "nome_do_estabelecimento" };
     if (itensSoDeAgua(ocr)) return { tipo: "AGUA", origem: "itens_da_nota" };
@@ -423,7 +450,9 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     let tipo = decisaoTipo.tipo;
     // "Material - parafusos" na legenda: material de campo, salvo tipos que a
     // nota identifica sem duvida (posto, hotel, pedagio, estacionamento).
-    if (legenda?.material && !TIPOS_COM_NOTA_PROPRIA.includes(tipo)) {
+    // "Pano de chão", "fita dupla face" na legenda (sem tipo dito): tambem e material.
+    const materialNaLegenda = legenda?.material || (!(legenda?.tipos || []).length && ehItemDeMaterial(legenda?.texto || ""));
+    if (materialNaLegenda && !TIPOS_COM_NOTA_PROPRIA.includes(tipo)) {
         tipo = "OUTROS";
         decisaoTipo.origem = "mensagem_da_foto";
         decisaoTipo.material = true;
@@ -434,7 +463,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     // Fornecedor
     // Material de campo (ferragens, parafuso, cola de contato...): fornecedor generico "Materiais de Campo".
     const itensDaNota = (ocr?.itens || []).map((item) => item.descricao).filter(Boolean);
-    const material = tipo === "OUTROS" && (decisaoTipo.material || legenda?.material || ehMaterialDeCampo(textoDoEstabelecimento(ocr), itensDaNota.join(" ")));
+    const material = tipo === "OUTROS" && (decisaoTipo.material || materialNaLegenda || ehMaterialDeCampo(textoDoEstabelecimento(ocr), itensDaNota.join(" "), itensDaNota));
     // Agua: o fornecedor e o do lugar onde foi comprada (restaurante, mercado, posto).
     // Refeicao em padaria -> PADARIA; em mercado -> fornecedor do mercado (SUPERMERCADO), como o Conta Azul faz.
     const estabelecimentoDaNota = textoDoEstabelecimento(ocr);
@@ -827,12 +856,13 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         avisos.push(`O cupom indica ${ocr.forma_pagamento}; prevaleceu o pagamento informado (${pagamento.rotulo || pagamento.forma}).`);
     }
 
-    // Reembolso: a descricao do anexo (ao lado da foto no Conta Azul) diz de quem e
-    // o reembolso, como a VMac faz: "REEMBOLSO LORRAN".
-    if (legenda?.reembolso && !descricaoAnexo) {
-        const nome = pessoa?.nome || identificacao?.sugestao?.nome || null;
-        descricaoAnexo = nome ? `REEMBOLSO ${normalizar(nome).toUpperCase()}` : "REEMBOLSO";
-        if (!nome) pendencias.push("Reembolso sem o operador identificado: complete a descrição do anexo com o nome de quem pagou.");
+    // Reembolso e Pix de alguem vao na DESCRICAO da nota, nao na do anexo
+    // (orientacao do Yan, 25/10/2026): "ALMOÇO - 4 PESSOAS - REEMBOLSO ALMIR",
+    // "45,34L od - OVN1505 - PAGO PIX MURILLO".
+    const complemento = complementoDePagamento({ legenda, pagamento: campos.pagamento, nomeOperador: pessoa?.nome || identificacao?.sugestao?.nome || null });
+    if (complemento) {
+        if (complemento.pendencia) pendencias.push(complemento.pendencia);
+        campos.descricao = { ...(campos.descricao || {}), valor: comComplemento(campos.descricao?.valor, complemento.texto), complemento: complemento.texto };
     }
 
     // Anexo
@@ -847,6 +877,28 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         avisos: [...new Set(avisos)],
         estado: pendencias.length ? "AGUARDANDO_REVISAO" : "CLASSIFICADO",
     };
+}
+
+/** "REEMBOLSO ALMIR" / "PAGO PIX MURILLO" para o fim da descricao. */
+function complementoDePagamento({ legenda, pagamento, nomeOperador }) {
+    const maiusculo = (texto) => normalizar(texto).toUpperCase();
+    if (legenda?.reembolso) {
+        return nomeOperador ? { texto: `REEMBOLSO ${maiusculo(nomeOperador)}` }
+            : { texto: "REEMBOLSO", pendencia: "Reembolso sem o operador identificado: complete a descrição com o nome de quem pagou." };
+    }
+    if (pagamento?.forma === "PIX") {
+        // "Pix pago por Murillo" (pagador lido junto) ou "Pix - pago por Murillo" (ficou nas observacoes).
+        const solto = (legenda?.observacoes || []).map((o) => String(o).match(/^\s*pago\s+(?:por|pelo|pela)\s+([A-Za-zÀ-ÿ ]{2,30})$/i)?.[1]).find(Boolean);
+        const pagador = String(pagamento.pagador || solto || "").replace(/^\s*pago\s+(?:por|pelo|pela)?\s*/i, "").trim();
+        return { texto: pagador ? `PAGO PIX ${maiusculo(pagador)}` : "PAGO PIX" };
+    }
+    return null;
+}
+
+function comComplemento(valor, complemento) {
+    if (!complemento) return valor || null;
+    if (!valor) return complemento;
+    return normalizar(valor).toUpperCase().endsWith(normalizar(complemento).toUpperCase()) ? valor : `${valor} - ${complemento}`;
 }
 
 const ROTULO_FORMA = { PIX: "PIX", DINHEIRO: "dinheiro", CARTAO_DEBITO: "cartão de débito", CARTAO_CREDITO: "cartão de crédito" };
@@ -996,6 +1048,6 @@ function categoriaLivre(cad, nome, idInformado = null) {
 
 module.exports = {
     montarPrevia, decidirTipo, decidirPessoas, refeicaoPeloHorario, orientacaoVigente,
-    descricaoAbastecimento, descricaoRefeicao, litrosBr, milharBr, TIPOS,
+    descricaoAbastecimento, descricaoRefeicao, litrosBr, milharBr, TIPOS, comComplemento, complementoDePagamento,
     TIPO_ANEXO_FISCAL, TIPO_ANEXO_OUTROS, conferirLitros, litrosJuntoDoL,
 };
