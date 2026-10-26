@@ -83,5 +83,14 @@
     "nome_conta_azul": "Estacionamento",
     "id": "2126af41-82bd-452a-8807-3384397e17c9",
     "apelidos": []
+  },
+  {
+    "nome": "TRANSPORTE URBANO",
+    "nome_conta_azul": "Transporte Urbano (táxi, Uber)",
+    "id": null,
+    "apelidos": [
+      "uber",
+      "taxi"
+    ]
   }
 ]

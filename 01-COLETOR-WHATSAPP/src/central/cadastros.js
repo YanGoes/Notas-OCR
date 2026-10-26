@@ -298,7 +298,8 @@ function resolverVeiculoPorTexto(cad, texto) {
 // Fornecedores
 // ---------------------------------------------------------------------------
 
-const PALAVRAS_MERCADO = ["supermercado", "supermercados", "mercado", "mercearia", "atacadao", "atacadista", "hipermercado", "minimercado"];
+const PALAVRAS_MERCADO = ["supermercado", "supermercados", "mercado", "mercearia", "atacadao", "atacadista", "hipermercado", "minimercado",
+    "comercio varejista", "comercio de alimentos", "varejista de alimentos"];
 
 /**
  * Fornecedor final a partir do nome lido na nota.
@@ -314,6 +315,15 @@ function resolverFornecedor(cad, nomeLido, tipo = null) {
     const recorrente = (cad.fornecedores.recorrentes || []).find((item) => [item.nome, ...(item.apelidos || [])]
         .some((nome) => contemTermo(lido, nome)));
     if (recorrente) return { nome: recorrente.nome, origem: "fornecedor_recorrente" };
+    // Fornecedor que ja existe no Conta Azul com o nome impresso na nota ("BOM DIA
+    // SUPERMERCADOS STB" -> BOM DIA SUPERMERCADOS): vence o generico (correcoes de 22/10/2026).
+    // So nomes especificos (2+ palavras e nao genericos como "SUPERMERCADO", "DIVERSOS").
+    const genericos = new Set([...Object.values(cad.fornecedores.genericos_por_tipo || {}), cad.fornecedores.fornecedor_generico_mercado, "DIVERSOS", "SUPERMERCADOS", "MERCADO"]
+        .filter(Boolean).map(normalizar));
+    const cadastrado = (cad.fornecedores.opcoes || [])
+        .filter((nome) => normalizar(nome).split(" ").length >= 2 && !genericos.has(normalizar(nome)) && contemTermo(lido, nome))
+        .sort((a, b) => b.length - a.length)[0];
+    if (cadastrado) return { nome: cadastrado, origem: "fornecedor_cadastrado", nome_lido: lido };
     if (PALAVRAS_MERCADO.some((palavra) => contemTermo(lido, palavra))) {
         return { nome: cad.fornecedores.fornecedor_generico_mercado || "MERCADO", origem: "mercado_nao_recorrente", nome_lido: lido };
     }

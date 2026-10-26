@@ -319,6 +319,18 @@ const FERRAMENTAS = [
         esquema: { type: "object", properties: { operador: { type: "string" }, ano: { type: "integer" }, mes: { type: "integer" } } } },
     { nome: "situacao_do_sistema", grava: false, executar: situacaoDoSistema,
         descricao: "Estado do programa: WhatsApp conectado?, grupos e contatos monitorados, cota do Azure, último backup, notas por estado, últimos eventos da conexão.", esquema: { type: "object", properties: {} } },
+    { nome: "definir_regra_operador", grava: true,
+        executar: (ctx, p) => {
+            const aprender = require("../central/aprender-regras");
+            const cad = require("../central/cadastros").carregar();
+            return aprender.confirmarEReclassificar(ctx.db, cad, [p], ctx.pessoa || "assistente",
+                { regenerar: require("../central/orquestrador").regenerarPrevia, opcoes: {} });
+        },
+        resumir: (p) => `Regra de ${p.pessoa_id}: ${({ centro: "centro de custo", cartao: "cartão", categoria_material: "categoria do material" })[p.campo] || p.campo} = ${p.valor}, desde ${p.desde}${p.ate ? ` até ${p.ate}` : ""} (e refazer as notas em revisão)`,
+        descricao: "Quando a pessoa disser que um operador mudou de projeto, de cartão ou para onde vai o material que ele compra (ex.: 'o Everson agora está em serviço no projeto X', 'o material do Everson vai para o depósito'), grava a regra do operador: campo 'centro' (nome do centro de custo), 'cartao' (INTER, C6, BB) ou 'categoria_material' (ex.: 'Material p/ depósito' ou 'MATERIAL DE CAMPO'), com data de início (AAAA-MM-DD). Vira um botão Confirmar; ao confirmar, as notas em revisão são refeitas.",
+        esquema: { type: "object", properties: { pessoa_id: { type: "string", description: "id do operador (ex.: everson, almir)" },
+            campo: { type: "string", enum: ["centro", "cartao", "categoria_material"] }, valor: { type: "string" },
+            desde: { type: "string", description: "AAAA-MM-DD" }, ate: { type: "string" }, fonte: { type: "string" } }, required: ["pessoa_id", "campo", "valor", "desde"] } },
     { nome: "ler_mensagens_gerencia", grava: false,
         executar: async () => {
             const porta = Number(process.env.PORT || 3211);

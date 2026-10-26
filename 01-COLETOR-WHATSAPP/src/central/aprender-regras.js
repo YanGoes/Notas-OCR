@@ -110,6 +110,11 @@ function validar(cad, proposta) {
         if (!cartao) return { ...proposta, erro: `cartão "${proposta.valor}" não está cadastrado` };
         return { ...proposta, valor: cartao.codigo, nome: cartao.rotulo, operador: pessoa.nome };
     }
+    if (proposta.campo === "categoria_material") {
+        const categoria = cadastros.categoriaPorNome(cad, proposta.valor);
+        if (!categoria) return { ...proposta, erro: `categoria "${proposta.valor}" não está cadastrada` };
+        return { ...proposta, valor: categoria.nome_interno, nome: categoria.nome, operador: pessoa.nome };
+    }
     return { ...proposta, erro: `campo "${proposta.campo}" não suportado` };
 }
 

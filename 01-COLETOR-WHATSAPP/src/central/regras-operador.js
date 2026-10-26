@@ -16,7 +16,9 @@
 
 const { agora } = require("./banco");
 
-const CAMPOS = ["centro", "cartao"];
+// centro e cartao padrao; categoria_material: categoria do material que o operador compra
+// (Everson -> "Material p/ depósito", galpao de Santa Branca).
+const CAMPOS = ["centro", "cartao", "categoria_material"];
 const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 function listar(db, { pessoaId = null, todas = false } = {}) {
@@ -113,4 +115,23 @@ function veiculoPeloKm(frota, odometro, data) {
     return { ambiguo: candidatos };
 }
 
-module.exports = { listar, regraPara, salvar, desativar, frotaRecente, veiculoPeloKm, CAMPOS };
+/**
+ * Fornecedor que o revisor ja escolheu para o mesmo CNPJ (correcao humana numa
+ * nota aprovada): "A A RIBEIRO SUPERMERCADO" corrigido para BOM DIA SUPERMERCADOS
+ * vale para as proximas notas desse CNPJ. Devolve uma funcao (cnpj) -> nome|null.
+ */
+function fornecedorAprendido(db, { excluir = [] } = {}) {
+    return (cnpj) => {
+        const digitos = String(cnpj || "").replace(/\D/g, "");
+        if (digitos.length !== 14) return null;
+        const linha = db.prepare(`SELECT json_extract(d.campos, '$.fornecedor.valor') AS nome, COUNT(*) AS vezes, MAX(c.em) AS ultima
+            FROM despesas d JOIN documentos doc ON doc.id = d.documento_id
+            JOIN correcoes c ON c.despesa_id = d.id AND c.campo = 'fornecedor'
+            WHERE d.estado = 'APROVADO' AND replace(replace(replace(COALESCE(json_extract(doc.ocr, '$.cnpj'), ''), '.', ''), '/', ''), '-', '') = ?
+            ${excluir.length ? `AND d.id NOT IN (${excluir.map(() => "?").join(",")})` : ""}
+            GROUP BY nome ORDER BY ultima DESC LIMIT 1`).get(digitos, ...excluir);
+        return linha?.nome || null;
+    };
+}
+
+module.exports = { listar, regraPara, salvar, desativar, frotaRecente, veiculoPeloKm, fornecedorAprendido, CAMPOS };

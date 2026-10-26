@@ -50,7 +50,8 @@ const TIPOS_TEXTO = [
     { tipo: "HOSPEDAGEM", termos: ["hospedagem", "hospedagens", "hotel", "hoteis", "pousada", "diaria", "diarias"] },
     { tipo: "PEDAGIO", termos: ["pedagio", "pedagios"] },
     { tipo: "ESTACIONAMENTO", termos: ["estacionamento", "estacionamentos"] },
-    { tipo: "MANUTENCAO", termos: ["manutencao", "manutencoes", "oficina", "mecanico", "mecanica", "borracharia", "troca de oleo", "pneu", "pneus", "freio", "freios"] },
+    { tipo: "MANUTENCAO", termos: ["manutencao", "manutencoes", "oficina", "mecanico", "mecanica", "borracharia", "troca de oleo", "pneu", "pneus", "freio", "freios", "autopecas", "auto pecas"] },
+    { tipo: "TRANSPORTE", termos: ["uber", "taxi", "corrida de uber", "corrida"] },
     // Refeicao sem dizer qual: o tipo exato sai da nota (horario/lote).
     { tipo: "REFEICAO", termos: ["restaurante", "refeicao", "refeicoes", "alimentacao", "lanchonete", "comida", "marmita", "self service"] },
 ];

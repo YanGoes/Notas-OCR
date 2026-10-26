@@ -23,6 +23,7 @@ const regrasOperador = require("./regras-operador");
 const doOperador = (db, pessoaId, excluir = []) => ({
     regrasOperador: pessoaId ? regrasOperador.listar(db, { pessoaId }) : [],
     frotaRecente: regrasOperador.frotaRecente(db, { pessoaId, excluir }),
+    fornecedorAprendido: regrasOperador.fornecedorAprendido(db, { excluir }),
 });
 
 /** Callback para a regra perguntar "quantas pessoas este operador disse recentemente?". */

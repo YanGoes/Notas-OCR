@@ -38,6 +38,8 @@ const TIPOS = Object.freeze({
     // Agua mineral (nota so de agua): categoria "Água" do Conta Azul, com a quantidade.
     AGUA: { rotulo: "ÁGUA", categoria: "AGUA" },
     MERCADO: { rotulo: "MERCADO", categoria: null },
+    // Uber, 99, taxi: "Transporte Urbano (taxi, Uber)" no Conta Azul.
+    TRANSPORTE: { rotulo: "TRANSPORTE", categoria: "TRANSPORTE URBANO" },
     OUTROS: { rotulo: "OUTROS", categoria: null },
 });
 
@@ -89,11 +91,21 @@ const ITENS_DE_COMIDA = ["prato", "pf", "refeicao", "marmita", "marmitex", "almo
 // Prato principal: contado na nota, diz quantas pessoas comeram.
 const PRATOS_PRINCIPAIS = ["prato", "pf", "marmita", "marmitex", "executivo", "refeicao", "almoco", "jantar", "self service", "buffet", "parmegiana", "file"];
 const CONCESSIONARIAS = /\b(conc|concession\w*|ecovias|ecorodovias|ecopistas|ecosul|arteris|autoban|autopista\w*|triunfo|viapaulista|rota das bandeiras|entrevias|eixo sp|ccr|motiva)\b/;
-const OFICINAS = ["oficina", "mecanica", "auto pecas", "autopecas", "auto center", "centro automotivo", "borracharia", "pneus", "retifica", "funilaria", "auto eletrica", "lubrificantes"];
+// Oficina/manutencao de veiculo (correcoes de 22-24/10/2026: autopecas, "MECAN", autocenter,
+// montagem de pneu, rodas, "reparos automotivos" estavam virando restaurante/outros).
+const OFICINAS = ["oficina", "mecanica", "mecan", "auto pecas", "autopecas", "auto peca", "autopeca", "auto center", "autocenter", "centro automotivo",
+    "automotivos", "automotiva", "automotivo", "reparos automotivos", "borracharia", "pneu", "pneus", "montagem de pneu", "montagem pneu", "alinhamento",
+    "balanceamento", "rodas", "retifica", "funilaria", "auto eletrica", "lubrificantes", "troca de oleo", "mao de obra mecanica"];
+// Bebida sozinha (Coca, energetico, suco) nao e lanche: vai como OUTROS em Lanches e Refeicoes (#293).
+const BEBIDAS = ["refrigerante", "refrig", "coca", "coca cola", "guarana", "fanta", "sprite", "pepsi", "energetico", "monster", "red bull", "redbull",
+    "suco", "cha gelado", "isotonico", "gatorade", "powerade", "cerveja", "agua de coco", "achocolatado", "toddynho"];
+// Corrida de aplicativo/taxi: categoria "Transporte Urbano (taxi, Uber)" (#248).
+const TRANSPORTES = ["uber", "99app", "99 pop", "99pop", "99 taxi", "taxi", "cabify", "indriver", "indrive"];
 const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "padaria", "panificadora", "confeitaria",
     "cafeteria", "bar", "self service", "marmitaria", "pastelaria", "hamburgueria", "lanches", "grill", "buffet"];
 const HOTEIS = ["hotel", "hoteis", "pousada", "hostel", "motel", "hospedagem", "flat", "apart hotel"];
-const MERCADOS = ["supermercado", "supermercados", "mercado", "mercearia", "atacadao", "atacadista", "hipermercado", "minimercado"];
+const MERCADOS = ["supermercado", "supermercados", "mercado", "mercearia", "atacadao", "atacadista", "hipermercado", "minimercado",
+    "comercio varejista", "comercio de alimentos", "varejista de alimentos"];
 
 // Material de campo (revisao de 13/10: ferragens com parafuso e cola de contato
 // tinham virado "restaurante"). Estabelecimento ou itens com estes termos.
@@ -144,7 +156,8 @@ function refeicaoClaraPeloHorario(hora) {
     const minutos = Number(achado[1]) * 60 + Number(achado[2]);
     if (minutos >= 330 && minutos < 600) return "CAFE_DA_MANHA";  // 05h30-10h
     if (minutos >= 660 && minutos < 870) return "ALMOCO";          // 11h-14h30
-    if (minutos >= 1110 || minutos < 120) return "JANTAR";         // 18h30-02h
+    if (minutos >= 1110) return "JANTAR";                         // 18h30-23h59
+    if (minutos < 300) return "LANCHE";                           // madrugada: lanche, nao jantar (#287, 00:07)
     return null;
 }
 
@@ -156,6 +169,7 @@ function refeicaoPeloHorario(hora) {
     if (minutos >= 300 && minutos < 630) return "CAFE_DA_MANHA";
     if (minutos >= 630 && minutos < 930) return "ALMOCO";
     if (minutos >= 930 && minutos < 1080) return "LANCHE";
+    if (minutos < 300) return "LANCHE";
     return "JANTAR";
 }
 
@@ -177,7 +191,13 @@ function tipoPelaNota(ocr) {
     // item for combustivel. "Posto" no nome e "1LT" do suco nao bastam (#127).
     const itensLidos = (ocr?.itens || []).filter((item) => item.descricao);
     const itemDeCombustivel = itensLidos.some((item) => COMBUSTIVEIS.some((termo) => contemTermo(item.descricao, termo)));
+    // Corrida de Uber/99/taxi.
+    const cabecalho = String(ocr?.texto_bruto || "").split(/\r?\n/).slice(0, 8).join(" ");
+    if (TRANSPORTES.some((termo) => contemTermo(estabelecimento, termo) || contemTermo(cabecalho, termo))) return { tipo: "TRANSPORTE", origem: "estabelecimento_da_nota" };
     if (itensLidos.length && !itemDeCombustivel) {
+        // So bebida (Coca, energetico...), sem comida: nao e lanche (#293).
+        const ehBebida = (descricao) => BEBIDAS.some((termo) => contemTermo(descricao, termo));
+        if (itensLidos.every((item) => ehBebida(item.descricao)) && !itensSoDeAgua(ocr)) return { tipo: "OUTROS", origem: "so_bebidas", bebida: true };
         const comida = itensLidos.filter((item) => ITENS_DE_COMIDA.some((termo) => contemTermo(item.descricao, termo)));
         if (comida.length && comida.length >= itensLidos.length / 2 && !itensSoDeAgua(ocr)) return { tipo: "REFEICAO", origem: "itens_da_nota" };
     } else if (itemDeCombustivel || COMBUSTIVEIS.some((termo) => contemTermo(ocr?.produto_principal || "", termo))
@@ -200,7 +220,11 @@ function tipoPelaNota(ocr) {
     // Azure as vezes classifica qualquer nota de varejo como refeicao.
     if (ehMaterialDeCampo(estabelecimento, itens, itensLidos.map((item) => item.descricao))) return { tipo: "OUTROS", origem: "material_de_campo", material: true };
     // Oficina pelo nome so se nao for posto ("Auto Posto e Auto Center", "Lubrificantes" sao postos).
-    if (OFICINAS.some((termo) => contemTermo(estabelecimento, termo)) && !contemTermo(estabelecimento, "posto")) return { tipo: "MANUTENCAO", origem: "nome_do_estabelecimento" };
+    // Pelo nome, pelos itens ou pelo topo do cupom ("AUTOPEÇAS", "MECAN", "MONTAGEM PNEU").
+    const deOficina = [estabelecimento, itens, cabecalho].some((texto) => OFICINAS.some((termo) => contemTermo(texto, termo)));
+    // "AUTOCENTER Posto Ipiranga" com item "MONTAGEM PNEUS": o servico nos itens vence o "posto" no nome (#306).
+    const servicoNosItens = OFICINAS.some((termo) => contemTermo(itens, termo));
+    if (deOficina && (!contemTermo(estabelecimento, "posto") || servicoNosItens)) return { tipo: "MANUTENCAO", origem: "nome_do_estabelecimento" };
     if (itensSoDeAgua(ocr)) return { tipo: "AGUA", origem: "itens_da_nota" };
     if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo))) return { tipo: "REFEICAO", origem: "estabelecimento_da_nota" };
     // So o "tipo de recibo" do Azure dizendo refeicao: pista fraca (perde para a legenda).
@@ -214,7 +238,13 @@ function tipoPelaNota(ocr) {
 /** Cafe/almoco/jantar/lanche: horario e so pista, confirmado quando o lote cita aquela refeicao. */
 function subtipoRefeicao(ocr, lote, origemBase) {
     const tiposLote = new Set((lote?.quantidades?.refeicoes_e_tipos || []).map((item) => item.tipo));
-    const pelaHora = refeicaoPeloHorario(ocr?.hora);
+    let pelaHora = refeicaoPeloHorario(ocr?.hora);
+    // Churrascaria/churrasco a tarde ou sem horario e almoco, nao lanche (#305).
+    const churrasco = ["churrascaria", "churrasco", "churrascos"].some((t) => contemTermo(textoDoEstabelecimento(ocr), t));
+    if (churrasco && (pelaHora === "LANCHE" || !pelaHora)) {
+        if (!pelaHora) return { tipo: "ALMOCO", origem: "estabelecimento_da_nota", pendencia: "Churrascaria sem horário na nota: lançado como almoço; confirme." };
+        pelaHora = "ALMOCO";
+    }
     if (pelaHora && tiposLote.has(pelaHora)) return { tipo: pelaHora, origem: "horario_da_nota_confirmado_pelo_lote" };
     if (pelaHora) {
         return {
@@ -380,7 +410,7 @@ function corrigirLitros(litros, valor) {
 }
 
 function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo, habitos = null, pessoasRecentes = null,
-    frotaRecente = null, regrasOperador = [] }) {
+    frotaRecente = null, regrasOperador = [], fornecedorAprendido = null }) {
     const pendencias = [];
     const avisos = [];
     const campos = {};
@@ -405,7 +435,16 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     const dataNota = ocr?.data || null;
     campos.data_competencia = { valor: dataNota, origem: dataNota ? "nota" : null };
     if (!dataNota) {
-        pendencias.push(ocr ? "Data da compra não foi lida na nota." : "Data da compra sem comprovante para confirmar.");
+        // Sem data na nota: a do cabecalho/mensagem do dia, senao a do envio (correcoes de 24/10/2026).
+        const daMensagem = legenda?.data_declarada || lote?.data_declarada || null;
+        const doEnvio = contexto.momento ? new Date(new Date(contexto.momento).getTime() - 3 * 3600000).toISOString().slice(0, 10) : null;
+        const usada = daMensagem || doEnvio;
+        if (usada) {
+            campos.data_competencia = { valor: usada, origem: daMensagem ? "mensagem_do_dia" : "data_do_envio" };
+            pendencias.push(`Data não lida na nota; usada ${usada.split("-").reverse().join("/")} (${daMensagem ? "da mensagem do dia" : "dia em que a foto chegou"}). Confira.`);
+        } else {
+            pendencias.push(ocr ? "Data da compra não foi lida na nota." : "Data da compra sem comprovante para confirmar.");
+        }
         if (legenda?.data_declarada) campos.data_competencia.sugestao = { valor: legenda.data_declarada, origem: "mensagem" };
     } else {
         const limite = new Date(hoje.getTime() + 2 * 86400000).toISOString().slice(0, 10);
@@ -448,6 +487,12 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     if (decisaoTipo.pendencia) pendencias.push(decisaoTipo.pendencia);
     if (decisaoTipo.aviso) avisos.push(decisaoTipo.aviso);
     let tipo = decisaoTipo.tipo;
+    // Legenda so com a bebida ("Energético"), sem tipo dito: bebida, nao refeicao (#330).
+    if (!(legenda?.tipos || []).length && ehRefeicao(tipo) && BEBIDAS.some((termo) => contemTermo(legenda?.texto || "", termo))) {
+        tipo = "OUTROS";
+        decisaoTipo.origem = "mensagem_da_foto";
+        decisaoTipo.bebida = true;
+    }
     // "Material - parafusos" na legenda: material de campo, salvo tipos que a
     // nota identifica sem duvida (posto, hotel, pedagio, estacionamento).
     // "Pano de chão", "fita dupla face" na legenda (sem tipo dito): tambem e material.
@@ -472,7 +517,33 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             : MERCADOS.some((t) => contemTermo(estabelecimentoDaNota, t)) ? null : tipo)
         : tipo;
     const tipoDoFornecedor = material ? "MATERIAL_DE_CAMPO" : tipo === "AGUA" ? tipoDoEstabelecimento(ocr) : refeicaoEm;
-    const fornecedor = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, tipoDoFornecedor);
+    // Razao social ("A A RIBEIRO SUPERMERCADO") e nome fantasia ("BOM DIA SUPERMERCADOS"):
+    // vale o que achar um fornecedor conhecido no Conta Azul.
+    const conhecido = (r) => ["fornecedor_recorrente", "fornecedor_cadastrado", "fornecedor_generico_do_tipo"].includes(r.origem);
+    const pelaRazao = cadastros.resolverFornecedor(cad, ocr?.fornecedor || ocr?.nome_fantasia, tipoDoFornecedor);
+    const pelaFantasia = ocr?.nome_fantasia && ocr?.fornecedor ? cadastros.resolverFornecedor(cad, ocr.nome_fantasia, tipoDoFornecedor) : null;
+    let fornecedor = !conhecido(pelaRazao) && pelaFantasia && conhecido(pelaFantasia) ? pelaFantasia : pelaRazao;
+    // Nome do fornecedor conhecido impresso no topo do cupom ("BOM DIA SUPERMERCADOS STB" acima
+    // da razao social "A A RIBEIRO SUPERMERCADO", #301).
+    if (!conhecido(fornecedor)) {
+        for (const linha of String(ocr?.texto_bruto || "").split(/\r?\n/).slice(0, 6)) {
+            const r = linha.trim().length >= 6 ? cadastros.resolverFornecedor(cad, linha, null) : null;
+            if (r && ["fornecedor_recorrente", "fornecedor_cadastrado"].includes(r.origem)) { fornecedor = { ...r, nome_lido: ocr?.fornecedor || null }; break; }
+        }
+    }
+    // Manutencao: autopecas -> AUTO PEÇAS; oficina/MECAN/autocenter/pneu -> Oficina Mecanica (correcoes de 22-24/10/2026).
+    if (tipo === "MANUTENCAO" && fornecedor.origem === "fornecedor_generico_do_tipo") {
+        const textoOficina = [estabelecimentoDaNota, itensDaNota.join(" "), String(ocr?.texto_bruto || "").split(/\r?\n/).slice(0, 8).join(" ")].join(" ");
+        const especifico = ["auto pecas", "autopecas", "auto peca", "autopeca"].some((t) => contemTermo(textoOficina, t)) ? "AUTO PEÇAS"
+            : ["oficina", "mecanica", "mecan", "auto center", "autocenter", "pneu", "pneus", "borracharia", "alinhamento", "balanceamento"].some((t) => contemTermo(textoOficina, t)) ? "Oficina Mecanica" : null;
+        if (especifico) fornecedor = { ...fornecedor, nome: especifico, origem: "tipo_de_oficina" };
+    }
+    // O revisor ja corrigiu o fornecedor deste CNPJ antes: segue a escolha dele.
+    const aprendido = fornecedorAprendido && ocr?.cnpj ? fornecedorAprendido(ocr.cnpj) : null;
+    if (aprendido && normalizar(aprendido) !== normalizar(fornecedor.nome)) {
+        fornecedor = { nome: aprendido, origem: "corrigido_antes_para_este_cnpj", nome_lido: ocr?.fornecedor || null };
+        avisos.push(`Fornecedor "${aprendido}": é o que você escolheu antes para este CNPJ.`);
+    }
     campos.fornecedor = { valor: fornecedor.nome, origem: fornecedor.origem, nome_lido: fornecedor.nome_lido || ocr?.fornecedor || null, cnpj_lido: ocr?.cnpj || null };
     if (ocr && !fornecedor.nome) pendencias.push("Fornecedor não foi lido na nota.");
 
@@ -616,7 +687,25 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
     } else if (TIPOS[tipo]?.refeicao || tipo === "HOSPEDAGEM") {
         // Refeicao e hospedagem: descricao "JANTAR - 3 PESSOAS" / "HOSPEDAGEM - 1 PESSOA".
         const recentes = pessoasRecentes ? pessoasRecentes(tipo, ocr?.data || legenda?.data_declarada || lote?.data_declarada || null) : null;
-        const pessoas = decidirPessoas({ tipo, legenda, lote, ocr, habitos, recentes });
+        let pessoas = decidirPessoas({ tipo, legenda, lote, ocr, habitos, recentes });
+        // Pessoas x valor (correcoes de 22-24/10/2026): "R$ 33 nao almoca 4 pessoas",
+        // "R$ 138 de almoco nao e 1 pessoa". Estimativa fora da faixa e refeita pelo valor;
+        // numero dito pelo operador fica, so com aviso.
+        const faixa = VALOR_POR_PESSOA[tipo];
+        if (faixa && valorNota > 0) {
+            const porPessoa = pessoas.valor ? valorNota / pessoas.valor : null;
+            // Gritante = bem fora da faixa: costume e notas do dia anterior acertam na maioria; o valor so corrige o absurdo.
+            const foraDaFaixa = porPessoa !== null && (porPessoa < faixa.min * 0.6 || porPessoa > faixa.max * 1.3);
+            const pelaConta = Math.max(1, Math.round(valorNota / faixa.tipico));
+            if (pelaConta > 15) {
+                // R$ 33.004 de almoco: o valor foi mal lido (#298); nao estima pessoas por ele.
+                pendencias.push(`Valor R$ ${valorNota.toFixed(2).replace(".", ",")} é alto demais para ${TIPOS[tipo].rotulo.toLowerCase()}; confira o valor na foto (pode ter sido mal lido).`);
+            } else if (pessoas.valor && foraDaFaixa && pessoas.confirmado) {
+                avisos.push(`R$ ${valorNota.toFixed(2).replace(".", ",")} para ${pessoas.valor} pessoa(s) dá R$ ${porPessoa.toFixed(2).replace(".", ",")} por pessoa, fora do comum para ${TIPOS[tipo].rotulo.toLowerCase()}. Confira.`);
+            } else if ((foraDaFaixa || !pessoas.valor) && pelaConta !== pessoas.valor) {
+                pessoas = { valor: pelaConta, origem: "valor_da_nota", confirmado: false, anterior: pessoas.valor || null };
+            }
+        }
         campos.pessoas = pessoas;
         if (!pessoas.valor) pendencias.push(`Quantidade de pessoas ${tipo === "HOSPEDAGEM" ? "hospedadas" : "da refeição"} não informada.`);
         else if (pessoas.origem === "pessoas_do_mesmo_dia") {
@@ -627,6 +716,8 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             pendencias.push(`Pessoas não informadas; estimado ${pessoas.valor} pelo costume de ${pessoa?.nome || "deste operador"} (${pessoas.amostras} notas aprovadas). Confirme.`);
         } else if (pessoas.origem === "itens_da_nota" || pessoas.origem === "pratos_da_nota") {
             pendencias.push(`${pessoas.valor} ${pessoas.valor === 1 ? "pessoa estimada" : "pessoas estimadas"} pelos itens da nota; confirme.`);
+        } else if (pessoas.origem === "valor_da_nota") {
+            pendencias.push(`${pessoas.anterior ? `${pessoas.anterior} pessoa(s) não combina com o valor; ` : "Pessoas não informadas; "}estimado ${pessoas.valor} pelo valor (R$ ${valorNota.toFixed(2).replace(".", ",")}, cerca de R$ ${VALOR_POR_PESSOA[tipo].tipico} por pessoa). Confirme.`);
         } else if (pessoas.origem === "valor_da_diaria") {
             pendencias.push(`Pessoas não informadas; estimada 1 pelo valor da diária (até R$ ${LIMITE_DIARIA_UMA_PESSOA}). Confirme.`);
         } else if (pessoas.origem === "hospedes_na_nota") {
@@ -673,8 +764,17 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         }
     }
     if (!categoria && material) {
-        const encontrada = cadastros.categoriaPorNome(cad, "MATERIAL DE CAMPO");
-        categoria = encontrada ? { ...encontrada, origem: "material_de_campo" } : null;
+        // Material de quem compra para o deposito (Everson -> galpao de Santa Branca): regra
+        // confirmada do operador "categoria_material"; sem ela, MATERIAL DE CAMPO.
+        const regraMaterial = regraPara(regrasOperador, "categoria_material", campos.data_competencia?.valor);
+        const daRegra = regraMaterial ? cadastros.categoriaPorNome(cad, regraMaterial.valor) : null;
+        const encontrada = daRegra || cadastros.categoriaPorNome(cad, "MATERIAL DE CAMPO");
+        categoria = encontrada ? { ...encontrada, origem: daRegra ? "regra_do_operador" : "material_de_campo" } : null;
+        if (daRegra) avisos.push(`Material de ${pessoa?.nome || "o operador"}: categoria ${daRegra.nome} pela regra confirmada.`);
+    }
+    if (!categoria && decisaoTipo.bebida) {
+        const lanches = cadastros.categoriaPorNome(cad, "ALIMENTACAO EM CAMPO");
+        if (lanches) categoria = { ...lanches, origem: "so_bebidas" };
     }
     if (!categoria && TIPOS[tipo]?.categoria) {
         const encontrada = cadastros.categoriaPorNome(cad, TIPOS[tipo].categoria);
@@ -696,10 +796,20 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
 
     if (!descricao?.valor) {
         if (tipo === "PEDAGIO" || tipo === "ESTACIONAMENTO") descricao = { valor: TIPOS[tipo].rotulo, origem: "template_simples" };
-        else if (material && itensDaNota.length && !descricao) {
-            // "MATERIAL DE CAMPO - COLA CONTATO CASCOLA 730GR": item principal da nota, para confirmar.
-            descricao = { valor: `MATERIAL DE CAMPO - ${String(itensDaNota[0]).replace(/\s+/g, " ").trim().toUpperCase()}`, origem: "template_material" };
-            pendencias.push("Material de campo: descrição proposta pelo item da nota; confirme o texto.");
+        else if (tipo === "TRANSPORTE") {
+            const qual = TRANSPORTES.find((termo) => contemTermo([textoDoEstabelecimento(ocr), ocr?.texto_bruto, legenda?.texto].join(" "), termo));
+            descricao = { valor: qual === "taxi" ? "TÁXI" : qual ? (qual.startsWith("99") ? "99" : qual.toUpperCase()) : "TRANSPORTE", origem: "template_simples" };
+        }
+        else if (decisaoTipo.bebida && itensDaNota.length) {
+            // So bebida: "COCA COLA - 5" (nome + quantidade, como o Yan corrigiu em #293/#284).
+            const total = (ocr?.itens || []).reduce((soma, item) => soma + (Number(item.quantidade) > 0 ? Number(item.quantidade) : 1), 0);
+            const nome = itensDaNota.some((d) => contemTermo(d, "coca")) ? "COCA COLA" : nomeCurtoDoItem(itensDaNota[0]) || "BEBIDA";
+            descricao = { valor: `${nome} - ${Math.round(total)}`, origem: "template_bebida" };
+        } else if (material && itensDaNota.length && !descricao) {
+            // So o que foi comprado, curto: "LAMPADA H4", "CHAVE ALAVANCA E CHAVE MG" (correcoes de 22-24/10/2026).
+            const nomes = [...new Set(itensDaNota.map(nomeCurtoDoItem).filter(Boolean))].slice(0, 2);
+            descricao = { valor: nomes.length ? nomes.join(" E ") : String(itensDaNota[0]).replace(/\s+/g, " ").trim().toUpperCase(), origem: "template_material" };
+            avisos.push("Material de campo: descrição com o nome curto do que foi comprado; ajuste se precisar.");
         } else if (!descricao) {
             const citado = [...(legenda?.observacoes || []), ...(lote?.quantidades?.itens || []).map((item) => item.descricao)][0];
             descricao = { valor: citado ? String(citado).toUpperCase() : null, origem: citado ? "mensagem_do_operador" : null };
@@ -914,6 +1024,29 @@ function montarObservacao({ legenda, pagamento }) {
     return partes.length ? partes.join(". ").slice(0, 500) : null;
 }
 
+// Valor por pessoa que faz sentido em cada refeicao (min-max) e o tipico para estimar.
+// Tirado das notas aprovadas com pessoas confirmadas (26/10/2026): mediana jantar R$ 31,
+// almoco R$ 40, cafe R$ 15, lanche R$ 6-18. Faixa larga: so corrige o que e claramente errado.
+const VALOR_POR_PESSOA = {
+    CAFE_DA_MANHA: { min: 4, max: 40, tipico: 15 },
+    ALMOCO: { min: 15, max: 100, tipico: 40 },
+    JANTAR: { min: 12, max: 80, tipico: 31 },
+    LANCHE: { min: 3, max: 60, tipico: 15 },
+};
+
+/** "CHAVE ALAVANCA ON/OFF/ON 10A 12 6A" -> "CHAVE ALAVANCA"; "VV.TS LAMPADA H4 12V" -> "LAMPADA H4". */
+function nomeCurtoDoItem(descricao) {
+    const palavras = String(descricao || "").toUpperCase().replace(/[×*]/g, " X ").replace(/\s+/g, " ").trim().split(" ");
+    const ehCodigo = (p) => /^\d+$/.test(p) || /[/\\]/.test(p) || /\d.*\d/.test(p) && p.length >= 3 || /^\d+([.,]\d+)?(MM|M|CM|KG|G|ML|L|LT|V|A|W|MTS|MT)$/.test(p) || /\./.test(p);
+    while (palavras.length && ehCodigo(palavras[0])) palavras.shift();
+    const nome = [];
+    for (const p of palavras) {
+        if (ehCodigo(p) || nome.length >= 3) break;
+        nome.push(p);
+    }
+    return nome.join(" ") || null;
+}
+
 const LITROS_MAXIMO_GERADOR = 12;
 const ehItemDeAgua = (descricao) => /\bagua\b/.test(normalizar(descricao || "")) && !/\bcoco\b|\btonica\b|\bsaborizada\b/.test(normalizar(descricao || ""));
 
@@ -1029,6 +1162,9 @@ const iguaisTexto = (a, b) => Boolean(a) && Boolean(b) && normalizar(a) === norm
 /** Categoria de despesa administrativa: refeicao/mercado -> Lanches e Refeições; o resto segue a regra do tipo. */
 function categoriaAdministrativa(cad, tipo, material) {
     if (material) return null;
+    // Almoco, jantar e cafe ficam SEMPRE na categoria do proprio tipo, inclusive no
+    // administrativo (9 correcoes do Yan, 21-24/10/2026: "se e almoco, a categoria e almoco").
+    if (["ALMOCO", "JANTAR", "CAFE_DA_MANHA"].includes(tipo)) return null;
     if (TIPOS[tipo]?.refeicao || tipo === "MERCADO") {
         const lanches = cadastros.categoriaPorNome(cad, "ALIMENTACAO EM CAMPO");
         return lanches ? { nome: lanches.nome, id: lanches.id } : { nome: "Lanches e Refeições", id: null };

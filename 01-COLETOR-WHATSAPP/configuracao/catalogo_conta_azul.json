@@ -1,13 +1,13 @@
 {
   "_leia_me": "Gerado por ferramentas/importar-catalogo-conta-azul.js a partir da exportação do Conta Azul. Não edite à mão: exporte de novo e rode a ferramenta.",
-  "gerado_em": "2026-10-19T14:54:28.652Z",
+  "gerado_em": "2026-10-26T20:16:11.370Z",
   "fonte": "visao_contas_a_pagar (3).xlsx",
   "lancamentos": 14073,
   "centros": [
     {
       "nome": "DESPESAS ADMINISTRATIVAS",
       "usos": 4922,
-      "ultimo_uso": "2026-10-16"
+      "ultimo_uso": "2026-10-26"
     },
     {
       "nome": "53.655.381/0001-03",
@@ -17,7 +17,7 @@
     {
       "nome": "INVESTIMENTO",
       "usos": 594,
-      "ultimo_uso": "2026-10-19"
+      "ultimo_uso": "2026-10-26"
     },
     {
       "nome": "DYNATEST INVT. NORDESTE",
@@ -42,7 +42,7 @@
     {
       "nome": "DYNA GOINFRA CICLO III - FWD",
       "usos": 413,
-      "ultimo_uso": "2026-10-07"
+      "ultimo_uso": "2026-10-21"
     },
     {
       "nome": "CTVM - SN - SISCON SC",
@@ -409,7 +409,7 @@
     {
       "nome": "MATERIAL DE CAMPO",
       "usos": 345,
-      "ultimo_uso": "2026-10-08"
+      "ultimo_uso": "2026-10-21"
     },
     {
       "nome": "Empréstimos de Bancos",
@@ -484,7 +484,7 @@
     {
       "nome": "Impostos",
       "usos": 132,
-      "ultimo_uso": "2026-10-06"
+      "ultimo_uso": "2026-10-20"
     },
     {
       "nome": "VEICULO - ALUGADO",
@@ -494,7 +494,7 @@
     {
       "nome": "Empréstimos de Outras Instituições",
       "usos": 123,
-      "ultimo_uso": "2026-10-19"
+      "ultimo_uso": "2026-10-26"
     },
     {
       "nome": "Combustivel Outros",
@@ -524,7 +524,7 @@
     {
       "nome": "CONSÓRCIO",
       "usos": 104,
-      "ultimo_uso": "2026-10-13"
+      "ultimo_uso": "2026-10-20"
     },
     {
       "nome": "MANUTENÇÃO FIAT SCUDO SGR4B54",
@@ -574,7 +574,7 @@
     {
       "nome": "Software / Licença de Uso",
       "usos": 72,
-      "ultimo_uso": "2026-10-16"
+      "ultimo_uso": "2026-10-22"
     },
     {
       "nome": "Combustivel REP-7B39",
@@ -629,7 +629,7 @@
     {
       "nome": "Energia Elétrica",
       "usos": 48,
-      "ultimo_uso": "2026-09-23"
+      "ultimo_uso": "2026-10-23"
     },
     {
       "nome": "Tarifas Bancárias",
@@ -669,7 +669,7 @@
     {
       "nome": "Tarifas",
       "usos": 39,
-      "ultimo_uso": "2026-09-27"
+      "ultimo_uso": "2026-10-22"
     },
     {
       "nome": "MANUTENÇÃO ETIOS JKM0196",
@@ -754,7 +754,7 @@
     {
       "nome": "Água e Saneamento",
       "usos": 23,
-      "ultimo_uso": "2026-09-20"
+      "ultimo_uso": "2026-10-20"
     },
     {
       "nome": "Cursos e Treinamentos",
@@ -819,7 +819,7 @@
     {
       "nome": "Terrenos",
       "usos": 16,
-      "ultimo_uso": "2026-09-20"
+      "ultimo_uso": "2026-10-20"
     },
     {
       "nome": "Vale-Transporte",
@@ -889,7 +889,7 @@
     {
       "nome": "Plano de Saúde Colaboradores",
       "usos": 12,
-      "ultimo_uso": "2026-09-26"
+      "ultimo_uso": "2026-10-26"
     },
     {
       "nome": "SEGURO EQUIPAMENTO",
@@ -1261,7 +1261,7 @@
     {
       "nome": "Materiais de Campo",
       "usos": 106,
-      "ultimo_uso": "2026-10-08"
+      "ultimo_uso": "2026-10-21"
     },
     {
       "nome": "MANUTENÇÃO VEÍCULOS",

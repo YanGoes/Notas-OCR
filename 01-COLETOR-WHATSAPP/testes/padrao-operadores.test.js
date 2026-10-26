@@ -327,7 +327,8 @@ test("manutencao: legenda ou oficina na nota; categoria de manutencao do veiculo
         legenda: interpretar(cad, { texto: "Manutenção - tambor de freio\nOVN5J98", temMidia: true }).dados, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(comPlaca.campos.tipo.valor, "MANUTENCAO");
     assert.equal(comPlaca.campos.categoria.nome, "MANUTENÇÃO HILUX OVN5J98");
-    assert.equal(comPlaca.campos.fornecedor.valor, "MANUTENÇÃO VEÍCULOS");
+    // Autocenter/oficina -> "Oficina Mecanica" (correcao do Yan, #306).
+    assert.equal(comPlaca.campos.fornecedor.valor, "Oficina Mecanica");
     const pelaNota = regrasVmac.montarPrevia({ ocr: { data: "2026-10-01", valor: 90, fornecedor: "OFICINA MECANICA DO ZE", confianca: 0.99 },
         legenda: {}, cad, hoje: new Date("2026-10-14T12:00:00Z"), modelo: null });
     assert.equal(pelaNota.campos.tipo.valor, "MANUTENCAO");
