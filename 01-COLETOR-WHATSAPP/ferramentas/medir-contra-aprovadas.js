@@ -5,6 +5,11 @@
 // =============================================================================
 //
 // Uso: node ferramentas/medir-contra-aprovadas.js   (npm run central:medir)
+//      node ferramentas/medir-contra-aprovadas.js --operadores=almir,lorran
+//
+// Com --operadores, so entram as notas de quem manda no padrao combinado (a
+// IA nao e cobrada pelo que o operador nao informou). Alem da nota inteira,
+// mede a nota certa nos CAMPOS PRINCIPAIS (os que pesam no lancamento).
 //
 // Reprocessa as mesmas fotos (com a resposta do Azure ja guardada, sem custo)
 // num banco temporario em memoria e compara cada campo com a versao aprovada
@@ -38,7 +43,24 @@ const PASTAS_BRUTO = [
 ];
 const SAIDA = path.join(RAIZ, "dados", "aprendizado", "medicao-aprovadas.json");
 
+// Os que pesam no lancamento; pessoas e descricao sao conferencia.
+const PRINCIPAIS = ["data_competencia", "valor", "fornecedor", "tipo", "categoria", "centro_custo", "pagamento", "litros", "placa", "odometro"];
+const OPERADORES = (process.argv.find((a) => a.startsWith("--operadores=")) || "").slice(13).split(",").map((o) => o.trim().toLowerCase()).filter(Boolean);
+
 const comparavel = (valor) => (valor == null ? null : typeof valor === "string" ? normalizar(valor) : JSON.stringify(valor));
+
+// Igual para a medicao: litros com diferenca de arredondamento (66,269 x 66,27)
+// e descricao que so ganhou o complemento "- REEMBOLSO X" (regra de 25/10,
+// que a nota aprovada antes nao tinha).
+function igual(chave, nova, certo, camposNovos) {
+    if (comparavel(nova) === comparavel(certo)) return true;
+    if (chave === "litros" && Number.isFinite(Number(nova)) && Math.abs(Number(nova) - Number(certo)) <= 0.011) return true;
+    const complemento = camposNovos?.descricao?.complemento;
+    if (chave === "descricao" && complemento && typeof nova === "string" && !String(certo).includes(complemento)) {
+        return comparavel(nova.replace(` - ${complemento}`, "")) === comparavel(certo);
+    }
+    return false;
+}
 
 function respostaAzure(arquivo) {
     const base = arquivo.replace(/\.[^.]+$/, "");
@@ -57,9 +79,12 @@ function executar() {
     const cad = cadastros.carregar();
     const regras = JSON.parse(fs.readFileSync(path.join(RAIZ, "configuracao", "regras.json"), "utf8"));
     const aprovadas = real.prepare(`
-        SELECT d.id, d.campos, d.campos_originais, m.arquivo, e.rotulos
+        SELECT d.id, d.campos, d.campos_originais, m.arquivo, e.rotulos,
+            COALESCE(msg.pessoa_id, json_extract(d.campos, '$.remetente.pessoa_id')) AS operador
         FROM despesas d JOIN midias m ON m.id = d.midia_id LEFT JOIN exemplos_treino e ON e.despesa_id = d.id
-        WHERE d.estado = 'APROVADO' ORDER BY m.recebida_em`).all();
+        LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
+        WHERE d.estado = 'APROVADO' ORDER BY m.recebida_em`).all()
+        .filter((a) => !OPERADORES.length || OPERADORES.includes(a.operador));
     // Ultimo motivo de correcao de cada campo, por despesa.
     const motivos = new Map();
     for (const linha of real.prepare("SELECT despesa_id, campo, tipo_erro FROM correcoes ORDER BY id").all()) {
@@ -106,7 +131,7 @@ function executar() {
 
     const placar = {};
     const detalhes = [];
-    let comparadas = 0; let perfeitas = 0; let perfeitasAntes = 0;
+    let comparadas = 0; let perfeitas = 0; let perfeitasAntes = 0; let perfeitasPrincipais = 0;
     for (const aprovada of aprovadas) {
         const candidatas = novasPorArquivo.get(aprovada.arquivo) || [];
         if (!candidatas.length) continue;
@@ -119,7 +144,7 @@ function executar() {
             despesa, iguais: Object.keys(CAMPOS).filter((chave) => comparavel(valorDoCampo(despesa.campos, chave)) === comparavel(valorDoCampo(final, chave))).length,
         })).sort((a, b) => b.iguais - a.iguais)[0].despesa;
         comparadas += 1;
-        let todosCertos = true; let todosCertosAntes = true;
+        let todosCertos = true; let todosCertosAntes = true; let principaisCertos = true;
         for (const chave of Object.keys(CAMPOS)) {
             if (ignorar.has(chave) || motivosDaDespesa.get(chave) === "NAO_INFORMADO") continue;
             const certo = valorDoCampo(final, chave);
@@ -127,21 +152,24 @@ function executar() {
             const p = placar[chave] ||= { rotulo: CAMPOS[chave].rotulo, total: 0, antes: 0, depois: 0 };
             p.total += 1;
             const antes = comparavel(valorDoCampo(original, chave)) === comparavel(certo);
-            const depois = comparavel(valorDoCampo(nova.campos, chave)) === comparavel(certo);
+            const depois = igual(chave, valorDoCampo(nova.campos, chave), certo, nova.campos);
             if (antes) p.antes += 1; else todosCertosAntes = false;
             if (depois) p.depois += 1;
             else {
                 todosCertos = false;
+                if (PRINCIPAIS.includes(chave)) principaisCertos = false;
                 detalhes.push(`#${aprovada.id} ${chave}: aprovado ${JSON.stringify(certo)} | agora ${JSON.stringify(valorDoCampo(nova.campos, chave))}`);
             }
         }
         if (todosCertos) perfeitas += 1;
+        if (principaisCertos) perfeitasPrincipais += 1;
         if (todosCertosAntes) perfeitasAntes += 1;
     }
 
     const resultado = {
-        gerado_em: new Date().toISOString(), aprovadas: aprovadas.length, comparadas, fotos_sem_leitura_guardada: semLeitura,
+        gerado_em: new Date().toISOString(), operadores: OPERADORES.length ? OPERADORES : "todos", aprovadas: aprovadas.length, comparadas, fotos_sem_leitura_guardada: semLeitura,
         notas_inteiras_certas: { atual: perfeitas, antes: perfeitasAntes, de: comparadas },
+        notas_certas_nos_principais: { atual: perfeitasPrincipais, de: comparadas, campos: PRINCIPAIS },
         por_campo: Object.fromEntries(Object.entries(placar).map(([chave, p]) => [chave, { rotulo: p.rotulo, total: p.total, acertos: p.depois, acertos_antes: p.antes }])),
         diferencas: detalhes,
     };
@@ -149,6 +177,8 @@ function executar() {
     fs.mkdirSync(path.dirname(SAIDA), { recursive: true });
     fs.writeFileSync(SAIDA, JSON.stringify(resultado, null, 2), "utf8");
 
+    if (OPERADORES.length) console.log(`So as notas de: ${OPERADORES.join(", ")}`);
+    console.log(`Notas certas nos campos principais: ${perfeitasPrincipais} de ${comparadas}.`);
     console.log(`Aprovadas: ${aprovadas.length} | comparadas com a versao atual: ${comparadas} | notas inteiras certas: ${perfeitas} de ${comparadas} (antes: ${perfeitasAntes}).\n`);
     console.log("Campo              | antes | agora | de");
     let somaAntes = 0; let somaDepois = 0; let somaTotal = 0;

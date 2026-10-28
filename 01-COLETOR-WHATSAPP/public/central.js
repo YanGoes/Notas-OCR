@@ -848,7 +848,13 @@ async function carregarRemetentes() {
                     const { regeradas } = await api("/remetentes", { whatsapp_id: remetente.remetente_id, pessoa_id: escolha.value });
                     await recarregar();
                     avisar(`Vinculado. ${regeradas} prévia(s) refeita(s).`, "ok");
-                }) }, "Vincular"));
+                }) }, "Vincular"),
+                el("button", { type: "button", class: "secondary", title: "Some deste aviso; as notas dele continuam na Central",
+                    onclick: () => executar(async () => {
+                        if (!confirm(`${remetente.nome || remetente.remetente_id} não trabalha mais aqui? Ele some deste aviso (as notas continuam).`)) return;
+                        await api("/remetentes/ignorar", { whatsapp_id: remetente.remetente_id, nome: remetente.nome || null });
+                        await recarregar();
+                    }) }, "Não trabalha mais aqui"));
         }));
 }
 
@@ -916,7 +922,7 @@ function blocoMaturidade(mat, pct) {
         el("h3", {}, "Maturidade da IA"),
         el("div", { class: "cartoes-metricas" },
             el("article", {}, el("span", {}, "Estágio"), el("strong", {}, mat.rotulo), el("span", {}, mat.explicacao)),
-            el("article", {}, el("span", {}, "Notas inteiras certas"), el("strong", {}, `${ni.certas} / ${ni.de}`), el("span", {}, `${pct(ni.taxa)} · mínimo garantido ${pct(ni.minimo_garantido)}`)),
+            el("article", {}, el("span", {}, mat.base || "Notas inteiras certas"), el("strong", {}, `${ni.certas} / ${ni.de}`), el("span", {}, `${pct(ni.taxa)} · mínimo garantido ${pct(ni.minimo_garantido)}`)),
             mat.proximo ? el("article", {}, el("span", {}, `Para chegar em ${mat.proximo.rotulo}`),
                 el("strong", {}, mat.proximo.notas_aprovadas_que_faltam == null ? "melhorar a IA" : `+${mat.proximo.notas_aprovadas_que_faltam} notas`),
                 el("span", {}, mat.proximo.precisa)) : null),

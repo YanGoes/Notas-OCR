@@ -95,6 +95,23 @@ test("placa corrigida refaz a descricao do abastecimento", () => {
     assert.match(despesa.campos.descricao.valor, /od 145\.230 - SGR4B54$/);
 });
 
+test("litros corrigidos numa nota ja aprovada de gerador refazem a descricao 'GERADOR - ...L' (nota #125, 28/10)", () => {
+    // Abastecimento sem placa nem km e poucos litros: a propria classificacao ja
+    // trata como gerador. O operador digitou o preco por litro (6,29) no lugar
+    // dos litros; a correcao precisa trocar so os litros e a descricao tem que
+    // acompanhar sozinha, sem perder o template "GERADOR - ...L".
+    const GERADOR = azure({ texto: "POSTO CENTRAL\n30/09/2026 09:00\nGASOLINA 6,29\nTOTAL R$ 62,96", fornecedor: "POSTO CENTRAL", total: 62.96, data: "2026-09-30", hora: "09:00:00" });
+    const { db, cad, id } = cenario({ bruto: GERADOR, legenda: "Abastecimento gerador\nBR020\nCrédito Inter" });
+    const antes = orquestrador.lerDespesa(db, id);
+    assert.match(antes.campos.descricao.valor, /^GERADOR - \d+,\d+L$/);
+    revisao.aprovar(db, id, "Yan");
+    revisao.reabrir(db, id, "litros errados", "Yan");
+    const { despesa } = revisao.corrigir(db, cad, id, [{ campo: "litros", valor: "10,01" }], "Yan");
+    assert.equal(despesa.campos.abastecimento.litros.valor, 10.01);
+    assert.equal(despesa.campos.descricao.valor, "GERADOR - 10,01L");
+    assert.equal(revisao.aprovar(db, id, "Yan").estado, "APROVADO");
+});
+
 test("categoria e centro escolhidos na revisao trazem o ID do cadastro", () => {
     const { db, cad, id } = cenario({ legenda: "Jantar 2 pessoas" });
     const { despesa } = revisao.corrigir(db, cad, id, [
@@ -248,13 +265,13 @@ test("sem modelo treinado, nao ha sugestao e nada quebra", () => {
     assert.equal(previa.campos.categoria.sugestao, undefined);
 });
 
-test("placa fora da frota sugere VEICULO - ALUGADO", () => {
+test("placa fora da frota vai para VEICULO - ALUGADO, pedindo conferencia", () => {
     const previa = regrasVmac.montarPrevia({
         ocr: { data: "2026-09-30", valor: 200, fornecedor: "AUTO POSTO", placa: "ABC1D23", litragem: 30, odometro: 17153, confianca: 0.99 },
         legenda: { tipos: ["ABASTECIMENTO"] }, identificacao: {}, cad: cadastros(), hoje: new Date("2026-10-02T12:00:00Z"), modelo: null,
     });
-    assert.equal(previa.campos.categoria.sugestao.nome, "VEICULO - ALUGADO");
-    assert.equal(previa.campos.categoria.nome, null);
+    assert.equal(previa.campos.categoria.nome, "VEICULO - ALUGADO");
+    assert.ok(previa.pendencias.some((p) => /não está na frota/.test(p)));
 });
 
 // --- Motivo da correcao: nao informado, outro e explicacao livre --------------

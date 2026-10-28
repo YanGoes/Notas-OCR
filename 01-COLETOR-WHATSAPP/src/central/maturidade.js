@@ -65,7 +65,11 @@ function notasQueFaltam(acertos, total, alvo, notasMinimas) {
  * @param {object} medicao — saida de medir-contra-aprovadas (por_campo, notas_inteiras_certas)
  */
 function avaliar(medicao) {
-    const inteiras = medicao?.notas_inteiras_certas || { atual: 0, de: 0 };
+    // Base: nota certa nos campos PRINCIPAIS (decisao do Yan, 28/10/2026: pessoas e
+    // descricao sao conferencia); medicoes antigas sem ela usam a nota inteira.
+    const principais = medicao?.notas_certas_nos_principais;
+    const inteiras = principais || medicao?.notas_inteiras_certas || { atual: 0, de: 0 };
+    const base = principais ? "Notas certas nos campos principais" : "Notas inteiras certas";
     const campos = Object.entries(medicao?.por_campo || {}).map(([chave, item]) => {
         const minimo = minimoGarantido(item.acertos, item.total);
         return { chave, rotulo: item.rotulo, total: item.total, acertos: item.acertos, taxa: item.total ? item.acertos / item.total : null,
@@ -82,11 +86,12 @@ function avaliar(medicao) {
     const proximo = ESTAGIOS[ESTAGIOS.indexOf(atual) + 1] || null;
     return {
         estagio: atual.codigo, rotulo: atual.rotulo, explicacao: atual.explicacao,
+        base, operadores: medicao?.operadores || "todos",
         notas_inteiras: { certas: inteiras.atual, de: inteiras.de, taxa: inteiras.de ? inteiras.atual / inteiras.de : null, minimo_garantido: minimoInteiras },
         campos,
         campos_que_seguram: campos.filter((c) => c.critico && c.status !== "MADURO").map((c) => c.rotulo),
         proximo: proximo ? {
-            rotulo: proximo.rotulo, precisa: `notas inteiras certas com mínimo garantido ≥ ${Math.round(proximo.minimo * 100)}% em ${proximo.notas}+ notas${proximo.camposMaduros ? " e campos críticos maduros" : ""}`,
+            rotulo: proximo.rotulo, precisa: `${base.toLowerCase()} com mínimo garantido ≥ ${Math.round(proximo.minimo * 100)}% em ${proximo.notas}+ notas${proximo.camposMaduros ? " e campos críticos maduros" : ""}`,
             notas_aprovadas_que_faltam: notasQueFaltam(inteiras.atual, inteiras.de, proximo.minimo, proximo.notas),
         } : null,
     };
@@ -98,7 +103,7 @@ const pct = (v) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 function texto(m) {
     const linhas = [
         `MATURIDADE DA IA: ${m.rotulo} — ${m.explicacao}`,
-        `Notas inteiras certas: ${m.notas_inteiras.certas} de ${m.notas_inteiras.de} (${pct(m.notas_inteiras.taxa)}; mínimo garantido ${pct(m.notas_inteiras.minimo_garantido)}).`,
+        `${m.base || "Notas inteiras certas"}: ${m.notas_inteiras.certas} de ${m.notas_inteiras.de} (${pct(m.notas_inteiras.taxa)}; mínimo garantido ${pct(m.notas_inteiras.minimo_garantido)}).`,
     ];
     const criticos = m.campos.filter((c) => c.critico && c.status !== "MADURO");
     const errando = criticos.filter((c) => c.status !== "POUCOS_DADOS");

@@ -378,5 +378,5 @@ module.exports = {
     carregar, identificarPessoa, variantesTelefone, adicionarPessoa,
     resolverProjeto, pareceProjeto, projetosComId, nomeCentro,
     resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, veiculoAproximado, veiculoPorSosia, placaCanonica, placaComparavel,
-    resolverFornecedor, categoriaPorNome, PASTA_PADRAO,
+    resolverFornecedor, categoriaPorNome, placaSosia, PASTA_PADRAO,
 };

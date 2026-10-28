@@ -178,6 +178,20 @@ app.get("/api/grupos", async (_req, res, next) => {
 app.get("/api/centros-custo", (_req, res) => {
     res.json(centrosCustoDisponiveis());
 });
+// Seletor de conta: "teste" (padrao) ou "oficial". Trocar para a oficial exige
+// digitar OFICIAL. O envio de lancamentos continua restrito a empresa de teste.
+app.get("/api/conta-azul/perfil", (_req, res) => res.json(require("./conta-azul").statusPerfis()));
+app.post("/api/conta-azul/perfil", (req, res, next) => {
+    try {
+        const alvo = String(req.body?.perfil || "");
+        if (alvo === "oficial" && String(req.body?.confirmacao || "").trim().toUpperCase() !== "OFICIAL") {
+            throw new Error("Para usar a conta oficial, digite OFICIAL na confirmacao.");
+        }
+        const ca = require("./conta-azul");
+        ca.definirPerfil(alvo);
+        res.json({ ok: true, ...ca.statusPerfis() });
+    } catch (erro) { next(erro); }
+});
 app.get("/api/conta-azul/status", async (_req, res, next) => {
     try { res.json(await obterEstadoContaAzul()); } catch (erro) { next(erro); }
 });

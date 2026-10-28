@@ -114,6 +114,8 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     });
     rotas.post("/remetentes", responder((req) => revisao.vincularRemetente(db(), cad(), String(req.body?.whatsapp_id || ""),
         String(req.body?.pessoa_id || ""), { regras: regras() })));
+    rotas.post("/remetentes/ignorar", responder((req) => revisao.ignorarRemetente(db(), String(req.body?.whatsapp_id || ""),
+        { nome: req.body?.nome || null, por: req.body?.por || null })));
     rotas.post("/regerar-pendentes", responder(() => revisao.regenerarPendentes(db(), cad(), { regras: regras() })));
 
     // Cadastro de projetos / centros de custo (configuracao/projetos.json)

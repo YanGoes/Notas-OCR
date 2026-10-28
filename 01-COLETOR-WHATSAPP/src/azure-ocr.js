@@ -747,6 +747,7 @@ function normalizarResultadoAzure(bruto, modelId = "prebuilt-receipt") {
         placa_bruta: placaInfo.bruta,
         placa_corrigida: placaInfo.corrigida,
         placa_origem: placaInfo.origem,
+        placa_candidatas: placaInfo.candidatas || null,
         quilometragem: odometroInfo.valor,
         odometro: odometroInfo.valor,
         odometro_origem: odometroInfo.origem,

@@ -315,6 +315,16 @@ const MIGRACOES = [
         em TEXT NOT NULL
     );
     `,
+    // 12 — Remetentes que sairam da empresa: somem do aviso "nao reconhecidos".
+    `
+    CREATE TABLE remetentes_ignorados (
+        whatsapp_id TEXT PRIMARY KEY,
+        nome TEXT,
+        motivo TEXT,
+        por TEXT,
+        em TEXT NOT NULL
+    );
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }

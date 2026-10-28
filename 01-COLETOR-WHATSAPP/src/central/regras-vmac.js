@@ -516,7 +516,8 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         ? (["padaria", "panificadora", "panificacao", "confeitaria"].some((t) => contemTermo(estabelecimentoDaNota, t)) ? "PADARIA"
             : MERCADOS.some((t) => contemTermo(estabelecimentoDaNota, t)) ? null : tipo)
         : tipo;
-    const tipoDoFornecedor = material ? "MATERIAL_DE_CAMPO" : tipo === "AGUA" ? tipoDoEstabelecimento(ocr) : refeicaoEm;
+    // Agua e bebida avulsa: fornecedor generico do lugar (posto, restaurante, padaria; #114, #131, #293).
+    const tipoDoFornecedor = material ? "MATERIAL_DE_CAMPO" : (tipo === "AGUA" || decisaoTipo.bebida) ? tipoDoEstabelecimento(ocr) : refeicaoEm;
     // Razao social ("A A RIBEIRO SUPERMERCADO") e nome fantasia ("BOM DIA SUPERMERCADOS"):
     // vale o que achar um fornecedor conhecido no Conta Azul.
     const conhecido = (r) => ["fornecedor_recorrente", "fornecedor_cadastrado", "fornecedor_generico_do_tipo"].includes(r.origem);
@@ -588,6 +589,26 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
                 pendencias.push(`Placa não lida na nota${odometroInfo.valor ? "" : " e sem km"}. Veículos de ${pessoa?.nome || "o operador"} nos últimos dias: ${opcoes.join(", ")}. Confirme qual é.`);
             }
         }
+        // Duas placas no cupom que so diferem por caractere parecido ("FHH3621" no
+        // pedagio e "FHH3G21" no posto, #93): vale a que esta na frota.
+        if (!placaInfo.valor && (ocr?.placa_candidatas || []).length > 1) {
+            const naFrota = [...new Set(ocr.placa_candidatas.map((c) => (cadastros.resolverVeiculo(cad, c) || cadastros.veiculoPorSosia(cad, c)?.veiculo)?.placa).filter(Boolean))];
+            if (naFrota.length === 1) {
+                placaInfo.valor = naFrota[0];
+                placaInfo.origem = "nota";
+                avisos.push(`Cupom com placas parecidas (${ocr.placa_candidatas.join(", ")}): usada ${cadastros.placaCanonica(naFrota[0])}, que está na frota.`);
+            }
+        }
+        // Placa fora da frota cadastrada (carro alugado) que so difere por caractere
+        // parecido de uma placa que o operador ja usou nos ultimos dias ("UCA6152" = UCA6I52, #166).
+        if (placaInfo.valor && !cadastros.resolverVeiculo(cad, placaInfo.valor) && !cadastros.veiculoPorSosia(cad, placaInfo.valor) && frotaRecente) {
+            const recentes = (frotaRecente(ocr?.data || legenda?.data_declarada || lote?.data_declarada || null) || []).map((v) => v.placa);
+            const parecidas = [...new Set(recentes.filter((p) => cadastros.placaSosia(p) === cadastros.placaSosia(placaInfo.valor)))];
+            if (parecidas.length === 1 && cadastros.placaCanonica(parecidas[0]) !== cadastros.placaCanonica(placaInfo.valor)) {
+                avisos.push(`Placa lida como "${cadastros.placaCanonica(placaInfo.valor)}" corresponde a ${cadastros.placaCanonica(parecidas[0])}, que ${pessoa?.nome || "o operador"} abasteceu nos últimos dias.`);
+                placaInfo.valor = parecidas[0];
+            }
+        }
         const placaLida = placaInfo.valor;
         let veiculo = placaLida ? cadastros.resolverVeiculo(cad, placaLida) : null;
         // "SGR4854" lida = SGR4B54 da frota (8 no lugar de B): so troca de caractere parecido e um unico veiculo.
@@ -604,7 +625,8 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             if (calculado) {
                 litrosInfo.valor = calculado.litros;
                 litrosInfo.origem = calculado.origem;
-                if (calculado.origem === "conta_litros_x_preco") avisos.push(`Litros calculados pela conta: ${litrosBr(calculado.litros)} L × R$ ${String(calculado.preco).replace(".", ",")} = valor da nota (unidade ilegível na leitura).`);
+                if (calculado.origem === "quantidade_com_3_casas") pendencias.push(`Litros lidos sem a unidade: ${litrosBr(calculado.litros)} L (dá R$ ${String(calculado.preco).replace(".", ",")}/L). Confirme.`);
+                else if (calculado.origem === "conta_litros_x_preco") avisos.push(`Litros calculados pela conta: ${litrosBr(calculado.litros)} L × R$ ${String(calculado.preco).replace(".", ",")} = valor da nota (unidade ilegível na leitura).`);
                 else pendencias.push(`Litros não lidos; calculados como valor ÷ preço (R$ ${String(calculado.preco).replace(".", ",")}) = ${litrosBr(calculado.litros)} L. Confirme.`);
             }
         }
@@ -680,7 +702,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             if (!veiculo.categoria_nome_conta_azul) pendencias.push(`Veículo ${veiculo.placa} sem categoria definida no Conta Azul.`);
         } else if (placaLida) {
             pendencias.push(`Placa ${cadastros.placaCanonica(placaLida)} não está na frota cadastrada (alugado? particular?).`);
-            sugestaoCategoria = { nome: "VEICULO - ALUGADO", origem: "placa_fora_da_frota" };
+            categoria = { ...(categoriaLivre(cad, "VEICULO - ALUGADO") || { nome: "VEICULO - ALUGADO", id: null }), origem: "placa_fora_da_frota" };
         }
         campos.placa_veiculo = { valor: veiculo?.nome || null };
         descricao = { valor: descricaoAbastecimento({ litros, odometro, placa: campos.abastecimento.placa.valor }), origem: "template_abastecimento" };
@@ -1064,9 +1086,13 @@ function quantidadeDeAgua(ocr) {
 
 /** Tipo do lugar da compra, so para escolher o fornecedor generico. */
 function tipoDoEstabelecimento(ocr) {
-    const estabelecimento = textoDoEstabelecimento(ocr);
-    if (contemTermo(estabelecimento, "posto") || COMBUSTIVEIS.some((termo) => contemTermo(estabelecimento, termo))) return "ABASTECIMENTO";
-    if (RESTAURANTES.some((termo) => contemTermo(estabelecimento, termo))) return "REFEICAO";
+    // Nome da nota e, se nao bastar, o topo do cupom ("POSTOS QUALIS", "AUTO POSTO ..." acima da razao social).
+    const cabecalho = String(ocr?.texto_bruto || "").split(/\r?\n/).slice(0, 8).join(" ");
+    for (const texto of [textoDoEstabelecimento(ocr), cabecalho]) {
+        if (["posto", "postos", "combustiveis", "combustivel", "petroleo"].some((t) => contemTermo(texto, t)) || COMBUSTIVEIS.some((termo) => contemTermo(texto, termo))) return "ABASTECIMENTO";
+        if (["padaria", "panificadora", "panificacao", "confeitaria"].some((t) => contemTermo(texto, t))) return "PADARIA";
+        if (RESTAURANTES.some((termo) => contemTermo(texto, termo))) return "REFEICAO";
+    }
     return null;
 }
 
@@ -1086,6 +1112,10 @@ function litrosPelaConta(texto, valor) {
         if (erro <= 0.02 && (!melhor || erro < melhor.erro)) melhor = { litros: q, preco: p, erro, origem: "conta_litros_x_preco" };
     }
     if (melhor) return melhor;
+    // "36.650 4 / 5,59 / 241.52" (#93): o "L" virou "4" e o preco saiu errado; uma unica
+    // quantidade com 3 casas que da um preco por litro plausivel (R$ 4 a 9) e a litragem.
+    const plausiveis = [...new Set(quantidades)].filter((q) => valor / q >= 4 && valor / q <= 9);
+    if (plausiveis.length === 1) return { litros: plausiveis[0], preco: Math.round((valor / plausiveis[0]) * 100) / 100, origem: "quantidade_com_3_casas" };
     const unicos = [...new Set(precos)];
     return unicos.length === 1 ? { litros: Math.round((valor / unicos[0]) * 1000) / 1000, preco: unicos[0], origem: "valor_dividido_pelo_preco" } : null;
 }
@@ -1185,5 +1215,5 @@ function categoriaLivre(cad, nome, idInformado = null) {
 module.exports = {
     montarPrevia, decidirTipo, decidirPessoas, refeicaoPeloHorario, orientacaoVigente,
     descricaoAbastecimento, descricaoRefeicao, litrosBr, milharBr, TIPOS, comComplemento, complementoDePagamento,
-    TIPO_ANEXO_FISCAL, TIPO_ANEXO_OUTROS, conferirLitros, litrosJuntoDoL,
+    TIPO_ANEXO_FISCAL, TIPO_ANEXO_OUTROS, conferirLitros, litrosJuntoDoL, LITROS_MAXIMO_GERADOR,
 };

@@ -11,7 +11,8 @@
     "MATERIAL_DE_CAMPO": "Materiais de Campo",
     "MANUTENCAO": "MANUTENÇÃO VEÍCULOS",
     "PADARIA": "PADARIA",
-    "TRANSPORTE": "DIVERSOS"
+    "TRANSPORTE": "DIVERSOS",
+    "PEDAGIO": "DIVERSOS"
   },
   "fornecedor_generico_mercado": "SUPERMERCADO",
   "_opcoes_leia_me": "Fornecedores oferecidos na lista do campo Fornecedor da Central (pode digitar outro).",

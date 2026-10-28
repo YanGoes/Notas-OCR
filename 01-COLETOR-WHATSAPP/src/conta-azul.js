@@ -10,7 +10,40 @@ const API_URL = "https://api-v2.contaazul.com";
 // arquivo de tokens. Cada renovacao troca o refresh_token e invalida o
 // anterior: copiar o arquivo faria uma das copias perder a conexao.
 const TOKENS_PATH_PADRAO = path.join(RAIZ, "tokens_conta_azul.json");
-function caminhoTokens() {
+// Perfil da conta: "teste" (padrao) ou "oficial". Fica em dados/ e vale para
+// o programa inteiro. A conta oficial tem credenciais e tokens PROPRIOS; o
+// envio de lancamentos continua travado pela empresa de teste (central/envio.js).
+const PERFIL_ARQUIVO = path.join(RAIZ, "dados", "conta-azul-perfil.json");
+const TOKENS_OFICIAL = path.join(RAIZ, "tokens_conta_azul_oficial.json");
+function perfilAtivo() {
+    try {
+        const p = JSON.parse(fs.readFileSync(PERFIL_ARQUIVO, "utf8")).perfil;
+        return p === "oficial" ? "oficial" : "teste";
+    } catch (_) { return "teste"; }
+}
+function definirPerfil(perfil) {
+    if (!["teste", "oficial"].includes(perfil)) throw new Error("Perfil invalido: use teste ou oficial.");
+    if (perfil === "oficial") {
+        const env = { ...carregarEnv(), ...process.env };
+        if (!env.CONTA_AZUL_OFICIAL_CLIENT_ID || !env.CONTA_AZUL_OFICIAL_CLIENT_SECRET) {
+            throw new Error("Preencha CONTA_AZUL_OFICIAL_CLIENT_ID e CONTA_AZUL_OFICIAL_CLIENT_SECRET no .env antes de usar a conta oficial.");
+        }
+    }
+    fs.mkdirSync(path.dirname(PERFIL_ARQUIVO), { recursive: true });
+    fs.writeFileSync(PERFIL_ARQUIVO, JSON.stringify({ perfil, alterado_em: new Date().toISOString() }, null, 2), "utf8");
+    renovacaoEmCurso = null;
+    return perfil;
+}
+function statusPerfis() {
+    const env = { ...carregarEnv(), ...process.env };
+    return {
+        perfil: perfilAtivo(),
+        teste: { credenciais: Boolean(env.CONTA_AZUL_CLIENT_ID && env.CONTA_AZUL_CLIENT_SECRET), conectada: fs.existsSync(caminhoTokens("teste")) },
+        oficial: { credenciais: Boolean(env.CONTA_AZUL_OFICIAL_CLIENT_ID && env.CONTA_AZUL_OFICIAL_CLIENT_SECRET), conectada: fs.existsSync(TOKENS_OFICIAL) },
+    };
+}
+function caminhoTokens(perfil = perfilAtivo()) {
+    if (perfil === "oficial") return TOKENS_OFICIAL;
     const env = { ...carregarEnv(), ...process.env };
     return env.CONTA_AZUL_TOKENS_PATH ? path.resolve(RAIZ, env.CONTA_AZUL_TOKENS_PATH) : TOKENS_PATH_PADRAO;
 }
@@ -28,10 +61,11 @@ function carregarEnv() {
 
 function credenciais() {
     const env = { ...carregarEnv(), ...process.env };
+    const p = perfilAtivo() === "oficial" ? "CONTA_AZUL_OFICIAL_" : "CONTA_AZUL_";
     const dados = {
-        clientId: env.CONTA_AZUL_CLIENT_ID,
-        clientSecret: env.CONTA_AZUL_CLIENT_SECRET,
-        redirectUri: env.CONTA_AZUL_REDIRECT_URI,
+        clientId: env[`${p}CLIENT_ID`],
+        clientSecret: env[`${p}CLIENT_SECRET`],
+        redirectUri: env[`${p}REDIRECT_URI`] || env.CONTA_AZUL_REDIRECT_URI,
     };
     if (!dados.clientId || !dados.clientSecret) throw new Error("Credenciais ausentes no arquivo .env.");
     return dados;
@@ -319,7 +353,7 @@ function iniciarMonitor(pastaEntrada, opcoes) {
 }
 
 module.exports = {
-    API_URL, TOKEN_URL, credenciais, caminhoTokens, trocarCodigo, tokenValido, requisicao,
+    API_URL, TOKEN_URL, credenciais, caminhoTokens, perfilAtivo, definirPerfil, statusPerfis, trocarCodigo, tokenValido, requisicao,
     empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
     buscarContasPagar, criarContaPagar, criarContaPagarDireta, buscarPessoas, criarFornecedor,obterParcelaFinanceira, obterPessoaPorId,
     buscarParcelasDoEvento, patchParcela,

@@ -15,7 +15,7 @@ const { agora, json, lerJson, transacao } = require("./banco");
 const cadastros = require("./cadastros");
 const contexto = require("./contexto");
 const { lerDespesa, regenerarPrevia, registrarHistorico, ESTADOS_REGERAVEIS } = require("./orquestrador");
-const { TIPOS, descricaoAbastecimento, descricaoRefeicao, refeicaoPeloHorario, comComplemento } = require("./regras-vmac");
+const { TIPOS, descricaoAbastecimento, descricaoRefeicao, refeicaoPeloHorario, comComplemento, litrosBr, LITROS_MAXIMO_GERADOR } = require("./regras-vmac");
 const { normalizar } = require("./texto");
 
 // Motivo de cada correcao. NAO_INFORMADO = a informacao nao existia (o
@@ -307,7 +307,13 @@ function atualizarDescricao(campos) {
     const complemento = campos.descricao?.complemento || null;
     if (tipo === "ABASTECIMENTO") {
         const ab = campos.abastecimento || {};
-        campos.descricao = { valor: descricaoAbastecimento({ litros: ab.litros?.valor, odometro: ab.odometro?.valor, placa: ab.placa?.valor }), origem: "template_abastecimento" };
+        const litros = ab.litros?.valor;
+        // Gerador: sem placa nem odometro e poucos litros (mesmo criterio da
+        // classificacao inicial) -- "GERADOR - 10,01L" em vez do template de posto.
+        const gerador = Number(litros) > 0 && Number(litros) <= LITROS_MAXIMO_GERADOR && !ab.placa?.valor && !ab.odometro?.valor;
+        campos.descricao = gerador
+            ? { valor: `GERADOR - ${litrosBr(litros)}L`, origem: "template_gerador" }
+            : { valor: descricaoAbastecimento({ litros, odometro: ab.odometro?.valor, placa: ab.placa?.valor }), origem: "template_abastecimento" };
     } else if (TIPOS[tipo]?.refeicao || tipo === "HOSPEDAGEM") {
         campos.descricao = { valor: descricaoRefeicao(tipo, campos.pessoas?.valor), origem: "template_refeicao", estimada: !campos.pessoas?.confirmado };
     }
@@ -791,8 +797,17 @@ function remetentesNaoVinculados(db) {
         SELECT m.remetente_id, MAX(m.remetente_nome) AS nome, COUNT(DISTINCT d.id) AS despesas
         FROM mensagens m JOIN despesas d ON d.mensagem_ref = m.id
         WHERE m.pessoa_id IS NULL AND m.remetente_id NOT IN (SELECT whatsapp_id FROM remetentes_vinculados)
+          AND m.remetente_id NOT IN (SELECT whatsapp_id FROM remetentes_ignorados)
           AND d.estado <> 'DESCARTADO'
         GROUP BY m.remetente_id ORDER BY despesas DESC`).all();
+}
+
+/** Quem saiu da empresa: some do aviso de remetentes nao reconhecidos (as notas ficam). */
+function ignorarRemetente(db, whatsappId, { nome = null, motivo = "não trabalha mais aqui", por = null } = {}) {
+    if (!whatsappId) throw new Error("Remetente não informado.");
+    db.prepare("INSERT OR REPLACE INTO remetentes_ignorados (whatsapp_id, nome, motivo, por, em) VALUES (?, ?, ?, ?, ?)")
+        .run(whatsappId, nome, motivo, por, agora());
+    return { whatsapp_id: whatsappId, ignorado: true };
 }
 
 /**
@@ -829,7 +844,7 @@ function comentariosParaIa(db, limite = 50) {
 module.exports = {
     comentarParaIa, comentariosParaIa,
     CAMPOS, ESTADOS, ABAS, TIPOS_ERRO, SEM_OPERADOR, erroSugerido, nomesDasPessoas,
-    opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados,
+    opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados, ignorarRemetente,
     regenerar: regenerarPrevia, regenerarPendentes, marcarNaoUsarNoTreino, CAMPOS_EXCLUIVEIS_DO_TREINO,
     valorDoCampo: valorDe,
 };

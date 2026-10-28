@@ -7,7 +7,7 @@ fotos_recebidas/
 .env
 .env.*
 !.env.exemplo
-tokens_conta_azul.json
+tokens_conta_azul*.json
 respostas_conta_azul/
 processados_conta_azul/
 erros_conta_azul/

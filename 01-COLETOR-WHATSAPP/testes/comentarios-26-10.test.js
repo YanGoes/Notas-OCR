@@ -79,3 +79,31 @@ test("madrugada (00:07) e lanche, nao jantar", () => {
     const r = previa({ valor: 30, hora: "00:07", fornecedor: "LANCHONETE", itens: [item("X BURGUER")] });
     assert.equal(r.campos.tipo.valor, "LANCHE");
 });
+
+test("agua comprada em posto (nome no plural) vai para POSTOS DE COMBUSTÍVEL", () => {
+    const r = previa({ valor: 16, fornecedor: "POSTOS QUALIS", itens: [item("AGUA MINERAL 500ML", 8, 16)] }, { tipos: ["AGUA"] });
+    assert.equal(r.campos.fornecedor.valor, "POSTOS DE COMBUSTÍVEL");
+});
+
+test("cupom com duas placas parecidas usa a que esta na frota", () => {
+    const naFrota = cad.veiculos[0].placa;
+    const parecida = naFrota.replace(/[A-Z](?=\d\d$)/, (c) => ({ B: "8", G: "6", I: "1", O: "0", S: "5", Z: "2" })[c] || c);
+    if (parecida === naFrota) return; // frota sem placa Mercosul com letra trocavel
+    const r = previa({ valor: 200, fornecedor: "AUTO POSTO X", placa: null, placa_candidatas: [parecida, naFrota], litragem: 30, odometro: 1000, itens: [item("GASOLINA COMUM", 30, 200)] });
+    assert.equal(r.campos.abastecimento.placa.valor.replace("-", ""), naFrota.replace("-", ""));
+});
+
+test("litros sem unidade ('36.650 4'): unica quantidade com 3 casas que da preco plausivel", () => {
+    const r = previa({ valor: 241.52, fornecedor: "AUTO POSTO ROGEPEL", placa: "ABC1D23", odometro: 45657, texto_bruto: "GASOLINA ORIGINAL COMUM\n36.650 4\n5,59\n241.52", itens: [item("GASOLINA ORIGINAL COMUM", 1, 241.52)] });
+    assert.equal(r.campos.abastecimento.litros.valor, 36.65);
+    assert.ok(r.pendencias.some((p) => /sem a unidade/.test(p)));
+});
+
+// Decisoes de 28/10/2026 (ex-notas #79, #112, #125, #249).
+
+test("pedagio vai sempre para o fornecedor DIVERSOS (decisao de 28/10, nota #249)", () => {
+    const r = previa({ valor: 21.8, fornecedor: "Conc. ECOVIAS" }, { tipos: ["PEDAGIO"] });
+    assert.equal(r.campos.tipo.valor, "PEDAGIO");
+    assert.equal(r.campos.fornecedor.valor, "DIVERSOS");
+});
+

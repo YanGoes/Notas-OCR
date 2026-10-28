@@ -66,30 +66,11 @@
       <article><span>Entrada</span><strong id="fEntrada">0</strong></article><article><span>Simulação aprovada</span><strong id="fSimulacao">0</strong></article><article><span>Precisa de revisão</span><strong id="fRevisao">0</strong></article><article><span>Bloqueados</span><strong id="fBloqueados">0</strong></article><article><span>Erros</span><strong id="fErros">0</strong></article><article><span>Enviados</span><strong id="fEnviados">0</strong></article>
     </section>
     <section class="card conta-azul-card">
-      <div class="card-title"><div><span class="step">3</span><h2>Envio ao Conta Azul</h2></div><span id="contaAzulStatus" class="pill neutro">Verificando</span></div>
-      <p class="muted">Somente comprovantes aprovados entram nesta fila. Preparar envia a imagem para a Conta AI Captura; criar confirma o lançamento financeiro.</p>
+      <div class="card-title"><div><span class="step">3</span><h2>Conta Azul</h2></div><span id="contaAzulStatus" class="pill neutro">Verificando</span></div>
+      <div id="perfilBox" class="conta-company" style="margin-bottom:10px"><div><small>Conta do Conta Azul em uso</small><strong id="perfilNome">Carregando...</strong><span id="perfilDetalhe"></span></div><div class="actions compact"><button id="perfilTeste" class="secondary" type="button">Usar conta de teste</button><button id="perfilOficial" class="danger ghost" type="button">Usar conta OFICIAL</button></div></div>
       <div class="conta-company"><div><small>Empresa conectada</small><strong id="contaEmpresaNome">Carregando...</strong><span id="contaEmpresaId"></span></div><div class="actions compact"><button id="atualizarContaAzul" class="secondary" type="button">Atualizar conexão</button><button id="confirmarEmpresa" class="danger ghost" type="button">Confirmar empresa correta</button></div></div>
-      <div id="contaEmpresaAviso" class="critical-note">Antes do primeiro teste, confirme cuidadosamente a empresa. O lançamento real será criado exatamente na conta exibida acima.</div>
-      <div id="testePiloto" class="pilot-panel">
-        <div class="pilot-copy"><small>TESTE REAL GUIADO · UMA NOTA</small><strong id="testePilotoTitulo">Escolha uma nota para começar</strong><span id="testePilotoEstado" aria-live="polite">A primeira etapa gera apenas uma prévia; a segunda cria a despesa real.</span></div>
-        <div class="pilot-controls"><label for="notaPiloto">Nota do primeiro teste</label><select id="notaPiloto" aria-label="Escolher nota para o primeiro teste"><option>Carregando notas prontas...</option></select><button id="acaoNotaPiloto" class="primary" type="button" disabled>Carregando...</button></div>
-        <div id="testePilotoDetalhes" class="pilot-details"></div>
-      </div>
-      <div id="painelLote" class="batch-panel oculto"><div id="contaFilaResumo" class="batch-summary">Nenhuma despesa pronta.</div><div class="actions compact"><button id="prepararTodos" class="secondary" type="button" disabled>Preparar todos os prontos</button><button id="confirmarTodos" class="primary" type="button" disabled>Criar todas as prévias conferidas</button></div></div>
-      <p id="loteAjuda" class="safety-note">O envio em lote é liberado somente depois que o primeiro lançamento individual for criado e conferido.</p>
-      <div class="conta-links"><a href="https://app.contaazul.com/" target="_blank" rel="noreferrer">Abrir Conta Azul</a><span>Isto é apenas o caminho de conferência: prévia em Conta AI Captura; lançamento criado em Financeiro → Contas a pagar.</span></div>
-    </section>
-    <section class="card documentos-card">
-      <div class="card-title"><div><span class="step">3</span><h2>Comprovantes em tempo real</h2></div><div class="actions compact"><button id="encaminharTodosZap" class="primary" type="button">Encaminhar TODAS p/ Conta AI (Zap)</button><span class="live-indicator">● AO VIVO</span></div></div>
-      <p class="muted">Imagens, legendas, leitura automática e dúvidas aparecem aqui sem precisar atualizar a página.</p>
-      <div class="date-filter"><label for="filtroData">Filtrar pelo dia recebido</label><input id="filtroData" type="date"><button id="filtrarHoje" class="secondary" type="button">Hoje</button><button id="mostrarTodos" class="ghost" type="button">Mostrar todos</button></div>
-      <div id="documentosLista" class="documentos-lista"><div class="empty">Aguardando o primeiro comprovante do WhatsApp.</div></div>
-    </section>
-    <section class="card checklist">
-      <div class="card-title"><div><span class="step">5</span><h2>Pronto para o teste real?</h2></div><span id="azureStatus" class="pill neutro">Azure</span></div>
-      <ol><li>WhatsApp conectado</li><li>Grupo e centro de custo salvos</li><li>Empresa do Conta Azul confirmada</li><li>Envie uma foto e use primeiro o botão individual</li></ol>
-      <pre>Tipo: Alimentacao&#10;Centro de custo: NOME DO CENTRO&#10;Pessoas: 2&#10;Observacao: Teste real</pre>
-      <p class="muted">A leitura continua local até você clicar em <b>Preparar no Conta Azul</b>. A despesa só nasce depois de uma segunda confirmação em <b>Criar despesa</b>.</p>
+      <div id="contaEmpresaAviso" class="critical-note">Confirme cuidadosamente a empresa: os lançamentos aprovados na Central são criados exatamente na conta exibida acima.</div>
+      <p class="muted">As fotos, a revisão e o envio ficam na <a href="/central.html">Central de revisão</a>.</p>
     </section>
   </main><script src="/app.js"></script><script src="/assistente.js"></script>
 </body></html>
