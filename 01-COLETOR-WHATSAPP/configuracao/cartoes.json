@@ -35,5 +35,45 @@
       "cartao banco do brasil",
       "bb"
     ]
+  },
+  {
+    "codigo": "C6_LP",
+    "rotulo": "C6 - LP",
+    "forma_pagamento": "PIX",
+    "conta_conta_azul_id": null,
+    "apelidos": [
+      "c6 lp",
+      "c6 - lp",
+      "conta c6 lp",
+      "pix c6 lp"
+    ]
+  },
+  {
+    "codigo": "C6_SN",
+    "rotulo": "C6 - SN",
+    "forma_pagamento": "PIX",
+    "conta_conta_azul_id": null,
+    "apelidos": [
+      "c6 sn",
+      "c6 - sn",
+      "conta c6 sn",
+      "pix c6 sn"
+    ]
+  },
+  {
+    "codigo": "PORTO",
+    "rotulo": "CRÉDITO PORTO",
+    "forma_pagamento": "CARTAO_CREDITO",
+    "conta_conta_azul_id": null,
+    "apelidos": [
+      "credito porto",
+      "cartao porto",
+      "porto bank",
+      "porto seguro",
+      "cartao porto seguro",
+      "credito porto seguro",
+      "porto bank credito",
+      "porto"
+    ]
   }
 ]

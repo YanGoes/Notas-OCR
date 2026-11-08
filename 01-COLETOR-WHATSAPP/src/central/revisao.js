@@ -813,17 +813,23 @@ function ignorarRemetente(db, whatsappId, { nome = null, motivo = "não trabalha
 /**
  * Comentario do revisor para a IA aprender. Vale em qualquer estado (inclusive
  * aprovada); se a nota ja e exemplo de treino, o exemplo e atualizado.
+ * `anexos`: prints anexados ao comentario (ex.: print da conversa onde o
+ * revisor explicou algo pro operador) — lista de {nome, classe, tamanho,
+ * arquivo} ja salva em disco por assistente/anexos.js. null = nao mexe nos
+ * anexos existentes; [] = remove todos.
  */
-function comentarParaIa(db, despesaId, texto, autor) {
+function comentarParaIa(db, despesaId, texto, autor, anexos = null) {
     const quem = String(autor || "").trim();
     if (!quem) throw new Error("Informe quem está comentando.");
     const comentario = String(texto || "").replace(/\s+\n/g, "\n").trim().slice(0, 2000) || null;
     const despesa = lerDespesa(db, despesaId);
     if (!despesa) throw new Error(`Despesa #${despesaId} não encontrada.`);
+    const listaAnexos = anexos === null ? (despesa.comentario_ia_anexos || []) : anexos;
+    const algo = Boolean(comentario) || listaAnexos.length > 0;
     transacao(db, () => {
-        db.prepare("UPDATE despesas SET comentario_ia = ?, comentario_ia_por = ?, comentario_ia_em = ?, atualizado_em = ? WHERE id = ?")
-            .run(comentario, comentario ? quem : null, comentario ? agora() : null, agora(), despesaId);
-        registrarHistorico(db, despesaId, despesa.estado, despesa.estado, comentario ? `comentário para a IA (${quem})` : `comentário para a IA removido (${quem})`);
+        db.prepare("UPDATE despesas SET comentario_ia = ?, comentario_ia_por = ?, comentario_ia_em = ?, comentario_ia_anexos = ?, atualizado_em = ? WHERE id = ?")
+            .run(comentario, algo ? quem : null, algo ? agora() : null, listaAnexos.length ? json(listaAnexos) : null, agora(), despesaId);
+        registrarHistorico(db, despesaId, despesa.estado, despesa.estado, comentario ? `comentário para a IA (${quem})` : (listaAnexos.length ? `prints anexados ao comentário (${quem})` : `comentário para a IA removido (${quem})`));
         const exemplo = db.prepare("SELECT entrada FROM exemplos_treino WHERE despesa_id = ?").get(despesaId);
         if (exemplo) {
             const entrada = lerJson(exemplo.entrada, {});
@@ -836,9 +842,10 @@ function comentarParaIa(db, despesaId, texto, autor) {
 
 /** Comentarios para a IA mais recentes (aba Treino e assistente). */
 function comentariosParaIa(db, limite = 50) {
-    return db.prepare(`SELECT id, estado, comentario_ia AS comentario, comentario_ia_por AS por, comentario_ia_em AS em,
+    return db.prepare(`SELECT id, estado, comentario_ia AS comentario, comentario_ia_por AS por, comentario_ia_em AS em, comentario_ia_anexos,
             json_extract(campos, '$.tipo.valor') AS tipo, json_extract(campos, '$.valor.valor') AS valor
-        FROM despesas WHERE comentario_ia IS NOT NULL ORDER BY comentario_ia_em DESC LIMIT ?`).all(Math.min(Number(limite) || 50, 200));
+        FROM despesas WHERE comentario_ia IS NOT NULL ORDER BY comentario_ia_em DESC LIMIT ?`).all(Math.min(Number(limite) || 50, 200))
+        .map((l) => ({ ...l, comentario_ia_anexos: lerJson(l.comentario_ia_anexos, []) }));
 }
 
 module.exports = {

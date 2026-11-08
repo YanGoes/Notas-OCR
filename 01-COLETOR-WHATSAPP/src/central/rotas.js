@@ -93,7 +93,25 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
     rotas.post("/despesas/:id/aprovar", responder((req) => revisao.aprovar(db(), idDe(req), req.body?.autor,
         { naoUsarNoTreino: Array.isArray(req.body?.nao_usar_no_treino) ? req.body.nao_usar_no_treino.map(String) : [] })));
     rotas.post("/despesas/:id/descartar", responder((req) => revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor)));
-    rotas.post("/despesas/:id/comentario", responder((req) => revisao.comentarParaIa(db(), idDe(req), req.body?.texto, req.body?.autor)));
+    // Prints anexados ao comentario (ex.: a conversa onde o revisor explicou algo pro operador):
+    // anexos_novos chega em base64 (preparado e salvo com o mesmo modulo do assistente);
+    // anexos_manter sao os nomes de arquivo dos anexos ja salvos que continuam valendo.
+    rotas.post("/despesas/:id/comentario", async (req, res, next) => {
+        try {
+            const id = idDe(req);
+            const anexosModulo = require("../assistente/anexos");
+            const linha = db().prepare("SELECT comentario_ia_anexos FROM despesas WHERE id = ?").get(id);
+            if (!linha) return res.status(404).json({ erro: "Despesa não encontrada." });
+            const { lerJson } = require("./banco");
+            const existentes = lerJson(linha.comentario_ia_anexos, []);
+            const manter = Array.isArray(req.body?.anexos_manter) ? req.body.anexos_manter.map(String) : existentes.map((a) => a.arquivo);
+            const mantidos = existentes.filter((a) => manter.includes(a.arquivo));
+            const novosBrutos = Array.isArray(req.body?.anexos_novos) ? req.body.anexos_novos : [];
+            const { resumo } = novosBrutos.length ? await anexosModulo.preparar(novosBrutos, { conversaId: `despesa-${id}` }) : { resumo: [] };
+            const anexosFinal = [...mantidos, ...resumo.map((r) => ({ nome: r.nome, classe: r.classe, tamanho: r.tamanho, arquivo: r.arquivo }))];
+            res.json(revisao.comentarParaIa(db(), id, req.body?.texto, req.body?.autor, anexosFinal));
+        } catch (erro) { next(erro); }
+    });
     rotas.get("/comentarios-ia", responder(() => revisao.comentariosParaIa(db())));
     rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));

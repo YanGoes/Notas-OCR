@@ -244,6 +244,7 @@ function lerDespesa(db, id) {
         campos_originais: lerJson(linha.campos_originais, null),
         pendencias: lerJson(linha.pendencias, []),
         avisos: lerJson(linha.avisos, []),
+        comentario_ia_anexos: lerJson(linha.comentario_ia_anexos, []),
     };
 }
 

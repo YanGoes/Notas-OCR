@@ -74,7 +74,7 @@ const RE_PESSOAS = /(\d{1,3})\s*(?:pessoas?|pessoa|pax|funcionarios?|colaborador
 const RE_PESSOAS_ROTULO = /^\s*(?:(?:qtd\.?|qtde\.?|quantidade|n[ºo°]?)\s*(?:de\s*)?)?(?:pessoas?|pax|funcionarios?|colaboradores?)\s*[:\-=]\s*(\d{1,3})\b/i;
 const RE_VALOR = /^\s*valor\s*[:\-]?\s*(?:r\$)?\s*([\d.,]+)/i;
 const RE_OBS = /^\s*(?:observa[cç](?:[aã]o|[oõ]es)|obs\.?)\s*[:,\-]?\s*(.*)$/i;
-const RE_PAGAMENTO = /^\s*(?:pagamento|forma\s*de\s*pagamento|conta\/?cart[aã]o|cart[aã]o(?:\s+de\s+(?:cr[eé]dito|d[eé]bito))?|conta)\s*[:\-]\s*(.+)$/i;
+const RE_PAGAMENTO = /^\s*(?:pagamento|forma\s*de\s*pagamento|conta\/?cart[aã]o|cart[aã]o(?:\s+de\s+(?:cr[eé]dito|d[eé]bito))?|conta|banco)\s*[:\-]\s*(.+)$/i;
 // Legenda no padrao novo: "Almoço 3" (tipo + pessoas).
 const RE_TIPO_NUMERO = /^([^\d]+?)\s*[:\-x]?\s*(\d{1,2})$/i;
 const RE_DINHEIRO = /^\s*r\$\s*([\d.,]+)\s*$/i;
@@ -87,6 +87,10 @@ const RE_SEPARADOR = /\s+[-–—]\s+/;
 const RE_SEM_COMPROVANTE = /\b(perdi|perdeu|sem)\s+(a\s+)?(nota|notinha|comprovante|cupom|recibo)\b|\bnota\s+perdida\b/i;
 // Pago pelo proprio operador (vai para a observacao do lancamento, para reembolsar).
 const RE_REEMBOLSO = /\b(reembols\w*|ressarc\w*|do\s+(meu\s+|proprio\s+|próprio\s+)?bolso|paguei|pago\s+por\s+mim|meu\s+cart[aã]o|cart[aã]o\s+pessoal|minha\s+conta|dinheiro\s+pr[oó]prio)\b/i;
+// "Parcelado 3x", "parcelado em 3 vezes" (orientacao da Vanessa, 06/11/2026: nao
+// e pra escrever o parcelamento na descricao, mas a IA ainda precisa avisar o
+// revisor para lancar com o parcelamento nativo do Conta Azul).
+const RE_PARCELADO = /\bparcelad\w*\b(?:\s*(?:em|de)?\s*(\d{1,2})\s*(?:x\b|vezes\b)?)?/i;
 
 /** "08/10" sem ano: usa o ano da mensagem (ex.: nota de dezembro mandada em janeiro = ano anterior). */
 function dataComAno(texto, referencia) {
@@ -116,8 +120,15 @@ function metodoExcepcional(texto) {
     return null;
 }
 
+// "Banco e o C6 Bank", "banco: C6 Bank", "C6 Bank" sem dizer cartao/credito:
+// e PIX pelo banco C6, nao o cartao de credito C6 (a regras-vmac decide entre
+// a conta C6 LP ou C6 SN, conforme quem mandou — orientacao da Vanessa, 06/11/2026).
+const RE_BANCO_C6 = /\bbanco\b.{0,15}\bc6\b|\bc6\s*bank\b/i;
+const RE_CARTAO_OU_CREDITO = /\bcart[aã]o|cr[eé]dito|d[eé]bito\b/i;
+
 /** Pagamento declarado em uma linha: cartao do cadastro ou metodo excepcional. */
 function pagamentoDaLinha(cad, linha) {
+    if (RE_BANCO_C6.test(linha) && !RE_CARTAO_OU_CREDITO.test(linha)) return { forma: "PIX", cartao: null, rotulo: "PIX" };
     const cartao = cadastros.resolverCartao(cad, linha);
     if (cartao) return { forma: cartao.forma_pagamento, cartao: cartao.codigo, rotulo: cartao.rotulo };
     const metodo = metodoExcepcional(linha);
@@ -201,6 +212,8 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
         }
 
         if (contemTermo(linha, "gerador")) dados.gerador = true;
+        const parcelado = linha.match(RE_PARCELADO);
+        if (parcelado) dados.parcelas = { quantidade: Number(parcelado[1]) || null, texto: linha };
         if (RE_REEMBOLSO.test(linha)) {
             dados.reembolso = true;
             dados.reembolso_texto = [dados.reembolso_texto, linha].filter(Boolean).join(" / ");
