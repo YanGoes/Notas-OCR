@@ -955,12 +955,38 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         const cartao = cad.cartoes.find((item) => item.codigo === politica.cartao);
         pagamento = { forma: cartao?.forma_pagamento || "CARTAO_CREDITO", cartao: politica.cartao, origem: politica.origem || "orientacao_da_gerencia" };
     }
+    // Conta do PIX (orientacao da Vanessa, 06/11/2026): o banco C6 tem duas
+    // contas (LP = lucro presumido, SN = simples nacional). PIX para o Murillo
+    // sai sempre da C6 SN, qualquer que seja quem mandou a despesa; PIX/banco
+    // C6 informado sem dizer qual conta, mandado pelo Everson ou pelo Almir,
+    // sai da C6 LP (so quando a mensagem nao ja apontou outra conta).
+    if (pagamento?.forma === "PIX" && !pagamento.cartao) {
+        const pagadorNorm = normalizar(pagamento.pagador || "");
+        const remetenteNorm = normalizar(pessoa?.nome || "");
+        if (/\bmurill?o\b/.test(pagadorNorm)) {
+            pagamento.cartao = "C6_SN";
+            avisos.push("PIX para o Murillo: conta de pagamento definida como C6 - SN (regra da Vanessa, 06/11/2026).");
+        } else if (contemTermo(legenda?.texto || "", "c6") && ["everson", "almir"].includes(remetenteNorm)) {
+            pagamento.cartao = "C6_LP";
+            avisos.push("Banco C6 informado sem a conta: definida como C6 - LP (regra da Vanessa para Everson/Almir, 06/11/2026).");
+        }
+    }
     if (pagamento?.cartao) {
         const cartao = cad.cartoes.find((item) => item.codigo === pagamento.cartao);
         pagamento.rotulo = cartao?.rotulo || pagamento.cartao;
         pagamento.conta_id = cartao?.conta_conta_azul_id || null;
     }
     campos.pagamento = pagamento || { forma: null, cartao: null, origem: null };
+
+    // Parcelamento (orientacao da Vanessa, 06/11/2026): nao e pra escrever
+    // "parcelado Nx" na descricao com o valor total — o lancamento tem que
+    // usar o parcelamento nativo do Conta Azul, com a 1a parcela na data da
+    // compra. A IA so avisa; quem lanca e que escolhe as parcelas no Conta Azul.
+    if (legenda?.parcelas?.quantidade > 1) {
+        pendencias.push(`Pagamento parcelado em ${legenda.parcelas.quantidade}x (“${legenda.parcelas.texto}”). `
+            + "Não lançar o valor total com \"parcelado\" na descrição: usar o parcelamento nativo do Conta Azul, "
+            + "1ª parcela na data da compra (orientação da Vanessa, 06/11/2026).");
+    }
 
     // Observacao do lancamento (opcional): reembolso, pagamento fora do cartao
     // da empresa e "Obs:" do operador. Vai para o campo observacao no Conta Azul.
@@ -1038,9 +1064,14 @@ const ROTULO_FORMA = { PIX: "PIX", DINHEIRO: "dinheiro", CARTAO_DEBITO: "cartão
 function montarObservacao({ legenda, pagamento }) {
     const partes = [];
     if (legenda?.reembolso) partes.push(`REEMBOLSO ao operador: ${legenda.reembolso_texto || "pago do próprio bolso"}`);
-    if (pagamento && !pagamento.cartao && pagamento.forma && pagamento.forma !== "CARTAO_CREDITO") {
+    if (pagamento && pagamento.forma && pagamento.forma !== "CARTAO_CREDITO") {
         const quem = pagamento.pagador ? ` (${pagamento.pagador})` : "";
-        partes.push(`Pago via ${ROTULO_FORMA[pagamento.forma] || pagamento.forma}${quem}, fora do cartão da empresa${legenda?.reembolso ? "" : " — conferir reembolso"}`);
+        if (!pagamento.cartao) {
+            partes.push(`Pago via ${ROTULO_FORMA[pagamento.forma] || pagamento.forma}${quem}, fora do cartão da empresa${legenda?.reembolso ? "" : " — conferir reembolso"}`);
+        } else if (pagamento.forma === "PIX") {
+            // Conta de pagamento ja resolvida (ex.: regra C6 LP/SN da Vanessa): so informa qual foi.
+            partes.push(`Pago via ${ROTULO_FORMA[pagamento.forma]}${quem} — conta de pagamento: ${pagamento.rotulo || pagamento.cartao}`);
+        }
     }
     for (const obs of legenda?.obs_rotuladas || []) if (!partes.some((p) => p.includes(obs))) partes.push(obs);
     return partes.length ? partes.join(". ").slice(0, 500) : null;

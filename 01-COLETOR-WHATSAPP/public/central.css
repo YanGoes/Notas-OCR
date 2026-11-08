@@ -6,6 +6,8 @@ main.central { max-width: 1440px; padding: 22px 20px 60px; }
 .revisor input.faltando { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
 .voltar { color: var(--muted); font-size: 13px; text-decoration: none; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .voltar:hover { color: var(--brand); border-color: var(--brand); }
+.perfil-badge { font: inherit; font-size: 12px; font-weight: 700; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
+.perfil-badge.oficial { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .faixa-segura { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; background: var(--success-soft); color: var(--success); font-size: 14px; }
 .aviso { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid; font-size: 14px; }
 .status-coleta { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; font-size: 14px; background: var(--warning-soft); color: var(--warning); }
@@ -167,7 +169,17 @@ details.leitura pre { max-height: 280px; overflow: auto; font-size: 12px; white-
 .comentario-ia textarea { display: block; width: 100%; box-sizing: border-box; height: 84px; resize: none; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.4; }
 .comentario-ia textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
-.comentario-ia .acoes { margin-top: 8px; }
+.comentario-ia .acoes { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Prints anexados ao comentario: chips com miniatura, como no assistente. */
+.coment-anexos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.coment-anexos:empty { margin-top: 0; }
+.coment-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-soft); color: var(--ink); font-size: 12px; }
+.coment-chip img { width: 26px; height: 26px; object-fit: cover; border-radius: 4px; }
+.coment-chip-icone { font-size: 14px; }
+.coment-chip-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+.coment-chip-x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+.coment-chip-x:hover { color: var(--danger); }
 
 /* Centro de custo: caixa com seta (como a lista) que aceita digitar. */
 .campo input.combo-centro { padding-right: 28px; cursor: text;

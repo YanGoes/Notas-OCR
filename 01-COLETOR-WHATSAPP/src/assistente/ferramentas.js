@@ -141,6 +141,7 @@ function detalharDespesa(ctx, { id } = {}) {
     return {
         id: linha.id, estado: linha.estado, campos: resumo, pendencias: lerJson(linha.pendencias, []), avisos: lerJson(linha.avisos, []),
         comentario_para_ia: linha.comentario_ia || null,
+        comentario_para_ia_anexos: lerJson(linha.comentario_ia_anexos, []).map((a) => a.nome),
         mensagem_do_operador: mensagem ? { quem: mensagem.remetente_nome, quando: mensagem.enviada_em, texto: mensagem.texto } : null,
         correcoes,
     };

@@ -4,7 +4,7 @@
 // Toda correcao vai com o tipo de erro (LEITURA x CLASSIFICACAO) para o treino.
 
 const $ = (seletor) => document.querySelector(seletor);
-const estado = { aba: "revisar", selecionada: null, opcoes: null, detalhe: null, giro: 0 };
+const estado = { aba: "revisar", selecionada: null, opcoes: null, detalhe: null, giro: 0, comentarioAnexos: [] };
 
 const NOMES_ESTADO = {
     AGUARDANDO_REVISAO: ["Para revisar", "pend"], CLASSIFICADO: ["Classificada", "okk"], APROVADO: ["Aprovada", "okk"],
@@ -127,6 +127,16 @@ async function api(caminho, corpo) {
     const dados = await resposta.json().catch(() => ({}));
     if (!resposta.ok) throw new Error(dados.erro || `Erro ${resposta.status}`);
     return dados;
+}
+
+/** Arquivo (File) -> base64 puro, sem o prefixo "data:...;base64,". */
+function arquivoParaBase64(file) {
+    return new Promise((resolve, reject) => {
+        const leitor = new FileReader();
+        leitor.onload = () => resolve(String(leitor.result || "").replace(/^data:[^,]*,/, ""));
+        leitor.onerror = () => reject(new Error(`Não consegui ler "${file.name}".`));
+        leitor.readAsDataURL(file);
+    });
 }
 
 let avisoTimer = null;
@@ -705,19 +715,57 @@ function desenharDetalhe() {
             el("button", { type: "button", class: "danger ghost", onclick: () => executar(() => descartar(motivo.value), "Descartada.") }, "Descartar")));
     }
 
-    // Comentario livre para a IA aprender (nao vai para o Conta Azul).
+    // Comentario livre para a IA aprender (nao vai para o Conta Azul), com prints opcionais
+    // (ex.: a conversa onde o revisor explicou o caso pro operador).
     const comentario = el("textarea", { id: "comentarioIa", rows: 3, maxlength: 2000,
         placeholder: "Ex.: foto com duas notas — separar uma despesa para cada nota. / O operador pagou do bolso. / A placa está no canto do cupom." });
     comentario.value = detalhe.comentario_ia || "";
+    estado.comentarioAnexos = (detalhe.comentario_ia_anexos || []).map((a) => ({ ...a, tipo: "existente" }));
+    const caixaAnexos = el("div", { class: "coment-anexos" });
+    const desenharAnexos = () => trocarFilhos(caixaAnexos, estado.comentarioAnexos.map((a, i) => {
+        const url = a.tipo === "existente" ? `/api/central/assistente/anexos/despesa-${estado.selecionada}/${encodeURIComponent(a.arquivo)}` : a.previewUrl;
+        const miniatura = a.classe === "imagem" && url ? el("img", { src: url, alt: a.nome }) : el("span", { class: "coment-chip-icone" }, a.classe === "pdf" ? "📄" : "📎");
+        return el("span", { class: "coment-chip", title: a.nome },
+            miniatura, el("small", { class: "coment-chip-nome" }, a.nome),
+            el("button", { type: "button", class: "coment-chip-x", title: "Remover", onclick: () => { estado.comentarioAnexos.splice(i, 1); desenharAnexos(); } }, "✕"));
+    }));
+    desenharAnexos();
+    const arquivoInput = el("input", { type: "file", accept: "image/*,.pdf", multiple: true, hidden: true, onchange: async (e) => {
+        for (const file of [...e.target.files]) {
+            const classe = file.type.startsWith("image/") ? "imagem" : (file.type === "application/pdf" ? "pdf" : null);
+            if (!classe) { avisar(`"${file.name}": mande print (imagem) ou PDF.`); continue; }
+            try {
+                const dados = await arquivoParaBase64(file);
+                estado.comentarioAnexos.push({ tipo: "novo", nome: file.name, classe, tamanho: file.size, mime: file.type, dados, previewUrl: classe === "imagem" ? URL.createObjectURL(file) : null });
+            } catch (erro) { avisar(erro.message); }
+        }
+        e.target.value = "";
+        desenharAnexos();
+    } });
+    comentario.addEventListener("paste", async (e) => {
+        const arquivos = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+        if (!arquivos.length) return;
+        e.preventDefault();
+        for (const file of arquivos) {
+            const dados = await arquivoParaBase64(file);
+            estado.comentarioAnexos.push({ tipo: "novo", nome: file.name || "print.png", classe: "imagem", tamanho: file.size, mime: file.type, dados, previewUrl: URL.createObjectURL(file) });
+        }
+        desenharAnexos();
+    });
     const blocoComentario = el("div", { class: "bloco comentario-ia" },
         el("h3", {}, "Comentário para a IA aprender"),
-        el("p", { class: "origem" }, "Explique o caso com suas palavras. Não vai para o Conta Azul: fica no exemplo de treino e na lista da aba Treino.",
+        el("p", { class: "origem" }, "Explique o caso com suas palavras e, se quiser, anexe um print (ex.: a conversa onde você explicou pro operador). Cole com Ctrl+V ou use o clipe. Não vai para o Conta Azul: fica no exemplo de treino e na lista da aba Treino.",
             detalhe.comentario_ia_por ? ` Último: ${detalhe.comentario_ia_por}, ${dataHora(detalhe.comentario_ia_em)}.` : ""),
-        comentario,
-        el("div", { class: "acoes" }, el("button", { type: "button", class: "secondary", onclick: () => executar(async () => {
-            await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor: revisor() });
-            await recarregar();
-        }, "Comentário salvo.") }, "Salvar comentário")));
+        comentario, caixaAnexos,
+        el("div", { class: "acoes" },
+            arquivoInput,
+            el("button", { type: "button", class: "ghost", title: "Anexar print ou PDF", onclick: () => arquivoInput.click() }, "📎 Anexar print"),
+            el("button", { type: "button", class: "secondary", onclick: () => executar(async () => {
+                const novos = estado.comentarioAnexos.filter((a) => a.tipo === "novo").map((a) => ({ nome: a.nome, tipo: a.mime, dados: a.dados }));
+                const manter = estado.comentarioAnexos.filter((a) => a.tipo === "existente").map((a) => a.arquivo);
+                await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor: revisor(), anexos_novos: novos, anexos_manter: manter });
+                await recarregar();
+            }, "Comentário salvo.") }, "Salvar comentário")));
 
     const historico = el("details", { class: "leitura" }, el("summary", {}, `Histórico (${detalhe.historico.length}) e correções (${detalhe.correcoes.length})`),
         el("ul", { class: "historico" },
@@ -760,11 +808,19 @@ function alteracoesDe(campos) {
     }));
 }
 
-/** Comentario para a IA escrito e ainda nao salvo: vai junto com Salvar correcoes e Aprovar. */
+/** Comentario (e prints anexados) para a IA escrito e ainda nao salvo: vai junto com Salvar correcoes e Aprovar. */
 async function salvarComentarioPendente(autor) {
     const comentario = document.querySelector("#comentarioIa");
-    if (!comentario || comentario.value.trim() === (estado.detalhe.comentario_ia || "").trim()) return false;
-    await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor });
+    if (!comentario) return false;
+    const textoMudou = comentario.value.trim() !== (estado.detalhe.comentario_ia || "").trim();
+    const anexosExistentesOriginais = (estado.detalhe.comentario_ia_anexos || []).map((a) => a.arquivo);
+    const anexosAtuais = estado.comentarioAnexos.filter((a) => a.tipo === "existente").map((a) => a.arquivo);
+    const temNovos = estado.comentarioAnexos.some((a) => a.tipo === "novo");
+    const anexosMudaram = temNovos || anexosAtuais.length !== anexosExistentesOriginais.length
+        || anexosAtuais.some((arquivo) => !anexosExistentesOriginais.includes(arquivo));
+    if (!textoMudou && !anexosMudaram) return false;
+    const novos = estado.comentarioAnexos.filter((a) => a.tipo === "novo").map((a) => ({ nome: a.nome, tipo: a.mime, dados: a.dados }));
+    await api(`/despesas/${estado.selecionada}/comentario`, { texto: comentario.value, autor, anexos_novos: novos, anexos_manter: anexosAtuais });
     return true;
 }
 
@@ -877,7 +933,8 @@ async function carregarTreino() {
     const blocoComentarios = el("div", { class: "bloco" }, el("h3", {}, `Comentários para a IA (${comentarios.length})`),
         comentarios.length ? el("ul", { class: "historico" }, comentarios.map((c) => el("li", {},
             el("a", { href: "#", onclick: (e) => { e.preventDefault(); estado.selecionada = c.id; trocarAba(c.estado === "APROVADO" ? "aprovadas" : "revisar").then(() => selecionar(c.id)); } }, `#${c.id}`),
-            ` · ${c.tipo || "—"} · ${c.por}, ${dataHora(c.em)}: `, c.comentario)))
+            ` · ${c.tipo || "—"} · ${c.por}, ${dataHora(c.em)}: `, c.comentario,
+            c.comentario_ia_anexos?.length ? ` 📎${c.comentario_ia_anexos.length}` : "")))
             : el("p", { class: "origem" }, "Nenhum ainda. Use o campo \"Comentário para a IA aprender\" em qualquer nota para explicar um caso especial."));
     $("#areaTreino").replaceChildren(
         blocoMaturidade(m.maturidade, pct),
@@ -1107,8 +1164,40 @@ function abrirEdicao(linha, projeto, servicos) {
     linha.after(edicao);
 }
 
+async function carregarPerfilBadge() {
+    const botao = $("#perfilBadge");
+    try {
+        const resposta = await fetch("/api/conta-azul/perfil");
+        const s = await resposta.json();
+        const oficial = s.perfil === "oficial";
+        botao.textContent = oficial ? "Conta OFICIAL" : "Conta de teste";
+        botao.classList.toggle("oficial", oficial);
+        botao.title = oficial
+            ? "Consultando a conta oficial do Conta Azul. Clique para voltar para a conta de teste."
+            : "Modo treino: consultando a conta de teste do Conta Azul. Clique para trocar para a conta oficial.";
+    } catch (_) { /* nao bloqueia a Central se a API do perfil falhar */ }
+}
+async function trocarPerfilBadge() {
+    const resposta = await fetch("/api/conta-azul/perfil");
+    const atual = (await resposta.json()).perfil;
+    const perfil = atual === "oficial" ? "teste" : "oficial";
+    let confirmacao;
+    if (perfil === "oficial") {
+        confirmacao = prompt("Você vai usar a conta OFICIAL da VMac.\nNada é lançado por esta troca, mas as consultas passam a ser na empresa real.\n\nDigite OFICIAL para confirmar:");
+        if (confirmacao === null) return;
+    }
+    try {
+        const resp = await fetch("/api/conta-azul/perfil", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ perfil, confirmacao }) });
+        const dados = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(dados.erro || `Erro ${resp.status}`);
+        avisar(perfil === "oficial" ? "Conta oficial selecionada." : "Conta de teste selecionada.", "ok");
+        await carregarPerfilBadge();
+    } catch (erro) { avisar(erro.message); }
+}
 async function iniciar() {
     try { $("#revisor").value = localStorage.getItem("vmac-revisor") || ""; } catch (_) { /* sem armazenamento */ }
+    $("#perfilBadge").addEventListener("click", trocarPerfilBadge);
+    carregarPerfilBadge();
     $("#temaToggle").addEventListener("click", () => {
         const novo = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
         document.documentElement.dataset.theme = novo;

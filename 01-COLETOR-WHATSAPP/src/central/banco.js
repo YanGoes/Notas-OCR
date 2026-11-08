@@ -325,6 +325,12 @@ const MIGRACOES = [
         em TEXT NOT NULL
     );
     `,
+    // 13 — Prints anexados ao comentario para a IA (ex.: print da conversa onde
+    // o revisor explicou algo para o operador). Lista JSON de {nome, classe,
+    // tamanho, arquivo}; os arquivos ficam em dados/assistente/anexos/despesa-<id>/.
+    `
+    ALTER TABLE despesas ADD COLUMN comentario_ia_anexos TEXT;
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }
