@@ -4,6 +4,7 @@
     "rotulo": "CRÉDITO INTER",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "Inter - Conta Corrente",
     "apelidos": [
       "credito inter",
       "cartao inter",
@@ -15,6 +16,7 @@
     "rotulo": "CRÉDITO C6",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "C6 - Conta Corrente LP",
     "apelidos": [
       "credito c6",
       "cartao c6",
@@ -26,13 +28,29 @@
     "rotulo": "CRÉDITO BB",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "Banco do Brasil - Conta Corrente",
     "apelidos": [
       "credito bb",
-      "cartao bb",
       "bb credito",
       "bb - credito",
+      "cartao bb credito",
+      "credito banco do brasil"
+    ]
+  },
+  {
+    "codigo": "BB_DEBITO",
+    "rotulo": "DÉBITO BB",
+    "forma_pagamento": "CARTAO_DEBITO",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": "Banco do Brasil - Conta Corrente",
+    "apelidos": [
+      "debito bb",
+      "bb debito",
+      "bb - debito",
+      "cartao bb debito",
+      "debito banco do brasil",
+      "cartao bb",
       "banco do brasil",
-      "cartao banco do brasil",
       "bb"
     ]
   },
@@ -41,6 +59,7 @@
     "rotulo": "C6 - LP",
     "forma_pagamento": "PIX",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "C6 - Conta Corrente LP",
     "apelidos": [
       "c6 lp",
       "c6 - lp",
@@ -53,6 +72,7 @@
     "rotulo": "C6 - SN",
     "forma_pagamento": "PIX",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "C6 - Conta Corrente - SN",
     "apelidos": [
       "c6 sn",
       "c6 - sn",
@@ -65,6 +85,7 @@
     "rotulo": "CRÉDITO PORTO",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "Porto Seguro - Conta Corrente",
     "apelidos": [
       "credito porto",
       "cartao porto",

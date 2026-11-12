@@ -1,23 +1,23 @@
 {
   "_leia_me": "Gerado por ferramentas/importar-catalogo-conta-azul.js a partir da exportação do Conta Azul. Não edite à mão: exporte de novo e rode a ferramenta.",
-  "gerado_em": "2026-10-26T20:16:11.370Z",
+  "gerado_em": "2026-11-09T01:01:20.836Z",
   "fonte": "visao_contas_a_pagar (3).xlsx",
   "lancamentos": 14073,
   "centros": [
     {
       "nome": "DESPESAS ADMINISTRATIVAS",
       "usos": 4922,
-      "ultimo_uso": "2026-10-26"
+      "ultimo_uso": "2026-11-09"
     },
     {
       "nome": "53.655.381/0001-03",
       "usos": 643,
-      "ultimo_uso": "2026-10-18"
+      "ultimo_uso": "2026-11-07"
     },
     {
       "nome": "INVESTIMENTO",
       "usos": 594,
-      "ultimo_uso": "2026-10-26"
+      "ultimo_uso": "2026-11-03"
     },
     {
       "nome": "DYNATEST INVT. NORDESTE",
@@ -117,7 +117,7 @@
     {
       "nome": "33.229.221/0001-95",
       "usos": 141,
-      "ultimo_uso": "2026-09-30"
+      "ultimo_uso": "2026-10-30"
     },
     {
       "nome": "FWD GOIÁS",
@@ -384,7 +384,7 @@
     {
       "nome": "Salários",
       "usos": 812,
-      "ultimo_uso": "2026-10-07"
+      "ultimo_uso": "2026-11-07"
     },
     {
       "nome": "Refeição - jantar",
@@ -394,7 +394,7 @@
     {
       "nome": "Diversos",
       "usos": 487,
-      "ultimo_uso": "2026-10-05"
+      "ultimo_uso": "2026-11-05"
     },
     {
       "nome": "Alimentação",
@@ -409,7 +409,7 @@
     {
       "nome": "MATERIAL DE CAMPO",
       "usos": 345,
-      "ultimo_uso": "2026-10-21"
+      "ultimo_uso": "2026-10-28"
     },
     {
       "nome": "Empréstimos de Bancos",
@@ -424,7 +424,7 @@
     {
       "nome": "Honorários Contábeis",
       "usos": 249,
-      "ultimo_uso": "2026-10-10"
+      "ultimo_uso": "2026-10-30"
     },
     {
       "nome": "GOL - RLQ4C16",
@@ -459,7 +459,7 @@
     {
       "nome": "Telefonia e Internet",
       "usos": 192,
-      "ultimo_uso": "2026-10-15"
+      "ultimo_uso": "2026-11-09"
     },
     {
       "nome": "Café da Manhã",
@@ -469,7 +469,7 @@
     {
       "nome": "Veículos",
       "usos": 168,
-      "ultimo_uso": "2026-10-10"
+      "ultimo_uso": "2026-11-03"
     },
     {
       "nome": "S10 - REP7B39",
@@ -484,7 +484,7 @@
     {
       "nome": "Impostos",
       "usos": 132,
-      "ultimo_uso": "2026-10-20"
+      "ultimo_uso": "2026-10-31"
     },
     {
       "nome": "VEICULO - ALUGADO",
@@ -509,7 +509,7 @@
     {
       "nome": "Plano de Saúde Sócios",
       "usos": 122,
-      "ultimo_uso": "2026-09-29"
+      "ultimo_uso": "2026-10-29"
     },
     {
       "nome": "Materiais p/ Escritório",
@@ -639,7 +639,7 @@
     {
       "nome": "Aluguel",
       "usos": 43,
-      "ultimo_uso": "2026-10-10"
+      "ultimo_uso": "2026-11-07"
     },
     {
       "nome": "Viagens e Representações",
@@ -664,12 +664,12 @@
     {
       "nome": "SERVIÇO DE INTERNET",
       "usos": 40,
-      "ultimo_uso": "2026-10-07"
+      "ultimo_uso": "2026-10-28"
     },
     {
       "nome": "Tarifas",
       "usos": 39,
-      "ultimo_uso": "2026-10-22"
+      "ultimo_uso": "2026-10-28"
     },
     {
       "nome": "MANUTENÇÃO ETIOS JKM0196",
@@ -739,7 +739,7 @@
     {
       "nome": "APLICATIVO",
       "usos": 24,
-      "ultimo_uso": "2026-09-28"
+      "ultimo_uso": "2026-10-28"
     },
     {
       "nome": "CAMINHÃO F14K - CQA6B42",
@@ -749,7 +749,7 @@
     {
       "nome": "Condomínio",
       "usos": 24,
-      "ultimo_uso": "2026-10-05"
+      "ultimo_uso": "2026-11-05"
     },
     {
       "nome": "Água e Saneamento",
@@ -1251,7 +1251,7 @@
     {
       "nome": "EVERSON MIQUELINO",
       "usos": 120,
-      "ultimo_uso": "2026-10-07"
+      "ultimo_uso": "2026-11-07"
     },
     {
       "nome": "Oficina Mecanica",

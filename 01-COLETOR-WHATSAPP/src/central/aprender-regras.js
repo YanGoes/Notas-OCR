@@ -181,10 +181,15 @@ function confirmarEReclassificar(db, cad, regras, autor, { regenerar, opcoes = {
     return reclassificar(db, cad, { regenerar, opcoes });
 }
 
-function reclassificar(db, cad, { regenerar, opcoes = {} }) {
-    const ids = db.prepare(`SELECT d.id FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
+/**
+ * `filtroIds`: quando informado, so refaz essas notas (ex.: so as de um operador
+ * ou de um centro), em vez de TODAS as elegiveis (atalho 14 / botao Confirmar).
+ */
+function reclassificar(db, cad, { regenerar, opcoes = {}, filtroIds = null }) {
+    let ids = db.prepare(`SELECT d.id FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
         WHERE d.estado IN ('AGUARDANDO_REVISAO', 'CLASSIFICADO') AND d.mensagem_ref IS NOT NULL AND NOT ${SIMULADA_SQL}
           AND NOT EXISTS (SELECT 1 FROM correcoes c WHERE c.despesa_id = d.id)`).all().map((l) => l.id);
+    if (Array.isArray(filtroIds)) ids = ids.filter((id) => filtroIds.includes(id));
     const resumo = { reclassificadas: 0, centros_preenchidos: 0, cartoes_preenchidos: 0, placas_deduzidas: 0, sem_pendencia: 0, falhas: [] };
     const ler = (id) => db.prepare("SELECT campos, pendencias FROM despesas WHERE id = ?").get(id);
     for (const id of ids) {

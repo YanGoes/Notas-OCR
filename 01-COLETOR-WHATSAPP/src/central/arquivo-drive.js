@@ -177,6 +177,40 @@ function arquivarPendentes(db, cad, { config = lerConfig(), simular = false, loc
     return relatorio;
 }
 
+// -----------------------------------------------------------------------------
+// LINK DA FOTO NO DRIVE
+// O Drive para computador guarda o ID de cada arquivo num fluxo ao lado dele
+// ("<arquivo>:user.drive.id"). Foto recem-copiada comeca com um ID provisorio
+// ("local-123") e ganha o definitivo quando o envio termina (~7 s, medido em
+// 11/11/2026). So o definitivo vira link.
+// -----------------------------------------------------------------------------
+const ID_DEFINITIVO = /^[A-Za-z0-9_-]{20,}$/;
+
+function idNoDrive(caminho) {
+    try {
+        const id = fs.readFileSync(`${caminho}:user.drive.id`, "utf8").trim();
+        return ID_DEFINITIVO.test(id) && !/^local-/i.test(id) ? id : null;
+    } catch (_) { return null; }
+}
+
+const linkDoId = (id) => `https://drive.google.com/file/d/${id}/view`;
+
+/**
+ * Link da foto arquivada de uma midia. Devolve { link, caminho } ou
+ * { link: null, motivo, aguardar } — `aguardar` diz que vale tentar de novo em
+ * instantes (o Drive ainda esta enviando).
+ */
+function linkDaFoto(db, midiaId, { config = lerConfig(), lerId = idNoDrive } = {}) {
+    const opcoes = config.central?.arquivo_drive || {};
+    if (!opcoes.habilitado || !opcoes.raiz) return { link: null, motivo: "o arquivo das fotos no Drive está desligado" };
+    const linha = midiaId ? db.prepare("SELECT caminho FROM arquivos_drive WHERE midia_id = ? AND raiz = ?").get(midiaId, String(opcoes.raiz)) : null;
+    if (!linha) return { link: null, motivo: "a foto ainda não foi copiada para o Drive" };
+    if (!fs.existsSync(linha.caminho)) return { link: null, caminho: linha.caminho, motivo: "a cópia da foto não está mais na pasta do Drive (ou o Google Drive está fechado)" };
+    const id = lerId(linha.caminho);
+    if (!id) return { link: null, caminho: linha.caminho, aguardar: true, motivo: "o Google Drive ainda não terminou de enviar a foto" };
+    return { link: linkDoId(id), caminho: linha.caminho };
+}
+
 /** Roda sozinho de tempos em tempos (Drive fechado: tenta de novo depois). */
 function agendar(obterBanco, obterCadastros, { intervaloMs = 10 * 60 * 1000 } = {}) {
     const rodar = () => {
@@ -193,4 +227,4 @@ function agendar(obterBanco, obterCadastros, { intervaloMs = 10 * 60 * 1000 } = 
     setInterval(rodar, intervaloMs).unref();
 }
 
-module.exports = { arquivarPendentes, fotosParaArquivar, destinoDe, pastaDoOperador, nomeDoArquivo, partesDoModelo, agendar, MODELO_PADRAO };
+module.exports = { arquivarPendentes, fotosParaArquivar, destinoDe, pastaDoOperador, nomeDoArquivo, partesDoModelo, agendar, MODELO_PADRAO, linkDaFoto, idNoDrive, linkDoId };

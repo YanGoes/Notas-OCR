@@ -276,6 +276,21 @@
       ],
       "busca_centro_conta_azul": "IMTRAFF - MOTIVA RIO/SP (FWD/ADE)",
       "cartao": "INTER"
+    },
+    {
+      "nome_oficial": "DYNA BR 262 MG/ES - INFRA SA",
+      "id_sistema_projetos": null,
+      "centro_conta_azul": "CTVM - LP - DYNA BR 262 MG/ES - INFRA SA",
+      "id_conta_azul": null,
+      "ativo": true,
+      "servico": "FWD",
+      "apelidos": [
+        "MG/ES",
+        "DYNA BR 262 MG/ES",
+        "BR 262 MG/ES"
+      ],
+      "busca_centro_conta_azul": "DYNA BR 262 MG/ES",
+      "cartao": "INTER"
     }
   ]
 }

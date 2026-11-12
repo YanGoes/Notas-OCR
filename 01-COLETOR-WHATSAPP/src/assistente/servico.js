@@ -45,7 +45,7 @@ function registrarMensagem(db, conversaId, papel, texto, dados = null) {
  * Envia uma mensagem e espera a resposta. `emitir` recebe os eventos ao vivo.
  * @param {object} opcoes.rodar — troca o motor (testes)
  */
-async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = null, emitir = () => {}, rodar = assinatura.rodarTurno, modelo = "", sinal = null, pastaAnexos = undefined }) {
+async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = null, emitir = () => {}, rodar = assinatura.rodarTurno, modelo = "", esforco = "", sinal = null, pastaAnexos = undefined }) {
     const quem = conferirPessoa(pessoa);
     const temAnexo = Array.isArray(arquivos) && arquivos.length > 0;
     const pergunta = String(texto || "").trim() || (temAnexo ? "Veja o(s) anexo(s)." : "");
@@ -77,7 +77,7 @@ async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = n
         registrarMensagem(db, id, "pessoa", pergunta, { pessoa: quem, ...(resumo.length ? { anexos: resumo } : {}) });
         const prompt = `[${quem} está falando · ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}]\n\n${pergunta}`;
         // Modo completo (arquivos, comandos, Drive, web) so para quem pode confirmar acoes.
-        const resultado = await rodar({ texto: prompt, blocos, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, sinal, completo: PODEM_CONFIRMAR.includes(quem) });
+        const resultado = await rodar({ texto: prompt, blocos, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, esforco, sinal, completo: PODEM_CONFIRMAR.includes(quem) });
         if (resultado.sessao) db.prepare("UPDATE assistente_conversas SET sessao = ? WHERE id = ?").run(resultado.sessao, id);
         registrarMensagem(db, id, "assistente", resultado.texto || "(sem resposta)", { tipo: resultado.tipo });
         // So a primeira proposta da resposta vale (o assistente e instruido a parar nela).

@@ -30,6 +30,8 @@ const porta = Number(process.env.PORT || 3211);
 app.use("/api/documentos/upload", express.json({ limit: "15mb" }));
 // Anexos do assistente (imagens, videos, PDFs) tambem vao em base64.
 app.use("/api/central/assistente/enviar", express.json({ limit: "150mb" }));
+// Prints anexados ao comentario para a IA (Central) tambem vao em base64.
+app.use("/api/central/despesas/:id/comentario", express.json({ limit: "30mb" }));
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
     if (req.path === "/" || /\.(?:html|js|css)$/i.test(req.path)) {

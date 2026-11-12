@@ -607,22 +607,27 @@ function filtroPeriodo({ de = null, ate = null, pela = "nota" } = {}) {
  * `operadores` traz, para a aba atual, quantas notas cada operador tem
  * (operadores do cadastro aparecem mesmo com zero).
  */
-function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null, de = null, ate = null, pela = "nota" } = {}) {
+const TIPO_SQL = "json_extract(d.campos, '$.tipo.valor')";
+
+function listar(db, { aba = "revisar", limite = 300, operador = null, tipo = null, cad = null, de = null, ate = null, pela = "nota" } = {}) {
     if (!ABAS[aba]) aba = "revisar";
     const estados = ABAS[aba];
     const origem = filtroOrigem(aba);
     const marcadores = estados.map(() => "?").join(",");
     const filtrarOperador = operador && operador !== "todos";
+    const filtrarTipo = tipo && tipo !== "todos";
     const periodo = filtroPeriodo({ de, ate, pela });
     // Com periodo escolhido a pessoa quer ver tudo daquele intervalo.
     const teto = periodo.ativo ? 2000 : 1000;
+    const filtrosExtra = `${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""} ${filtrarTipo ? `AND ${TIPO_SQL} = ?` : ""}`;
+    const parametrosExtra = [...(filtrarOperador ? [String(operador)] : []), ...(filtrarTipo ? [String(tipo)] : [])];
     const linhas = db.prepare(`
         SELECT d.*, m.recebida_em, msg.remetente_nome, ${OPERADOR_SQL} AS operador,
             (SELECT COUNT(*) FROM correcoes c WHERE c.despesa_id = d.id) AS correcoes
         FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
-        WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} ${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""}
+        WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} ${filtrosExtra}
         ORDER BY ${periodo.ativo && pela !== "recebida" ? `${DATA_DA_NOTA_SQL} DESC,` : ""} COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
-        .all(...estados, ...periodo.parametros, ...(filtrarOperador ? [String(operador)] : []), periodo.ativo ? teto : Math.min(Number(limite) || 300, teto));
+        .all(...estados, ...periodo.parametros, ...parametrosExtra, periodo.ativo ? teto : Math.min(Number(limite) || 300, teto));
     const contagem = Object.fromEntries(Object.keys(ABAS).map((nome) => [nome, 0]));
     for (const { estado, simulada, total } of db.prepare(`SELECT d.estado, (${SIMULADA_SQL}) AS simulada, COUNT(*) AS total
         FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref GROUP BY 1, 2`).all()) {
@@ -635,18 +640,28 @@ function listar(db, { aba = "revisar", limite = 300, operador = null, cad = null
     for (const pessoa of cad?.pessoas || []) {
         if (pessoa.papel === "OPERADOR") porOperador.set(pessoa.id, { id: pessoa.id, nome: pessoa.nome, total: 0 });
     }
+    // Operadores e tipos: contados so com aba/periodo (sem o proprio filtro de operador/tipo),
+    // para os chips/select mostrarem quanto tem de cada opcao mesmo com outro filtro ja escolhido.
     for (const linha of db.prepare(`
         SELECT ${OPERADOR_SQL} AS operador, MAX(msg.remetente_nome) AS remetente_nome, COUNT(*) AS total
         FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
-        WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} GROUP BY operador`).all(...estados, ...periodo.parametros)) {
+        WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} ${filtrarTipo ? `AND ${TIPO_SQL} = ?` : ""} GROUP BY operador`)
+        .all(...estados, ...periodo.parametros, ...(filtrarTipo ? [String(tipo)] : []))) {
         porOperador.set(linha.operador, { id: linha.operador, nome: nomeDoOperador(linha.operador, nomes, linha.remetente_nome), total: linha.total });
     }
     const operadores = [...porOperador.values()]
         .sort((a, b) => (a.id === SEM_OPERADOR) - (b.id === SEM_OPERADOR) || b.total - a.total || a.nome.localeCompare(b.nome));
+    const tipos = db.prepare(`
+        SELECT ${TIPO_SQL} AS tipo, COUNT(*) AS total
+        FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
+        WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} ${filtrarOperador ? `AND ${OPERADOR_SQL} = ?` : ""} GROUP BY tipo`)
+        .all(...estados, ...periodo.parametros, ...(filtrarOperador ? [String(operador)] : []))
+        .map((linha) => ({ codigo: linha.tipo || "SEM_TIPO", total: linha.total }))
+        .sort((a, b) => b.total - a.total);
     const itens = linhas.map(resumo);
     const soma = itens.reduce((total, item) => total + (Number(item.valor) || 0), 0);
     return {
-        itens, contagem, operadores, total_da_aba: operadores.reduce((total, item) => total + item.total, 0),
+        itens, contagem, operadores, tipos, total_da_aba: operadores.reduce((total, item) => total + item.total, 0),
         periodo: periodo.ativo ? { de: de || null, ate: ate || null, pela: pela === "recebida" ? "recebida" : "nota", notas: itens.length, valor: Math.round(soma * 100) / 100 } : null,
     };
 }

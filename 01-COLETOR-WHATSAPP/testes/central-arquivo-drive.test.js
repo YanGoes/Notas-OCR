@@ -95,3 +95,25 @@ test("Drive fechado ou desligado nao derruba nada", () => {
     assert.match(drive.arquivarPendentes(c.db, {}, { config: { central: { arquivo_drive: { habilitado: true, raiz: "Z:\\nao-existe" } } } }).erro, /indisponível/);
     assert.equal(drive.arquivarPendentes(c.db, {}, { config: {} }).desligado, true);
 });
+
+test("link da foto: so com a copia no Drive e o ID definitivo", () => {
+    const c = cenario();
+    const a = c.despesa({ operador: "Almir" });
+    const idDefinitivo = "1Is6u32kmlssT9FdgsiPLhnsMpy9UsKFp";
+    assert.match(drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => idDefinitivo }).motivo, /ainda não foi copiada/);
+    drive.arquivarPendentes(c.db, { pessoas: [] }, { config: c.config, localizar: c.localizar });
+    const pronto = drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => idDefinitivo });
+    assert.equal(pronto.link, `https://drive.google.com/file/d/${idDefinitivo}/view`);
+    assert.ok(fs.existsSync(pronto.caminho));
+    // Drive ainda enviando (ID provisorio ou sem ID): sem link, mas vale esperar.
+    const enviando = drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => null });
+    assert.equal(enviando.link, null);
+    assert.equal(enviando.aguardar, true);
+    // Pasta comum (fora do Drive) nao tem ID: a leitura real devolve nulo, sem derrubar.
+    assert.equal(drive.idNoDrive(pronto.caminho), null);
+    assert.equal(drive.linkDaFoto(c.db, a.midiaId, { config: c.config }).link, null);
+    // Copia apagada da pasta, ou arquivo desligado: sem link e sem esperar.
+    fs.unlinkSync(pronto.caminho);
+    assert.match(drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => idDefinitivo }).motivo, /não está mais na pasta/);
+    assert.match(drive.linkDaFoto(c.db, a.midiaId, { config: {} }).motivo, /desligado/);
+});

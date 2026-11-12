@@ -8,7 +8,13 @@
 
 (() => {
     const API = "/api/central/assistente";
-    const MODELOS = [["", "Padrão"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku"]];
+    const MODELOS = [
+        ["", "Padrão (recomendado)", "o que a assinatura escolher"],
+        ["opus", "Opus", "o melhor para o dia a dia, tarefas complexas"],
+        ["sonnet", "Sonnet", "rápido para tarefas de rotina"],
+        ["haiku", "Haiku", "o mais rápido, respostas curtas"],
+    ];
+    const ESFORCOS = [["low", "Baixo"], ["medium", "Médio"], ["high", "Alto"], ["xhigh", "Muito alto"], ["max", "Máximo"]];
     const chat = { conversa: null, pessoa: null, ocupado: false, estado: null, aberto: false, montado: false, anexos: [] };
     // Mesmos limites do servidor (src/assistente/anexos.js).
     const LIMITE_MB = { imagem: 20, pdf: 30, video: 80, outro: 10 };
@@ -198,18 +204,79 @@
 
     async function listarConversas() {
         const lista = await api("/conversas");
-        const seletor = document.getElementById("assConversas");
-        seletor.replaceChildren(el("option", { value: "" }, "Nova conversa"),
-            ...lista.map((c) => el("option", { value: c.id, selected: c.id === chat.conversa }, `${c.titulo || `Conversa ${c.id}`} · ${c.pessoa} · ${quando(c.atualizada_em)}`)));
+        const painel = document.getElementById("assConversasPainel");
+        const rotulo = document.getElementById("assConversasRotulo");
+        if (!painel || !rotulo) return;
+        const atual = lista.find((c) => c.id === chat.conversa);
+        rotulo.textContent = atual ? (atual.titulo || `Conversa ${atual.id}`) : "Nova conversa";
+        const fecharEAbrir = (id) => { painel.hidden = true; document.getElementById("assConversasBotao")?.setAttribute("aria-expanded", "false"); abrirConversa(id).catch((erro) => status(erro.message, true)); };
+        const item = (texto, ativo, onclick) => el("button", { type: "button", class: `ass-conv-item${ativo ? " ativa" : ""}`, role: "option", "aria-selected": ativo, onclick }, texto);
+        painel.replaceChildren(
+            item("＋ Nova conversa", !chat.conversa, () => fecharEAbrir(null)),
+            ...lista.map((c) => item(`${c.titulo || `Conversa ${c.id}`} · ${quando(c.atualizada_em)}`, c.id === chat.conversa, () => fecharEAbrir(c.id))));
+    }
+
+    /** Lista de conversas em painel suspenso (em vez de <select> nativo). */
+    function construirConversas() {
+        const botao = el("button", { type: "button", id: "assConversasBotao", class: "ass-conv-botao", "aria-haspopup": "listbox", "aria-expanded": "false" },
+            el("span", { id: "assConversasRotulo" }, "Nova conversa"), el("span", { class: "ass-conv-seta", "aria-hidden": "true" }, "⌄"));
+        const painel = el("div", { id: "assConversasPainel", class: "ass-conv-painel", role: "listbox", hidden: true });
+        const alternar = (abrir) => { painel.hidden = !abrir; botao.setAttribute("aria-expanded", abrir ? "true" : "false"); };
+        botao.addEventListener("click", () => alternar(painel.hidden));
+        document.addEventListener("click", (e) => { if (!painel.hidden && !e.target.closest(".ass-conv")) alternar(false); });
+        return el("div", { class: "ass-conv" }, botao, painel);
+    }
+
+    /** Modelo e esforço: botão de engrenagem que abre um painel com as opções (igual escolha de conversa). */
+    function construirConfig() {
+        const modeloAtual = () => guardar("vmac-chat-modelo") || "";
+        const esforcoAtual = () => guardar("vmac-chat-esforco") || "medium";
+        const botao = el("button", { type: "button", id: "assConfigBotao", class: "ass-icone", title: "Modelo e esforço", "aria-label": "Modelo e esforço", "aria-haspopup": "true", "aria-expanded": "false" }, "⚙");
+        const painel = el("div", { id: "assConfigPainel", class: "ass-config-painel", hidden: true });
+        const alternar = (abrir) => { painel.hidden = !abrir; botao.setAttribute("aria-expanded", abrir ? "true" : "false"); if (abrir) desenharConfig(); };
+        botao.addEventListener("click", () => alternar(painel.hidden));
+        document.addEventListener("click", (e) => { if (!painel.hidden && !e.target.closest(".ass-config")) alternar(false); });
+
+        function desenharConfig() {
+            const modelo = modeloAtual();
+            const esforco = esforcoAtual();
+            const nivel = Math.max(0, ESFORCOS.findIndex(([v]) => v === esforco));
+            const itemModelo = ([v, titulo, desc]) => el("button", { type: "button", class: `ass-config-item${v === modelo ? " ativa" : ""}`,
+                onclick: () => { guardar("vmac-chat-modelo", v); desenharConfig(); } },
+                el("span", { class: "ass-config-item-texto" }, el("b", {}, titulo), el("small", {}, desc)),
+                v === modelo ? el("span", { class: "ass-config-check", "aria-hidden": "true" }, "✓") : null);
+            const slider = el("input", { type: "range", min: 0, max: ESFORCOS.length - 1, step: 1, value: nivel, class: "ass-esforco-slider", "aria-label": "Esforço",
+                oninput: (e) => { guardar("vmac-chat-esforco", ESFORCOS[Number(e.target.value)][0]); document.getElementById("assEsforcoRotulo").textContent = `Esforço (${ESFORCOS[Number(e.target.value)][1]})`; } });
+            painel.replaceChildren(
+                el("div", { class: "ass-config-titulo" }, "Escolha o modelo"),
+                ...MODELOS.map(itemModelo),
+                el("div", { class: "ass-config-divisor" }),
+                el("div", { id: "assEsforcoRotulo", class: "ass-config-titulo" }, `Esforço (${ESFORCOS[nivel][1]})`),
+                slider,
+                el("div", { class: "ass-esforco-pontos" }, ESFORCOS.map(() => el("span", {}))));
+        }
+        return el("div", { class: "ass-config" }, botao, painel);
+    }
+
+    /** Quem está usando o assistente: reaproveita o nome do campo Revisor (Central) ou o
+     * ultimo escolhido aqui, sem perguntar — sem campo visivel no painel. */
+    function detectarPessoa(usuarios) {
+        const salvo = guardar("vmac-chat-pessoa");
+        if (salvo && usuarios.includes(salvo)) return salvo;
+        let revisor = null;
+        try { revisor = localStorage.getItem("vmac-revisor"); } catch (_) { /* sem armazenamento */ }
+        if (revisor) {
+            const achado = usuarios.find((u) => u.toLowerCase() === revisor.trim().toLowerCase());
+            if (achado) return achado;
+        }
+        return usuarios[0] || null;
     }
 
     async function enviar() {
         const caixa = document.getElementById("assTexto");
         const texto = caixa.value.trim();
         if ((!texto && !chat.anexos.length) || chat.ocupado) return;
-        chat.pessoa = document.getElementById("assPessoa").value;
-        if (!chat.pessoa) { status("Escolha quem está falando (no topo do painel).", true); document.getElementById("assPessoa").focus(); return; }
-        guardar("vmac-chat-pessoa", chat.pessoa);
+        if (!chat.pessoa) { status("Não consegui identificar quem está usando o assistente.", true); return; }
         chat.ocupado = true;
         document.getElementById("assEnviar").disabled = true;
         document.getElementById("assParar").hidden = false;
@@ -229,7 +296,7 @@
         let final = null;
         try {
             const http = await fetch(`${API}/enviar`, { method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ pessoa: chat.pessoa, texto, conversa_id: chat.conversa, modelo: document.getElementById("assModelo").value,
+                body: JSON.stringify({ pessoa: chat.pessoa, texto, conversa_id: chat.conversa, modelo: guardar("vmac-chat-modelo") || "", esforco: guardar("vmac-chat-esforco") || "",
                     anexos: enviados.map((a) => ({ nome: a.nome, tipo: a.tipo, dados: a.dados })) }) });
             if (!http.ok || !http.body) throw new Error(http.status === 413 ? "Anexos grandes demais para enviar de uma vez." : `Erro ${http.status}`);
             const leitor = http.body.getReader();
@@ -284,12 +351,10 @@
         return `${(rotulos[ev.nome] || (() => `Consultando: ${String(ev.nome).replaceAll("_", " ")}`))()}…`;
     }
 
-    /** Modo completo (arquivos, comandos, Drive, web) so para quem pode confirmar acoes. */
+    /** So mostra algo no subtitulo quando o assistente esta indisponivel (motivo do erro). */
     function mostrarModo() {
         if (!chat.estado) return;
-        const completo = (chat.estado.podem_confirmar || []).includes(chat.pessoa);
-        document.getElementById("assEstado").textContent = !chat.estado.disponivel ? chat.estado.mensagem
-            : `Claude da empresa · ${completo ? "modo completo: arquivos, comandos, Drive e web" : "só consultas do programa"}`;
+        document.getElementById("assEstado").textContent = chat.estado.disponivel ? "" : chat.estado.mensagem;
     }
 
     function mostrarUso(ev) {
@@ -319,13 +384,11 @@
         chat.montado = true;
         const painel = el("aside", { id: "assPainel", class: "ass-painel", "aria-label": "Assistente", hidden: true },
             el("header", { class: "ass-topo" },
-                el("div", { class: "ass-titulo" }, el("b", {}, "Assistente"), el("small", { id: "assEstado" }, "")),
-                el("div", { class: "ass-acoes" },
+                el("div", { class: "ass-titulo" }, el("b", {}, "Assistente VMac"), el("small", { id: "assEstado" }, "")),
+                el("div", { class: "ass-acoes-topo" },
                     el("button", { type: "button", class: "ghost", title: "Nova conversa", onclick: () => abrirConversa(null) }, "＋"),
                     el("button", { type: "button", class: "ghost", title: "Fechar (Ctrl+Shift+A)", onclick: () => alternar(false) }, "✕"))),
-            el("div", { class: "ass-opcoes" },
-                el("select", { id: "assPessoa", "aria-label": "Quem está falando" }),
-                el("select", { id: "assConversas", "aria-label": "Conversas anteriores" })),
+            el("div", { class: "ass-opcoes" }, construirConversas()),
             el("div", { id: "assMensagens", class: "ass-mensagens" }),
             el("div", { id: "assSugestoes", class: "ass-sugestoes", hidden: true }),
             el("div", { id: "assStatus", class: "ass-status", role: "status" }),
@@ -337,7 +400,7 @@
                         el("input", { id: "assArquivo", type: "file", multiple: true, accept: ACEITOS, hidden: true }),
                         el("button", { type: "button", class: "ass-icone", title: "Anexar imagens, vídeos, PDFs, planilhas… (ou arraste / cole com Ctrl+V)", "aria-label": "Anexar arquivos",
                             onclick: () => document.getElementById("assArquivo").click() }, "📎"),
-                        el("select", { id: "assModelo", class: "ass-modelo", "aria-label": "Modelo" }, MODELOS.map(([v, r]) => el("option", { value: v }, r))),
+                        construirConfig(),
                         el("span", { class: "ass-espaco" }),
                         el("button", { id: "assParar", type: "button", class: "ass-icone", hidden: true, title: "Parar", "aria-label": "Parar", onclick: () => api("/parar", {}) }, "■"),
                         el("button", { id: "assEnviar", type: "button", class: "ass-enviar", title: "Enviar (Enter)", "aria-label": "Enviar", onclick: enviar }, "➤"))),
@@ -360,18 +423,12 @@
         painel.addEventListener("dragleave", () => { arrastando = Math.max(0, arrastando - 1); if (!arrastando) soltar.hidden = true; });
         painel.addEventListener("drop", (e) => { if (!temArquivos(e)) return; e.preventDefault(); arrastando = 0; soltar.hidden = true; adicionarArquivos(e.dataTransfer.files); });
         document.getElementById("assTexto").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } });
-        document.getElementById("assModelo").value = guardar("vmac-chat-modelo") || "";
-        document.getElementById("assModelo").addEventListener("change", (e) => guardar("vmac-chat-modelo", e.target.value));
-        document.getElementById("assPessoa").addEventListener("change", (e) => { chat.pessoa = e.target.value; guardar("vmac-chat-pessoa", e.target.value); mostrarModo(); });
-        document.getElementById("assConversas").addEventListener("change", (e) => abrirConversa(e.target.value ? Number(e.target.value) : null).catch((erro) => status(erro.message, true)));
     }
 
     async function carregar() {
         chat.estado = await api("/estado");
-        const salvo = guardar("vmac-chat-pessoa") || "";
-        const seletor = document.getElementById("assPessoa");
-        seletor.replaceChildren(el("option", { value: "" }, "Quem está falando?"), ...chat.estado.usuarios.map((u) => el("option", { value: u, selected: u === salvo }, u)));
-        chat.pessoa = seletor.value || null;
+        chat.pessoa = detectarPessoa(chat.estado.usuarios || []);
+        if (chat.pessoa) guardar("vmac-chat-pessoa", chat.pessoa);
         mostrarModo();
         document.getElementById("assEnviar").disabled = !chat.estado.disponivel;
         await abrirConversa(chat.conversa);

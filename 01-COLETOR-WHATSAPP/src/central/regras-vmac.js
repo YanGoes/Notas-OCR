@@ -99,6 +99,10 @@ const OFICINAS = ["oficina", "mecanica", "mecan", "auto pecas", "autopecas", "au
 // Bebida sozinha (Coca, energetico, suco) nao e lanche: vai como OUTROS em Lanches e Refeicoes (#293).
 const BEBIDAS = ["refrigerante", "refrig", "coca", "coca cola", "guarana", "fanta", "sprite", "pepsi", "energetico", "monster", "red bull", "redbull",
     "suco", "cha gelado", "isotonico", "gatorade", "powerade", "cerveja", "agua de coco", "achocolatado", "toddynho"];
+// Itens de lanche (doce, salgadinho, biscoito...), sem prato principal nenhum: nao da pra
+// almocar so chocolate e energetico, mesmo as 11h30 (orientacao do Yan, nota #441 do Lorran, 08/11/2026).
+const ITENS_SO_DE_LANCHE = ["chocolate", "choc", "bombom", "bolacha", "biscoito", "salgadinho", "chips", "bala", "doce", "barra de cereal", "wafer", "chiclete",
+    "salgado", "pastel", "coxinha", "esfirra", "empada", "pao de queijo", "pao", "sanduiche", "misto", "biscoito", "bolo", "sorvete", "picole"];
 // Corrida de aplicativo/taxi: categoria "Transporte Urbano (taxi, Uber)" (#248).
 const TRANSPORTES = ["uber", "99app", "99 pop", "99pop", "99 taxi", "taxi", "cabify", "indriver", "indrive"];
 const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "padaria", "panificadora", "confeitaria",
@@ -114,6 +118,11 @@ const LOJAS_MATERIAL = ["ferragem", "ferragens", "material de construcao", "mate
     "madeireira", "materiais eletricos", "material eletrico", "hidraulica", "tintas", "parafusos", "loja de ferramentas"];
 const ITENS_MATERIAL = ["parafuso", "parafusos", "porca sextavada", "arruela", "cola contato", "cascola", "super cola", "fita isolante", "fita crepe",
     "abracadeira", "lampada", "pincel", "broca", "alicate", "martelo", "trena", "silicone", "cimento", "prego", "dobradica", "cadeado"];
+// EPI (equipamento de protecao individual): quando a nota e so isso, a descricao vira
+// "MATERIAL DE EPI" em vez do nome do item (#412 — orientacao do Yan, 08/11/2026).
+const ITENS_EPI = ["mascara", "bota", "botina", "oculos de protecao", "oculos de seguranca", "capacete", "luva", "luvas",
+    "protetor auricular", "protetor auditivo", "cinto de seguranca", "roupa de protecao", "uniforme", "colete", "capa de chuva", "protetor solar", "abafador"];
+const ehItemDeEpi = (texto) => ITENS_EPI.some((termo) => contemTermo(texto, termo));
 
 // Base de produtos editavel (configuracao/produtos.json): o que a VMac compra em
 // campo (ferramentas, eletrica, colas e fitas, EPI, limpeza, escritorio...).
@@ -255,6 +264,20 @@ function subtipoRefeicao(ocr, lote, origemBase) {
     return { tipo: "LANCHE", origem: origemBase, pendencia: "Refeição sem horário legível; confirme se é café, almoço, jantar ou lanche." };
 }
 
+/**
+ * Os itens LIDOS da nota (quando ha) sao so bebida/doce/salgadinho, sem nenhum
+ * prato principal (marmita, PF, executivo...): nao da pra "almocar" so isso,
+ * entao e lanche mesmo em horario de almoco/jantar (#441 do Lorran: agua,
+ * energetico, chocolate e pao de queijo as 11h30 — "Lanche - 2 pessoas" na legenda).
+ */
+function itensSaoSoDeLanche(ocr) {
+    const itensLidos = (ocr?.itens || []).filter((item) => item.descricao);
+    if (!itensLidos.length) return false;
+    if (itensLidos.some((item) => PRATOS_PRINCIPAIS.some((termo) => contemTermo(item.descricao, termo)))) return false;
+    const ehLanche = (descricao) => BEBIDAS.some((termo) => contemTermo(descricao, termo)) || ITENS_SO_DE_LANCHE.some((termo) => contemTermo(descricao, termo));
+    return itensLidos.filter((item) => ehLanche(item.descricao)).length >= itensLidos.length / 2;
+}
+
 const ehRefeicao = (tipo) => tipo === "REFEICAO" || Boolean(TIPOS[tipo]?.refeicao);
 
 function decidirTipo({ ocr, legenda, lote }) {
@@ -271,7 +294,9 @@ function decidirTipo({ ocr, legenda, lote }) {
         }
         if (daLegenda === "REFEICAO") return subtipoRefeicao(ocr, lote, "legenda_da_foto");
         // Refeicao: a NOTA manda. Legenda "Jantar" numa nota das 12:40 e almoco (#132).
-        if (["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE"].includes(daLegenda) && ocr?.hora) {
+        // Excecao: legenda diz lanche e os itens da nota sao so bebida/doce/salgadinho
+        // (sem prato principal) — nao da pra "almocar" isso, entao o horario nao vence (#441).
+        if (["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE"].includes(daLegenda) && ocr?.hora && !(daLegenda === "LANCHE" && itensSaoSoDeLanche(ocr))) {
             const pelaHora = refeicaoClaraPeloHorario(ocr.hora);
             if (pelaHora && pelaHora !== daLegenda) {
                 return { tipo: pelaHora, origem: "horario_da_nota", aviso: `Mensagem diz ${TIPOS[daLegenda].rotulo.toLowerCase()}, mas a nota é das ${String(ocr.hora).slice(0, 5)}: lançado como ${TIPOS[pelaHora].rotulo.toLowerCase()} (vale a nota).` };
@@ -827,11 +852,20 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             const total = (ocr?.itens || []).reduce((soma, item) => soma + (Number(item.quantidade) > 0 ? Number(item.quantidade) : 1), 0);
             const nome = itensDaNota.some((d) => contemTermo(d, "coca")) ? "COCA COLA" : nomeCurtoDoItem(itensDaNota[0]) || "BEBIDA";
             descricao = { valor: `${nome} - ${Math.round(total)}`, origem: "template_bebida" };
-        } else if (material && itensDaNota.length && !descricao) {
-            // So o que foi comprado, curto: "LAMPADA H4", "CHAVE ALAVANCA E CHAVE MG" (correcoes de 22-24/10/2026).
-            const nomes = [...new Set(itensDaNota.map(nomeCurtoDoItem).filter(Boolean))].slice(0, 2);
-            descricao = { valor: nomes.length ? nomes.join(" E ") : String(itensDaNota[0]).replace(/\s+/g, " ").trim().toUpperCase(), origem: "template_material" };
-            avisos.push("Material de campo: descrição com o nome curto do que foi comprado; ajuste se precisar.");
+        } else if (itensDaNota.length && !descricao) {
+            // Sem modelo proprio para este tipo (ex.: OUTROS, loja variada): usa o que foi
+            // LIDO na nota, pra nunca ficar sem dizer o que foi comprado — nem que a
+            // mensagem do operador nao fale nisso (#412 — "Compra do Murilo" numa nota de
+            // estilingue; orientacao do Yan, 08/11/2026). EPI (mascara, bota, oculos/luva/
+            // capacete de protecao...) vira "MATERIAL DE EPI"; o resto, o nome curto do item.
+            const deEpi = itensDaNota.filter((d) => ehItemDeEpi(d));
+            if (deEpi.length && deEpi.length >= itensDaNota.length / 2) {
+                descricao = { valor: "MATERIAL DE EPI", origem: "itens_da_nota" };
+            } else {
+                const nomes = [...new Set(itensDaNota.map(nomeCurtoDoItem).filter(Boolean))].slice(0, 2);
+                descricao = { valor: nomes.length ? nomes.join(" E ") : String(itensDaNota[0]).replace(/\s+/g, " ").trim().toUpperCase(), origem: "itens_da_nota" };
+            }
+            avisos.push(material ? "Material de campo: descrição com o nome curto do que foi comprado; ajuste se precisar." : "Descrição com o que foi lido na nota; ajuste se precisar.");
         } else if (!descricao) {
             const citado = [...(legenda?.observacoes || []), ...(lote?.quantidades?.itens || []).map((item) => item.descricao)][0];
             descricao = { valor: citado ? String(citado).toUpperCase() : null, origem: citado ? "mensagem_do_operador" : null };

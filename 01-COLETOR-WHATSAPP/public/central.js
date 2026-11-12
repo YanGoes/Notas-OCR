@@ -170,6 +170,8 @@ async function executar(acao, mensagemOk) {
 
 // Operador escolhido no filtro (lembrado no navegador). "todos" = sem filtro.
 estado.operador = (() => { try { return localStorage.getItem("vmac-operador") || "todos"; } catch (_) { return "todos"; } })();
+// Tipo de nota escolhido no filtro (lembrado no navegador). "todos" = sem filtro.
+estado.tipo = (() => { try { return localStorage.getItem("vmac-tipo") || "todos"; } catch (_) { return "todos"; } })();
 
 function desenharFiltroOperador(operadores, totalDaAba) {
     const barra = $("#filtroOperador");
@@ -216,7 +218,16 @@ function mudarPeriodo(alteracao) {
     executar(carregarLista);
 }
 
-function desenharFiltroPeriodo(resumo) {
+const ROTULO_TIPO_FILTRO = { SEM_TIPO: "Sem tipo" };
+
+function mudarTipo(valor) {
+    estado.tipo = valor;
+    estado.selecionada = null;
+    try { localStorage.setItem("vmac-tipo", valor); } catch (_) { /* sem armazenamento */ }
+    executar(carregarLista);
+}
+
+function desenharFiltroPeriodo(resumo, tipos = []) {
     const p = estado.periodo;
     const hoje = new Date();
     if (!p.dia) p.dia = `${hoje.getFullYear()}-${doisDigitos(hoje.getMonth() + 1)}-${doisDigitos(hoje.getDate())}`;
@@ -243,6 +254,15 @@ function desenharFiltroPeriodo(resumo) {
         onchange: (evento) => mudarPeriodo({ pela: evento.target.value }) },
     el("option", { value: "nota", selected: p.pela !== "recebida" }, "pela data da nota"),
     el("option", { value: "recebida", selected: p.pela === "recebida" }, "pela data em que chegou"));
+    // Tipo da nota (abastecimento, almoço, manutenção...): so mostra os tipos que existem
+    // nesta aba/período, com quantas notas tem de cada.
+    const rotuloTipo = (codigo) => ROTULO_TIPO_FILTRO[codigo] || estado.opcoes?.tipos?.find((t) => t.codigo === codigo)?.rotulo || codigo.replaceAll("_", " ");
+    if (estado.tipo !== "todos" && !tipos.some((t) => t.codigo === estado.tipo)) estado.tipo = "todos";
+    const totalTipos = tipos.reduce((soma, t) => soma + t.total, 0);
+    const filtroTipo = tipos.length ? el("select", { class: "entrada-periodo", title: "Filtrar por tipo de nota", "aria-label": "Filtrar por tipo de nota",
+        onchange: (evento) => mudarTipo(evento.target.value) },
+    el("option", { value: "todos", selected: estado.tipo === "todos" }, `Todos os tipos (${totalTipos})`),
+    ...tipos.map((t) => el("option", { value: t.codigo, selected: t.codigo === estado.tipo }, `${rotuloTipo(t.codigo)} (${t.total})`))) : null;
     // Na aba Aprovadas: copia agora as fotos para o Drive (o programa tambem faz sozinho a cada 10 min).
     const botaoDrive = estado.aba === "aprovadas" ? el("button", {
         type: "button", class: "chip-operador", title: "Copia as fotos das notas aprovadas para a pasta do operador, no mês e dia da nota",
@@ -259,10 +279,16 @@ function desenharFiltroPeriodo(resumo) {
             } finally { evento.target.disabled = false; }
         }),
     }, "📁 Enviar fotos ao Drive") : null;
+    // Na aba Aprovadas: sobe para o Conta Azul todas as aprovadas que ainda nao foram enviadas (a conta e escolhida na janela).
+    const botaoEnviarTodas = estado.aba === "aprovadas" ? el("button", {
+        type: "button", class: "chip-operador", title: "Envia ao Conta Azul todas as notas aprovadas que ainda não subiram, com a foto anexada. Você escolhe a conta (teste ou oficial) antes de confirmar.",
+        onclick: () => executar(() => abrirEnvio({ todas: true })),
+    }, "📤 Enviar todas ao Conta Azul") : null;
     trocarFilhos($("#filtroPeriodo"),
         el("span", { class: "rotulo-operadores" }, "Período:"), ...chips,
         controle ? controle() : null, p.modo !== "todas" ? pela : null,
-        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null, botaoDrive,
+        filtroTipo,
+        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null, botaoDrive, botaoEnviarTodas,
         estado.aba === "revisar" ? el("button", { type: "button", class: "chip-operador", title: "A IA lê suas observações e as mensagens da gerência, propõe regras (centro e cartão de cada operador) e reclassifica as notas em revisão. Não lê as fotos de novo.",
             onclick: () => executar(abrirReclassificacao) }, "🔁 Reclassificar com minhas observações") : null,
         estado.aba === "revisar" ? el("button", { type: "button", class: "chip-operador", title: "A IA lê agora as mensagens novas da Vanessa e do Murillo (sozinha ela lê uma vez por dia, às 18:30). Mudança de projeto ou cartão aparece no topo para Confirmar.",
@@ -328,14 +354,154 @@ async function abrirReclassificacao() {
             el("button", { type: "button", class: "ghost", onclick: fecharJanela }, "Cancelar")));
 }
 
+// ---------------------------------------------------------------------------
+// Envio ao Conta Azul (uma nota, ou todas as aprovadas que faltam)
+// ---------------------------------------------------------------------------
+
+const NOME_CONTA = { teste: "conta de teste", oficial: "conta OFICIAL", outra: "outra empresa" };
+const NOME_STATUS_ENVIO = {
+    ENVIADO: "enviada", ENVIADO_INCOMPLETO: "enviada com pendência", INCERTO: "incerta — confira no Conta Azul",
+    FALHOU: "não enviada", NAO_ENVIADO: "não enviada", EM_ANDAMENTO: "em andamento", SUBSTITUIDO: "substituída por um reenvio",
+};
+let envioTimer = null;
+
+function fecharEnvio() { clearInterval(envioTimer); envioTimer = null; fecharJanela(); }
+
+/** Na nota aprovada: para onde ja foi enviada e o botao de enviar. */
+function blocoEnvioContaAzul(detalhe) {
+    if (detalhe.estado !== "APROVADO") return null;
+    const envios = detalhe.envios || [];
+    const linha = (e) => el("li", {}, [
+        dataHora(e.em), NOME_CONTA[e.conta] || `empresa ${e.empresa_id}`, NOME_STATUS_ENVIO[e.status] || e.status,
+        e.anexo ? (e.anexo.ok ? "foto anexada" : "SEM a foto anexada") : null,
+        e.faltou.length ? `faltou: ${e.faltou.join(", ")}` : null, e.erro ? `erro: ${e.erro}` : null, e.por ? `por ${e.por}` : null,
+    ].filter(Boolean).join(" · "));
+    return el("div", { class: "bloco envio-ca" }, el("h3", {}, "Conta Azul"),
+        envios.length ? el("ul", { class: "historico" }, envios.map(linha)) : el("p", { class: "origem" }, "Esta nota ainda não foi enviada ao Conta Azul."),
+        el("div", { class: "acoes" },
+            el("button", { type: "button", class: "primary", title: "Cria o lançamento no Conta Azul com as informações desta nota e anexa a foto. Você escolhe a conta antes de confirmar.",
+                onclick: () => executar(() => abrirEnvio({ ids: [detalhe.id] })) }, "📤 Enviar ao Conta Azul")));
+}
+
+function linhaResultadoEnvio(r) {
+    const ok = r.status === "ENVIADO";
+    const explicacao = r.erro || (r.faltou?.length ? `faltou: ${r.faltou.join(", ")}` : "");
+    return el("div", { class: `regra ${ok ? "" : "recusada"}` },
+        el("span", {}, el("b", {}, `${ok ? "✓" : "✗"} #${r.despesa_id} · ${NOME_STATUS_ENVIO[r.status] || r.status}`), explicacao ? el("small", {}, explicacao) : null));
+}
+
+/** Andamento (ou resultado) de um envio dentro da janela. */
+function desenharAndamentoEnvio(corpo, tarefa) {
+    const rodando = tarefa.status === "RODANDO";
+    const feitos = tarefa.feitos ?? tarefa.resultados.length;
+    const contar = (...status) => tarefa.resultados.filter((r) => status.includes(r.status)).length;
+    const resumo = `${contar("ENVIADO")} enviada(s) completas · ${contar("ENVIADO_INCOMPLETO")} com pendência · ${contar("INCERTO")} incerta(s) · ${contar("FALHOU", "NAO_ENVIADO")} não enviada(s)`;
+    const titulo = { RODANDO: tarefa.parando ? "Parando depois da nota atual…" : "Enviando…", CONCLUIDO: "Envio concluído.", PARADO: "Envio parado.", ERRO: "O envio não começou." }[tarefa.status] || tarefa.status;
+    // As que nao subiram primeiro: sao as que pedem atencao.
+    const ordenados = [...tarefa.resultados].sort((a, b) => (a.status === "ENVIADO") - (b.status === "ENVIADO"));
+    trocarFilhos(corpo,
+        el("h4", {}, `${titulo} ${NOME_CONTA[tarefa.conta]} · ${feitos} de ${tarefa.total}`),
+        el("progress", { class: "barra-envio", max: tarefa.total, value: feitos }),
+        tarefa.erro ? el("p", { class: "aviso-ia" }, tarefa.erro) : null,
+        tarefa.resultados.length ? el("p", { class: "origem" }, resumo) : null,
+        ...ordenados.slice(0, 200).map(linhaResultadoEnvio),
+        el("p", { class: "origem" }, rodando ? "Pode fechar esta janela: o envio continua. Abra de novo pelo mesmo botão para acompanhar." : `Iniciado por ${tarefa.por}.`),
+        el("div", { class: "janela-acoes" },
+            rodando && !tarefa.parando ? el("button", { type: "button", class: "danger ghost", onclick: () => executar(async () => { await api("/envio/parar", {}); }) }, "Parar") : null,
+            el("button", { type: "button", class: rodando ? "ghost" : "primary", onclick: fecharEnvio }, "Fechar")));
+}
+
+/** Acompanha o envio em andamento ate terminar; depois atualiza a lista e a nota aberta. */
+function acompanharEnvio(corpo) {
+    clearInterval(envioTimer);
+    const olhar = async () => {
+        if (!$("#janelaRegras")) { clearInterval(envioTimer); envioTimer = null; return; }
+        try {
+            const { tarefa } = await api("/envio/andamento");
+            if (!tarefa) return;
+            desenharAndamentoEnvio(corpo, tarefa);
+            if (tarefa.status !== "RODANDO") { clearInterval(envioTimer); envioTimer = null; await recarregarDepoisDoEnvio(); }
+        } catch (_) { /* tenta de novo no proximo ciclo */ }
+    };
+    envioTimer = setInterval(olhar, 2000);
+    olhar();
+}
+
+async function recarregarDepoisDoEnvio() {
+    await carregarLista();
+    if (estado.selecionada != null) await selecionar(estado.selecionada);
+}
+
+/** Janela de envio: escolhe a conta, confirma e mostra o resultado. */
+async function abrirEnvio({ ids = null, todas = false }) {
+    fecharEnvio();
+    const corpo = el("div", { class: "janela-corpo" }, el("p", { class: "origem" }, "Conferindo as contas do Conta Azul…"));
+    const janela = el("div", { class: "janela-fundo", id: "janelaRegras", onclick: (e) => { if (e.target.id === "janelaRegras") fecharEnvio(); } },
+        el("div", { class: "janela", role: "dialog", "aria-label": "Enviar ao Conta Azul" },
+            el("div", { class: "janela-topo" }, el("b", {}, todas ? "📤 Enviar todas ao Conta Azul" : `📤 Enviar a nota #${ids[0]} ao Conta Azul`), el("button", { type: "button", class: "ghost", onclick: fecharEnvio }, "✕")),
+            corpo));
+    document.body.append(janela);
+    const situacao = await api("/envio/situacao");
+    // Ja tem um envio rodando (talvez iniciado por outra pessoa): mostra o andamento dele.
+    if (situacao.tarefa?.status === "RODANDO") { desenharAndamentoEnvio(corpo, situacao.tarefa); acompanharEnvio(corpo); return; }
+
+    let conta = (situacao.contas.find((c) => c.liberada) || situacao.contas[0]).conta;
+    const confirmoOficial = el("input", { type: "checkbox" });
+    const linhaConfirmacao = el("label", { class: "regra oculto" }, confirmoOficial,
+        el("span", {}, el("b", {}, "Confirmo o envio para a conta OFICIAL"), el("small", {}, "São lançamentos de verdade na empresa real. A API não apaga lançamento: o que subir errado só sai pela tela do Conta Azul.")));
+    const botaoEnviar = el("button", { type: "button", class: "primary" }, "Enviar");
+    const oQueVai = el("p", {});
+    const atualizar = () => {
+        const escolhida = situacao.contas.find((c) => c.conta === conta);
+        linhaConfirmacao.classList.toggle("oculto", conta !== "oficial");
+        oQueVai.textContent = todas
+            ? `${escolhida.pendentes ?? 0} nota(s) aprovada(s) ainda não enviada(s) para a ${NOME_CONTA[conta]} serão enviadas, uma a uma.`
+            : `A nota #${ids[0]} será enviada para a ${NOME_CONTA[conta]}.`;
+        botaoEnviar.disabled = !escolhida.liberada || (todas && !escolhida.pendentes) || (conta === "oficial" && !confirmoOficial.checked);
+    };
+    confirmoOficial.addEventListener("change", atualizar);
+    const opcaoConta = (c) => {
+        const motivo = !c.liberada ? (c.conta === "oficial" ? "ainda não liberada para envio" : "envio desligado no config")
+            : !c.conectada ? "liberada, mas a API desta conta não está conectada" : `${c.pendentes ?? 0} nota(s) aprovada(s) esperando envio`;
+        return el("label", { class: `regra ${c.liberada ? "" : "recusada"}` },
+            el("input", { type: "radio", name: "contaEnvio", value: c.conta, checked: c.conta === conta, disabled: !c.liberada, onchange: () => { conta = c.conta; atualizar(); } }),
+            el("span", {}, el("b", {}, c.conta === "oficial" ? "Conta OFICIAL (empresa real)" : "Conta de teste"), el("small", {}, `${motivo}${c.empresa_id ? ` · empresa ${c.empresa_id}` : ""}`)));
+    };
+    botaoEnviar.addEventListener("click", () => executar(async () => {
+        const autor = revisor();
+        botaoEnviar.disabled = true;
+        trocarFilhos(corpo, el("p", { class: "origem" }, todas ? "Começando o envio…" : "Enviando: criando o lançamento e anexando a foto… (leva alguns segundos)"));
+        try {
+            const { tarefa } = await api("/envio/enviar", { conta, ids, todas, autor, aguardar: !todas });
+            desenharAndamentoEnvio(corpo, tarefa);
+            if (tarefa.status === "RODANDO") acompanharEnvio(corpo);
+            else await recarregarDepoisDoEnvio();
+        } catch (erro) {
+            trocarFilhos(corpo, el("p", { class: "aviso-ia" }, erro.message),
+                el("div", { class: "janela-acoes" }, el("button", { type: "button", class: "primary", onclick: fecharEnvio }, "Fechar")));
+        }
+    }));
+    trocarFilhos(corpo,
+        situacao.lancamento_habilitado ? null : el("p", { class: "aviso-ia" }, "O lançamento está desligado no config (central.lancamento_habilitado): nada será enviado."),
+        el("h4", {}, "Para qual conta?"),
+        ...situacao.contas.map(opcaoConta),
+        linhaConfirmacao,
+        oQueVai,
+        el("p", { class: "origem" }, "O programa cria o lançamento com as informações da nota e o robô de tela anexa a foto. A janela do robô dessa conta precisa estar aberta e logada (atalho 18); se não estiver, nada é criado. Nota já enviada para a conta não sobe de novo."),
+        el("p", { class: "origem" }, `Quem pode enviar: ${situacao.podem_enviar.join(", ")} (nome no campo Revisor).`),
+        el("div", { class: "janela-acoes" }, botaoEnviar, el("button", { type: "button", class: "ghost", onclick: fecharEnvio }, "Cancelar")));
+    atualizar();
+}
+
 async function carregarLista() {
     const filtro = estado.operador && estado.operador !== "todos" ? `&operador=${encodeURIComponent(estado.operador)}` : "";
+    const filtroTipo = estado.tipo && estado.tipo !== "todos" ? `&tipo=${encodeURIComponent(estado.tipo)}` : "";
     const intervalo = intervaloDoPeriodo(estado.periodo);
     const filtroData = intervalo ? `${intervalo.de ? `&de=${intervalo.de}` : ""}${intervalo.ate ? `&ate=${intervalo.ate}` : ""}&pela=${estado.periodo.pela}` : "";
-    const { itens, contagem, operadores, total_da_aba: totalDaAba, periodo } = await api(`/despesas?aba=${encodeURIComponent(estado.aba)}${filtro}${filtroData}`);
+    const { itens, contagem, operadores, tipos, total_da_aba: totalDaAba, periodo } = await api(`/despesas?aba=${encodeURIComponent(estado.aba)}${filtro}${filtroTipo}${filtroData}`);
     mostrarContagem(contagem);
     desenharFiltroOperador(operadores || [], totalDaAba ?? itens.length);
-    desenharFiltroPeriodo(periodo);
+    desenharFiltroPeriodo(periodo, tipos || []);
     const lista = $("#lista");
     lista.replaceChildren();
     if (!itens.length) {
@@ -357,7 +523,9 @@ async function carregarLista() {
         el("span", {},
             item.pendencias ? el("span", { class: "etiqueta pend" }, `${item.pendencias} pendência(s)`) : el("span", { class: "etiqueta okk" }, "sem pendências"),
             item.corrigida ? " " : null, item.corrigida ? el("span", { class: "etiqueta" }, "corrigida") : null,
-            item.sem_comprovante ? " " : null, item.sem_comprovante ? el("span", { class: "etiqueta mau" }, "sem comprovante") : null)));
+            item.sem_comprovante ? " " : null, item.sem_comprovante ? el("span", { class: "etiqueta mau" }, "sem comprovante") : null,
+            (item.envios || []).flatMap((e) => [" ", el("span", { class: `etiqueta ${e.status === "ENVIADO" ? "okk" : "pend"}`, title: "Já enviada ao Conta Azul" },
+                `📤 ${e.conta === "oficial" ? "oficial" : e.conta === "teste" ? "teste" : "outra empresa"}${e.status === "ENVIADO" ? "" : " (pendência)"}`)]))));
     }
     if (estado.selecionada == null || !itens.some((item) => item.id === estado.selecionada)) await selecionar(itens[0].id);
 }
@@ -743,14 +911,23 @@ function desenharDetalhe() {
         desenharAnexos();
     } });
     comentario.addEventListener("paste", async (e) => {
-        const arquivos = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+        // Print colado (Win+Shift+S, Snipping Tool etc.): no Chrome/Edge o arquivo vem em
+        // clipboardData.files OU em clipboardData.items (dataTransfer.items), conforme a origem —
+        // mas quando os dois trazem a mesma imagem, cada API devolve um objeto File diferente pra
+        // ela, então nao da pra comparar por identidade; por isso usa files quando tem, e so cai
+        // pra items quando files vier vazio (bug: colava a mesma imagem 2x).
+        const dosFiles = [...(e.clipboardData?.files || [])];
+        const arquivos = (dosFiles.length ? dosFiles
+            : [...(e.clipboardData?.items || [])].filter((item) => item.kind === "file").map((item) => item.getAsFile()).filter(Boolean))
+            .filter((f) => f && f.type.startsWith("image/"));
         if (!arquivos.length) return;
         e.preventDefault();
         for (const file of arquivos) {
             const dados = await arquivoParaBase64(file);
-            estado.comentarioAnexos.push({ tipo: "novo", nome: file.name || "print.png", classe: "imagem", tamanho: file.size, mime: file.type, dados, previewUrl: URL.createObjectURL(file) });
+            estado.comentarioAnexos.push({ tipo: "novo", nome: file.name || `print-${Date.now()}.png`, classe: "imagem", tamanho: file.size, mime: file.type || "image/png", dados, previewUrl: URL.createObjectURL(file) });
         }
         desenharAnexos();
+        avisar(`${arquivos.length} print(s) colado(s). Clique em "Salvar comentário" para gravar.`, "ok");
     });
     const blocoComentario = el("div", { class: "bloco comentario-ia" },
         el("h3", {}, "Comentário para a IA aprender"),
@@ -789,6 +966,7 @@ function desenharDetalhe() {
                 irmas, duplicada,
                 el("div", { class: "bloco" }, el("h3", {}, "Prévia"), campos),
                 acoes,
+                blocoEnvioContaAzul(detalhe),
                 blocoComentario,
                 blocoMensagem(detalhe),
                 blocoLeitura(detalhe),

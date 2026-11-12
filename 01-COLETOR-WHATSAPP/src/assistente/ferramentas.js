@@ -222,26 +222,99 @@ function registrarSugestao(ctx, { texto, tipo = "melhoria" } = {}) {
     return { registrada: true, id: Number(lastInsertRowid), mensagem: "Sugestão anotada para o Yan avaliar." };
 }
 
-function resumoLancamento({ ids = [] } = {}) {
-    return `Lançar no Conta Azul ${ids.length} despesa(s) aprovada(s): ${ids.map((id) => `#${id}`).join(", ")}`;
+/**
+ * Corrige um ou mais campos de UMA nota especifica (ex.: o centro de custo que
+ * o revisor disse estar errado). Igual ao botao "Salvar correcoes" da Central,
+ * so que pedido pelo assistente.
+ */
+function corrigirDespesaConfirmado(ctx, { id, alteracoes } = {}) {
+    const revisao = require("../central/revisao");
+    const cadastrosMod = require("../central/cadastros");
+    const lista = (Array.isArray(alteracoes) ? alteracoes : []).map((a) => ({ campo: a.campo, valor: a.valor, tipo_erro: a.tipo_erro || "CLASSIFICACAO", observacao: a.observacao }));
+    if (!lista.length) throw new Error("Informe ao menos uma alteração (campo e valor).");
+    return revisao.corrigir(ctx.db, cadastrosMod.carregar(), Number(id), lista, ctx.pessoa || "assistente");
+}
+
+function resumoCorrecao({ id, alteracoes = [] } = {}) {
+    return `Corrigir a despesa #${id}: ${alteracoes.map((a) => `${a.campo} → ${a.valor}`).join(", ")}`;
 }
 
 /**
- * Executa um lancamento CONFIRMADO por uma pessoa. Enquanto o lancamento
- * estiver desligado no config (fase de testes), nao envia nada e diz por que.
+ * Refaz as previas de um GRUPO de notas em revisao/classificadas sem correcao
+ * humana (igual ao "treinar_ia"/atalho 14, mas so do que bate no filtro), para
+ * nao precisar refazer TODAS as notas de TODOS os operadores por causa de uma
+ * regra que vale so para um projeto ou um operador.
  */
-function lancarConfirmado(ctx, { ids = [] } = {}) {
-    const lista = ids.map(Number).filter(Number.isInteger);
+function reclassificarFiltrado(ctx, { operador, centro, ids } = {}) {
+    if (!operador && !centro && !(Array.isArray(ids) && ids.length)) throw new Error("Informe operador, centro ou uma lista de ids para filtrar; para refazer tudo, use treinar_ia.");
+    const aprender = require("../central/aprender-regras");
+    const cadastrosMod = require("../central/cadastros");
+    const elegiveis = despesasCentral(ctx.db).filter((d) => ["AGUARDANDO_REVISAO", "CLASSIFICADO"].includes(d.estado))
+        .filter((d) => !operador || contemTermo(d.operador || "", operador))
+        .filter((d) => !centro || contemTermo(d.centro || "", centro))
+        .filter((d) => !(Array.isArray(ids) && ids.length) || ids.includes(d.id));
+    if (!elegiveis.length) throw new Error("Nenhuma nota elegível com esse filtro (sem correção humana feita, em revisão ou classificada).");
+    const resultado = aprender.reclassificar(ctx.db, cadastrosMod.carregar(), { regenerar: require("../central/orquestrador").regenerarPrevia, opcoes: {}, filtroIds: elegiveis.map((d) => d.id) });
+    return { ...resultado, filtro: { operador: operador || null, centro: centro || null, ids: ids || null } };
+}
+
+/**
+ * Ensina a IA a reconhecer um texto (ex.: "OAE ETEL PR" num cabecalho) como um
+ * projeto/centro de custo ja cadastrado, sem precisar editar o arquivo a mao.
+ */
+function adicionarApelidoCentro(ctx, { projeto, apelido } = {}) {
+    const projetosAdmin = require("../central/projetos-admin");
+    const cadastrosMod = require("../central/cadastros");
+    const cad = cadastrosMod.carregar();
+    const alvo = cadastrosMod.projetosComId(cad).find((p) => normalizar(p.nome_oficial) === normalizar(projeto)) || cadastrosMod.projetosComId(cad).find((p) => contemTermo(p.nome_oficial, projeto));
+    if (!alvo) throw new Error(`Projeto/centro "${projeto}" não encontrado no cadastro.`);
+    const limpo = String(apelido || "").trim();
+    if (!limpo) throw new Error("Informe o texto que deve ser reconhecido (ex.: como aparece no cabeçalho do operador).");
+    if ((alvo.apelidos || []).some((a) => normalizar(a) === normalizar(limpo))) return { ja_existia: true, projeto: alvo.nome_oficial, apelidos: alvo.apelidos || [] };
+    const atualizado = projetosAdmin.editar(ctx.db, alvo.nome_oficial, { apelidos: [...(alvo.apelidos || []), limpo] }, ctx.pessoa || "assistente");
+    return { projeto: atualizado.nome_oficial, apelidos: atualizado.apelidos };
+}
+
+const contaDoLancamento = (conta) => (String(conta || "").toLowerCase() === "oficial" ? "oficial" : "teste");
+
+function resumoLancamento({ ids = [], conta } = {}) {
+    const onde = contaDoLancamento(conta) === "oficial" ? "na conta OFICIAL (empresa real)" : "na conta de TESTE";
+    return `Lançar ${onde} do Conta Azul ${ids.length} despesa(s) aprovada(s), com a foto anexada: ${ids.map((id) => `#${id}`).join(", ")}`;
+}
+
+/**
+ * Envio de verdade: API cria o lancamento e o robo de tela anexa a foto. Usa a
+ * conta pedida sem trocar a conta que o resto do programa esta usando.
+ */
+function lancarNoContaAzul(ids, conta, ctx) {
+    const contaAzul = require("../conta-azul");
+    const envio = require("../central/envio");
+    return contaAzul.comPerfil(conta, () => envio.enviarLote(ctx.db, ids, { api: contaAzul, config: ctx.config, conta, autor: ctx.pessoa || "assistente" }));
+}
+
+/**
+ * Executa um lancamento CONFIRMADO por uma pessoa, na conta indicada ("teste"
+ * ou "oficial"). Com o lancamento desligado no config, nao envia nada e diz
+ * por que. As travas de empresa, de conta oficial e do robo ficam no envio.
+ */
+async function lancarConfirmado(ctx, { ids = [], conta } = {}) {
+    const lista = [...new Set(ids.map(Number).filter(Number.isInteger))];
     if (!lista.length) throw new Error("Nenhuma despesa informada.");
     const estados = ctx.db.prepare(`SELECT id, estado FROM despesas WHERE id IN (${lista.map(() => "?").join(",")})`).all(...lista);
     const naoAprovadas = lista.filter((id) => estados.find((linha) => linha.id === id)?.estado !== "APROVADO");
     if (naoAprovadas.length) throw new Error(`Só despesas aprovadas na Central podem ser lançadas. Não aprovadas: ${naoAprovadas.map((id) => `#${id}`).join(", ")}.`);
-    const config = lerJson(fs.readFileSync(path.join(RAIZ, "config.json"), "utf8"), {});
+    const config = ctx.config || lerJson(fs.readFileSync(path.join(RAIZ, "config.json"), "utf8"), {});
     if (!config.central?.lancamento_habilitado) {
-        return { enviado: false, motivo: "Lançamento pelo assistente está desligado (fase de testes). Nada foi enviado ao Conta Azul. Para ligar: config.json → central.lancamento_habilitado." };
+        return { enviado: false, motivo: "Lançamento pelo assistente está desligado. Nada foi enviado ao Conta Azul. Para ligar: config.json → central.lancamento_habilitado." };
     }
-    if (typeof ctx.lancar !== "function") throw new Error("Envio ao Conta Azul não disponível neste processo.");
-    return ctx.lancar(lista);
+    const destino = contaDoLancamento(conta);
+    const lancar = typeof ctx.lancar === "function" ? ctx.lancar : lancarNoContaAzul;
+    try {
+        return await lancar(lista, destino, { ...ctx, config });
+    } catch (erro) {
+        // Travas (empresa errada, conta oficial nao liberada, robo sem login): nada foi enviado.
+        return { enviado: false, conta: destino, motivo: erro.message };
+    }
 }
 
 /** Retreino confirmado: catalogo + treino + medicao + refaz as previas em revisao (igual ao atalho 14). */
@@ -365,11 +438,24 @@ const FERRAMENTAS = [
         descricao: "Anota uma ideia de melhoria ou um problema relatado na conversa, para o Yan avaliar depois.",
         esquema: { type: "object", properties: { texto: { type: "string" }, tipo: { type: "string", enum: ["melhoria", "problema", "duvida"] } }, required: ["texto"] } },
     { nome: "preparar_lancamento", grava: true, executar: lancarConfirmado, resumir: resumoLancamento,
-        descricao: "SÓ quando a pessoa pedir explicitamente para lançar: prepara o lançamento no Conta Azul das despesas APROVADAS indicadas. Não lança: a tela mostra um botão Confirmar e só uma pessoa autorizada executa.",
-        esquema: { type: "object", properties: { ids: { type: "array", items: { type: "integer" } } }, required: ["ids"] } },
+        descricao: "SÓ quando a pessoa pedir explicitamente para lançar: prepara o lançamento no Conta Azul das despesas APROVADAS indicadas, na conta que a pessoa disser — conta:'teste' (padrão; conta de testes) ou conta:'oficial' (a empresa real da VMac; só use se a pessoa disser 'oficial' com todas as letras; na dúvida, pergunte). Não lança: a tela mostra um botão Confirmar e só uma pessoa autorizada executa. Depois do Confirmar, o programa cria o lançamento com todas as informações e o robô de tela anexa a FOTO da nota na aba Anexo. O resultado traz, por nota: ENVIADO (completo), ENVIADO_INCOMPLETO (com o que faltou) ou NAO_ENVIADO (com o motivo, ex.: conta oficial não liberada, robô sem login, fornecedor/categoria/centro que não existem no Conta Azul).",
+        esquema: { type: "object", properties: { ids: { type: "array", items: { type: "integer" } }, conta: { type: "string", enum: ["teste", "oficial"], description: "conta do Conta Azul; padrão teste" } }, required: ["ids"] } },
     { nome: "treinar_ia", grava: true, executar: treinarConfirmado, resumir: () => "Retreinar a IA (catálogo do Conta Azul, treino, medição da maturidade e atualização das notas em revisão)",
         descricao: "SÓ quando a pessoa pedir: retreina a IA com as notas aprovadas e a planilha do Conta Azul, mede a maturidade e refaz as prévias em revisão. Vira um botão Confirmar.",
         esquema: { type: "object", properties: {} } },
+    { nome: "corrigir_despesa", grava: true, executar: corrigirDespesaConfirmado, resumir: resumoCorrecao,
+        descricao: "Corrige um ou mais campos de UMA nota especifica (ex.: 'o centro da nota #482 é o OAE ETEL PR', 'troca o cartão da #510 para C6'). Use quando a pessoa apontar o erro de uma nota já identificada (por #id, ou ache com buscar_despesas antes). Campos editáveis: centro_custo, pagamento, categoria, tipo, fornecedor, valor, data_competencia, descricao, pessoas. tipo_erro: LEITURA (a IA leu errado da foto) ou CLASSIFICACAO (a IA interpretou errado); padrão CLASSIFICACAO. Vira um botão Confirmar.",
+        esquema: { type: "object", properties: { id: { type: "integer" }, alteracoes: { type: "array", items: { type: "object",
+            properties: { campo: { type: "string" }, valor: {}, tipo_erro: { type: "string", enum: ["LEITURA", "CLASSIFICACAO", "NAO_INFORMADO", "OUTRO"] }, observacao: { type: "string" } },
+            required: ["campo", "valor"] } } }, required: ["id", "alteracoes"] } },
+    { nome: "reclassificar_filtrado", grava: true, executar: reclassificarFiltrado,
+        resumir: (p) => `Refazer as prévias das notas em revisão${p.operador ? ` do operador "${p.operador}"` : ""}${p.centro ? ` do centro "${p.centro}"` : ""}${p.ids?.length ? ` (${p.ids.length} nota(s) indicada(s))` : ""}, com os cadastros/regras atuais`,
+        descricao: "Refaz a prévia SÓ das notas em revisão/classificadas (sem correção humana) que baterem no filtro (operador, centro de custo atual, ou uma lista de #ids) — para não precisar refazer as de todo mundo quando o ajuste (ex.: um apelido novo de centro) só afeta um operador ou um projeto. Use depois de adicionar_apelido_centro ou de qualquer correção que deva valer para várias notas parecidas. Vira um botão Confirmar.",
+        esquema: { type: "object", properties: { operador: { type: "string" }, centro: { type: "string" }, ids: { type: "array", items: { type: "integer" } } } } },
+    { nome: "adicionar_apelido_centro", grava: true, executar: adicionarApelidoCentro,
+        resumir: (p) => `Ensinar a IA a reconhecer "${p.apelido}" como o centro/projeto "${p.projeto}"`,
+        descricao: "Quando um operador escreve o centro de custo de um jeito que a IA não reconhece (ex.: cabeçalho 'Centro de Custo: OAE ETEL PR' não bate com o nome oficial do projeto), adiciona esse texto como apelido do projeto já cadastrado, para passar a reconhecer sozinha da próxima vez. Use cadastros(tipo:'centros') antes para achar o nome oficial certo. Depois de confirmar, rode reclassificar_filtrado (por operador ou centro) para já corrigir as notas que estão em revisão. Vira um botão Confirmar.",
+        esquema: { type: "object", properties: { projeto: { type: "string", description: "nome oficial do projeto/centro já cadastrado" }, apelido: { type: "string", description: "o texto exato que o operador usa" } }, required: ["projeto", "apelido"] } },
 ];
 
 const porNome = new Map(FERRAMENTAS.map((ferramenta) => [ferramenta.nome, ferramenta]));

@@ -57,6 +57,8 @@ test("ultimo envio por operador e busca de despesas nunca mostram telefone", asy
     assert.ok(!/5511900000031/.test(tudo), "telefone nunca sai pelas ferramentas");
 });
 
+const LANCAMENTO_DESLIGADO = { central: { lancamento_habilitado: false } };
+
 test("MCP lista ferramentas e transforma o que grava em proposta (nao executa)", async () => {
     const fs = require("fs"); const os = require("os"); const path = require("path");
     const fila = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mcp-")), "fila.jsonl");
@@ -79,15 +81,29 @@ test("conversa guarda mensagens, sessao e proposta; so Yan/Jhonathan/Vanessa con
     };
     const eventos = [];
     const resposta = await servico.enviar(db, { pessoa: "cauã", texto: "lança a 10", emitir: (e) => eventos.push(e), rodar });
-    assert.equal(resposta.proposta.resumo, "Lançar no Conta Azul 1 despesa(s) aprovada(s): #10");
+    assert.equal(resposta.proposta.resumo, "Lançar na conta de TESTE do Conta Azul 1 despesa(s) aprovada(s), com a foto anexada: #10");
     assert.equal(eventos[0].texto, "Preparei");
     assert.equal(db.prepare("SELECT sessao FROM assistente_conversas WHERE id = ?").get(resposta.conversa_id).sessao, "sessao-1");
     await assert.rejects(() => servico.enviar(db, { pessoa: "Yan", texto: "e agora?", conversaId: resposta.conversa_id, rodar }), /esperando Confirmar/);
     await assert.rejects(() => servico.decidir(db, resposta.proposta.id, { pessoa: "Cauã", aceito: true }), /Só Yan, Jhonathan, Vanessa/);
-    const decisao = await servico.decidir(db, resposta.proposta.id, { pessoa: "Vanessa", aceito: true });
+    // O config vai no contexto: o teste nunca le o config real nem fala com o Conta Azul.
+    const decisao = await servico.decidir(db, resposta.proposta.id, { pessoa: "Vanessa", aceito: true, ctx: { config: LANCAMENTO_DESLIGADO } });
     assert.equal(decisao.status, "EXECUTADA");
-    assert.equal(decisao.resultado.enviado, false, "lancamento desligado na fase de testes: nada enviado");
+    assert.equal(decisao.resultado.enviado, false, "lancamento desligado no config: nada enviado");
     await assert.rejects(() => servico.decidir(db, resposta.proposta.id, { pessoa: "Yan", aceito: true }), /já foi decidida/);
+});
+
+test("lancamento confirmado vai para a conta pedida (teste por padrao) e as travas viram motivo, nao erro", async () => {
+    const db = bancoComDespesas();
+    const chamadas = [];
+    const ctx = { db, cad: CAD, pessoa: "Yan", config: { central: { lancamento_habilitado: true } },
+        lancar: async (ids, conta, c) => { chamadas.push([ids, conta, c.pessoa]); if (conta === "oficial") throw new Error("O envio para a conta OFICIAL ainda não foi liberado."); return { enviado: true, conta }; } };
+    assert.deepEqual(await ferramentas.executar("preparar_lancamento", { ids: [10, 10] }, ctx), { enviado: true, conta: "teste" });
+    assert.deepEqual(await ferramentas.executar("preparar_lancamento", { ids: [10], conta: "oficial" }, ctx),
+        { enviado: false, conta: "oficial", motivo: "O envio para a conta OFICIAL ainda não foi liberado." });
+    assert.deepEqual(chamadas, [[[10], "teste", "Yan"], [[10], "oficial", "Yan"]]);
+    assert.match(ferramentas.obter("preparar_lancamento", db).resumir({ ids: [10], conta: "oficial" }), /conta OFICIAL \(empresa real\)/);
+    assert.equal((await ferramentas.executar("preparar_lancamento", { ids: [10] }, { db, cad: CAD, config: LANCAMENTO_DESLIGADO, lancar: () => { throw new Error("não deveria lançar"); } })).enviado, false);
 });
 
 test("lancamento recusa despesa que nao foi aprovada", async () => {
@@ -141,7 +157,7 @@ test("depois de confirmar, o assistente escreve a resposta com o resultado (rela
         ? { tipo: "resposta", texto: "Relatório: maturidade subiu.", sessao: "s2", propostas: [] }
         : { tipo: "resposta", texto: "Preparei.", sessao: "s1", propostas: [{ ferramenta: "preparar_lancamento", parametros: { ids: [10] } }] });
     const r = await servico.enviar(db, { pessoa: "Yan", texto: "lança a 10", rodar });
-    const decisao = await servico.decidir(db, r.proposta.id, { pessoa: "Yan", aceito: true, rodar });
+    const decisao = await servico.decidir(db, r.proposta.id, { pessoa: "Yan", aceito: true, rodar, ctx: { config: LANCAMENTO_DESLIGADO } });
     assert.equal(decisao.relatorio, "Relatório: maturidade subiu.");
     const conversa = servico.lerConversa(db, r.conversa_id);
     assert.equal(conversa.mensagens.at(-1).texto, "Relatório: maturidade subiu.");

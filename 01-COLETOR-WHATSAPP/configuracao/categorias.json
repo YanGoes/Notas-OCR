@@ -37,7 +37,7 @@
   {
     "nome": "MATERIAL DE CAMPO",
     "nome_conta_azul": "MATERIAL DE CAMPO",
-    "id": null,
+    "id": "0e5144ad-cba4-43e9-84d4-ef83a5e605cf",
     "apelidos": [],
     "_nota": "Nome atual no Conta Azul (345 lançamentos até 10/2026). O ID antigo era de 'Materiais Aplicados na Prestação de Serviços'; o novo vem da sincronização."
   },
@@ -67,10 +67,10 @@
   },
   {
     "nome": "CAFE DA MANHA",
-    "nome_conta_azul": "Café da Manhã",
-    "id": null,
+    "nome_conta_azul": "Café da manhã",
+    "id": "b74b5b9e-2c81-4f25-9c9d-f23e4d72cb26",
     "apelidos": [],
-    "_nota": "Desde 04/2026 a VMac lanca cafe da manha em 'Café da Manhã' (planilha). Antes era 'Lanches e Refeições'; a categoria antiga ' Refeição - Café da Manhã ' (id 8e1e121c) nao e mais usada. O ID da nova sai da sincronizacao com o Conta Azul."
+    "_nota": "Desde 04/2026 a VMac lanca cafe da manha em 'Café da manhã'. A conta oficial tem duas categorias quase iguais ('Café da manhã' e 'Café da Manhã ', com espaco sobrando); o Yan confirmou em 11/11/2026 que a minuscula e a oficial. Antes era 'Lanches e Refeições'; a categoria antiga ' Refeição - Café da Manhã ' (id 8e1e121c, da conta de TESTE) nao e mais usada."
   },
   {
     "nome": "PEDAGIO",
@@ -87,7 +87,7 @@
   {
     "nome": "TRANSPORTE URBANO",
     "nome_conta_azul": "Transporte Urbano (táxi, Uber)",
-    "id": null,
+    "id": "b8e5fa1a-fda7-4ff3-b7a0-808731f76be6",
     "apelidos": [
       "uber",
       "taxi"

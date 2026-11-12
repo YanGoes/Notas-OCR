@@ -38,7 +38,17 @@
     "intervalo_inicial_ms": 15000
   },
   "central": {
-    "habilitada": true
+    "habilitada": true,
+    "lancamento_habilitado": false,
+    "envio_conta_azul": {
+      "habilitado": false,
+      "somente_empresa_id": "",
+      "anexo_da_foto": "arquivo",
+      "oficial": {
+        "habilitado": false,
+        "empresa_id": ""
+      }
+    }
   },
   "lancamento_automatico": {
     "habilitado": false,

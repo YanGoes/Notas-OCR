@@ -1,22 +1,547 @@
 [
   {
-    "nome": "Consol",
-    "id": "af692fa0-8f85-11f1-a1fb-07d665f7a520",
+    "nome": "33.229.221/0001-95",
+    "id": "e7470de8-6308-11f0-901d-a7fd087a822e",
+    "apelidos": []
+  },
+  {
+    "nome": "53.655.381/0001-03",
+    "id": "023d2b82-6309-11f0-9597-335ae360292e",
+    "apelidos": []
+  },
+  {
+    "nome": "APORTE / APLICAÇÃO",
+    "id": "9995d10c-7653-11f0-af72-fbaa05e76434",
+    "apelidos": []
+  },
+  {
+    "nome": "APORTE / RETIRADA",
+    "id": "8b36fae6-7653-11f0-8798-d3314b4ba7ff",
+    "apelidos": []
+  },
+  {
+    "nome": "AQUISIÇÃO FWD03",
+    "id": "ddb36930-89df-11f1-b6ff-e3b2ac6672e8",
+    "apelidos": []
+  },
+  {
+    "nome": "CCB GO-147",
+    "id": "6ae9c5fa-d955-11f1-ad81-ebe2226a30b1",
+    "apelidos": []
+  },
+  {
+    "nome": "CLC - PR 460",
+    "id": "13e86e7c-8376-11f0-b1e8-23e80c48f350",
     "apelidos": []
   },
   {
     "nome": "CONSOL MG-050",
-    "id": "43a40a34-8f89-11f1-8cae-0b3dbe3e2005",
+    "id": "aee88d42-5f2e-11f0-9d73-474175ec6390",
     "apelidos": []
   },
   {
     "nome": "CONSOL MG-259",
-    "id": "441058a6-8f89-11f1-a757-1b04f821eecd",
+    "id": "2a3a02d8-5c8a-11f1-a174-9bb8273be1b6",
     "apelidos": []
   },
   {
-    "nome": "TESTE CC",
-    "id": "371152ea-8f89-11f1-8882-77f2b0ce28e8",
+    "nome": "CONSÓRCIO ESSE BR-282/SC",
+    "id": "279e1fe0-5f2f-11f0-b051-bff03cc2b5bd",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRCIO ESSE BR-470/SC",
+    "id": "14d01a26-5f2f-11f0-807f-5b501858b2d4",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRCIO GO 241/244",
+    "id": "aad7d298-c947-11f0-bfdf-8f0a888d2b88",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRCIO GO RODOVIAS - 070",
+    "id": "21e8b980-5f33-11f0-b87b-a3ae588efff0",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRCIO GO-173 IRI",
+    "id": "882324f4-ce5b-11f1-8622-83b30cafb54e",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRCIO PLANEP/ALTA - PE",
+    "id": "3f3447a0-5f30-11f0-aef7-a39295167ac7",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRCIO SUPERVISOR GO",
+    "id": "dcf483e6-ef4b-11f0-a45e-df1c740f0dca",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRCIO VL - ESTRATÉGICA - LOTE 12",
+    "id": "0f792b88-a004-11f0-9be6-4b73dca40777",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSÓRIO GO 173/151 - IRI/RETRO",
+    "id": "7f2aa75c-998e-11f1-92dc-e389970a9c0e",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSPEL EST.SALTO DAS ORQUÍDIAS",
+    "id": "acbb93a8-5f32-11f0-a848-17c78abedfb1",
+    "apelidos": []
+  },
+  {
+    "nome": "CONSPEL PR-218",
+    "id": "7abdcf4a-5f2f-11f0-930a-b338a2afb36f",
+    "apelidos": []
+  },
+  {
+    "nome": "CS INFRA MT",
+    "id": "2caee5e2-d8a9-11f1-ae5c-573a6d06281d",
+    "apelidos": []
+  },
+  {
+    "nome": "CTVM - LP - DYNA BR 262 MG/ES - INFRA SA",
+    "id": "c2e0ba72-de08-11f1-ac1f-7fb56992c87e",
+    "apelidos": []
+  },
+  {
+    "nome": "CTVM - LP - ETEL OAEs GO",
+    "id": "22b10b9e-76f6-11f0-9d24-1f05d24d6195",
+    "apelidos": []
+  },
+  {
+    "nome": "CTVM - SN - ETEL PR",
+    "id": "371feb8a-6cb1-11f0-b4c8-4f8f86e22921",
+    "apelidos": []
+  },
+  {
+    "nome": "CTVM - SN - SISCON SC",
+    "id": "3717ef66-6cb1-11f0-bcc0-075ab40d91f3",
+    "apelidos": []
+  },
+  {
+    "nome": "Despesa Fixa",
+    "id": "521572a8-5cf2-11f0-bcbf-8f86bc98a768",
+    "apelidos": []
+  },
+  {
+    "nome": "DESPESAS ADMINISTRATIVAS",
+    "id": "c53c373e-5f2d-11f0-aedb-db5dc1cad045",
+    "apelidos": []
+  },
+  {
+    "nome": "DESPESAS ADMINISTRATIVAS",
+    "id": "dd5ac400-6bd7-11f0-ab6c-e72f81c44388",
+    "apelidos": []
+  },
+  {
+    "nome": "Despesas Ocasionais",
+    "id": "b7473cc4-5cf2-11f0-b315-87e6b7cc8d37",
+    "apelidos": []
+  },
+  {
+    "nome": "Despesas Variáveis",
+    "id": "13271a6e-5cf3-11f0-b235-4bfccd41b614",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNA BR 020 e BR 242",
+    "id": "f1c77178-d69d-11f0-9e66-3b49cfece1ae",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNA BR 040 DF",
+    "id": "ac2dedfe-d69d-11f0-bd79-af14e691430d",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNA BR 262 MG/ES - INFRA SA",
+    "id": "1720e934-afda-11f1-86d4-7bdf1dd55a88",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNA BR-116 E 251/MG",
+    "id": "a4f8e05c-ecb4-11f0-a9a6-4fbf88117ce6",
+    "apelidos": []
+  },
+  {
+    "nome": "Dyna FWD Lorena-SP",
+    "id": "f5554530-7289-11f1-954d-0bbb1b8cad9e",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNA GOINFRA CICLO III - FWD",
+    "id": "d45dacf2-386c-11f1-9021-bb25326ac935",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNA GOINFRA CICLO III - VDROD",
+    "id": "c464cc18-386c-11f1-a362-c7c9cf65d0f2",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNATEST - GO/DF",
+    "id": "9531c8a6-6cb1-11f0-a219-f72542320313",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNATEST BR-040/GO E 070/DF",
+    "id": "49e5a186-5f2f-11f0-8c62-b3e6e1232999",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNATEST INVENTÁRIO GO",
+    "id": "52f06fa6-5f32-11f0-b64a-ab6cbfa3fe85",
+    "apelidos": []
+  },
+  {
+    "nome": "DYNATEST INVT. NORDESTE",
+    "id": "20e74b90-900d-11f0-b198-33a25468f051",
+    "apelidos": []
+  },
+  {
+    "nome": "ESTRATÉGICA FWD NORDESTE",
+    "id": "8c177534-9260-11f0-9f14-772a4dbdfbbf",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL BR - 153/PR",
+    "id": "0995d774-5f32-11f0-8150-3779cc2a7268",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL BR - 373/PR",
+    "id": "15aba836-5f32-11f0-b03e-1f2a6a54f645",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL BR - 376/PR",
+    "id": "1f6f2ac8-5f32-11f0-8b42-e75231b1160c",
+    "apelidos": []
+  },
+  {
+    "nome": "Etel DF OAE's",
+    "id": "4239bb38-76f5-11f0-b629-cfe6be5a4d06",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL FWD/VIGA - GO",
+    "id": "ac8f9b42-7307-11f1-a5de-3fa89e8ce28b",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL FWD/VIGA - PR",
+    "id": "dcb756f8-6bd7-11f0-8e58-0b538ccf4271",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL OAEs PR",
+    "id": "a71d709a-5f2f-11f0-af88-fb9932439c53",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL OAEs PR/2026",
+    "id": "07fea3aa-74f8-11f1-bc80-93dcce89fc03",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL PR - 092 LVC/IGG",
+    "id": "ecbf75ca-ceec-11f1-b789-bb78c5665da7",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL ROD. GO",
+    "id": "d5be461e-5f2e-11f0-81ce-ab074b8274f8",
+    "apelidos": []
+  },
+  {
+    "nome": "ETEL VDROD - GO",
+    "id": "bdc08994-7307-11f1-87bd-238c6a9ecfbe",
+    "apelidos": []
+  },
+  {
+    "nome": "ETHOS ENGENHARIA",
+    "id": "f15132d0-5f31-11f0-b0b1-63f8740900cf",
+    "apelidos": []
+  },
+  {
+    "nome": "FOCO AMBIENTE - FWD/IRI",
+    "id": "13df47d0-d950-11f1-9888-d73df62dfc5f",
+    "apelidos": []
+  },
+  {
+    "nome": "FWD DYNA RJ",
+    "id": "fc9bbd1e-fd37-11f0-9bab-a70411176cea",
+    "apelidos": []
+  },
+  {
+    "nome": "FWD ESTEIO SP",
+    "id": "c79ff018-f575-11f0-8c70-bfe37892d5f0",
+    "apelidos": []
+  },
+  {
+    "nome": "FWD GOIÁS",
+    "id": "dd5d7f6a-6bd7-11f0-a0f4-634a52af50e7",
+    "apelidos": []
+  },
+  {
+    "nome": "FWD IMTRAFF GO-010",
+    "id": "6fc7de02-2e03-11f1-8dd4-4f4d486fb1bf",
+    "apelidos": []
+  },
+  {
+    "nome": "FWD MG IMTRAFF",
+    "id": "dd68228a-6bd7-11f0-ab6c-e76bf6aca488",
+    "apelidos": []
+  },
+  {
+    "nome": "FWD PR",
+    "id": "dd5f8486-6bd7-11f0-a304-6f9695d38af7",
+    "apelidos": []
+  },
+  {
+    "nome": "FWD RJ",
+    "id": "7f4208a8-72f1-11f0-a1b7-f3a41a2a100d",
+    "apelidos": []
+  },
+  {
+    "nome": "GEASA BR070/GO FWD",
+    "id": "62ac0bec-bf55-11f1-84f0-0f460a0146d8",
+    "apelidos": []
+  },
+  {
+    "nome": "HOUER / YVY - BR 163 MT/PA",
+    "id": "6fb2f58e-afd9-11f1-9413-370d28eb017a",
+    "apelidos": []
+  },
+  {
+    "nome": "HOUER / YVY - MT",
+    "id": "c7d00254-a7c1-11f1-baa4-8720bbcd4c70",
+    "apelidos": []
+  },
+  {
+    "nome": "HOUER / YVY - ROTA DO PEQUI",
+    "id": "8a5060f2-afd9-11f1-b6e9-7ffe8a038b01",
+    "apelidos": []
+  },
+  {
+    "nome": "HOUER FWD BR116/324BA",
+    "id": "825bf4e8-3099-11f1-b4dd-9b2886a63cc8",
+    "apelidos": []
+  },
+  {
+    "nome": "HOUER VDRod BR116/324BA",
+    "id": "e1946e9c-343e-11f1-a62f-ab9ff5a9c257",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF - ECOARAGUAIA",
+    "id": "1226c9bc-5f31-11f0-8af5-37efa2c7ec9b",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF - MOTIVA RIO/SP (FWD/ADE)",
+    "id": "1d06f49c-bb6a-11f1-8119-ef56a1b1b80f",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF - MT ADERENCIA",
+    "id": "3e38e708-66a9-11f1-937a-ff15c50efe77",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF - MT FWD",
+    "id": "ccb2982c-65c7-11f1-af5b-eff1eb3a85ff",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF - MT VDROD",
+    "id": "1d7e163c-66a9-11f1-a466-17aca42e4362",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF / SYSTRA - BR-135/MG",
+    "id": "e2aab400-5f30-11f0-bd16-67d4d825a6a9",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF BR 153/SP-TBR",
+    "id": "4f6dd62c-5b74-11f1-a7e0-4b88b8b0f7cc",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF BR 251/116 MG",
+    "id": "df1eca72-0b8a-11f1-9cb1-bf3d9857d778",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF BR 356/MG",
+    "id": "5df7a6d2-640d-11f0-ac63-4f453dcc61c2",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF CICLO II - MT",
+    "id": "d1cd91d8-c76d-11f1-8579-1b89d64538da",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF ECO PONTE - RJ",
+    "id": "78254c90-56af-11f1-815f-2766f50ea79c",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF ECO RIO MINAS/FWD E ADE",
+    "id": "db3a6302-89da-11f1-9699-834299e8a103",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF EPR IGUAÇU PÊNDULO",
+    "id": "b91041d8-3daf-11f1-90b5-d7827b483288",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF EPR IGUAÇU/PR",
+    "id": "2402e6d4-3226-11f1-a76f-2784122ca547",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF LT 4/5 - PR",
+    "id": "9955b3ba-8373-11f0-83bc-3f598b20249b",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF MG",
+    "id": "6b5fbbbe-6cb1-11f0-82da-6b2488d312e3",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF ROTA OURO PRETO/MG",
+    "id": "fdfeba1a-5f32-11f0-bd16-f7eb6b67c75c",
+    "apelidos": []
+  },
+  {
+    "nome": "IMTRAFF VC/TM",
+    "id": "20f1d3f2-2271-11f1-a2a2-cfae1ff0dd58",
+    "apelidos": []
+  },
+  {
+    "nome": "INFRA - ECOSUL",
+    "id": "18a88c78-d69e-11f0-95d3-9b92d5bcbd77",
+    "apelidos": []
+  },
+  {
+    "nome": "INFRA - ECOSUL RS",
+    "id": "4b3360f2-3da8-11f1-a8bc-97149be8f49e",
+    "apelidos": []
+  },
+  {
+    "nome": "INFRACONSULT - MG VDROD DER",
+    "id": "57e17e60-3db2-11f1-a130-dbd6f1fa6495",
+    "apelidos": []
+  },
+  {
+    "nome": "INVESTIMENTO",
+    "id": "bef12bba-5c34-11f0-9091-339431840aef",
+    "apelidos": []
+  },
+  {
+    "nome": "IRI/IGG DYNA GO",
+    "id": "1e4b1612-ca5c-11f0-8718-1f5563baf615",
+    "apelidos": []
+  },
+  {
+    "nome": "ITAX EPR IGUAÇU/PR - IRI",
+    "id": "d57a7732-8c63-11f1-8dea-83f3eb614f1d",
+    "apelidos": []
+  },
+  {
+    "nome": "ITAX EPR PR - IRI",
+    "id": "521de086-6067-11f1-939a-57f459ebfd35",
+    "apelidos": []
+  },
+  {
+    "nome": "LWD MROSCOE - MG",
+    "id": "99dc3a9e-05e0-11f1-b78f-4fafff6a06f4",
+    "apelidos": []
+  },
+  {
+    "nome": "MANUTENÇÃO DE EQUIPAMENTO",
+    "id": "fa19377c-3484-11f1-81c0-afd87e211f5b",
+    "apelidos": []
+  },
+  {
+    "nome": "MANUTENÇÃO FWD",
+    "id": "cd75d984-5f7b-11f0-8152-433e0256c4b3",
+    "apelidos": []
+  },
+  {
+    "nome": "MJRE - PR",
+    "id": "5e0ac00a-5f30-11f0-8c62-fb5f008ffc12",
+    "apelidos": []
+  },
+  {
+    "nome": "PÁTRIA - PR",
+    "id": "82561cb6-6bd3-11f0-94fd-0f59abdc15a6",
+    "apelidos": []
+  },
+  {
+    "nome": "PAVESYS - PR",
+    "id": "0fa260e4-5f30-11f0-bb25-a38d44e000a8",
+    "apelidos": []
+  },
+  {
+    "nome": "PENTÁGONO SP",
+    "id": "cf12a6d8-5f2f-11f0-9f73-a783661b0491",
+    "apelidos": []
+  },
+  {
+    "nome": "PLANEP BR - 104/PE",
+    "id": "40198f7a-5f32-11f0-a6c4-1bc598ea86be",
+    "apelidos": []
+  },
+  {
+    "nome": "RC VIEIRA RJ-071 LINHA VERMELHA",
+    "id": "920d2826-5f2f-11f0-8a0a-3b25ebceb295",
+    "apelidos": []
+  },
+  {
+    "nome": "RESTAURANTE",
+    "id": "3d12dc66-de0a-11f1-9ad1-a36f2ee11195",
+    "apelidos": []
+  },
+  {
+    "nome": "S3 ENG - BR/SP FWD",
+    "id": "9f71c744-d957-11f1-9c7e-9353c3a95324",
+    "apelidos": []
+  },
+  {
+    "nome": "Seguro de Veículo",
+    "id": "2fff01fe-bb90-11f1-ba48-efac696dd7aa",
+    "apelidos": []
+  },
+  {
+    "nome": "SERVIÇO DE MANUTENÇÃO DE FWD",
+    "id": "a435c070-b99e-11f0-9242-9b11bf4569a0",
+    "apelidos": []
+  },
+  {
+    "nome": "SISCON SC",
+    "id": "f5e6e134-5f2f-11f0-aedb-3b2f09b01452",
+    "apelidos": []
+  },
+  {
+    "nome": "VDROD HOUER RS",
+    "id": "93cd46c2-3ce3-11f1-a11f-6f2e7daf4f11",
+    "apelidos": []
+  },
+  {
+    "nome": "VL ENGENHARIA - PR",
+    "id": "1a15333a-5f30-11f0-96ab-43030a28fc03",
     "apelidos": []
   }
 ]
