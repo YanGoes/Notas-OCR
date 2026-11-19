@@ -49,16 +49,26 @@ async function portaAberta(perfil) {
 /**
  * Abre o navegador do robo (ou reaproveita o que ja esta aberto) e devolve a
  * porta de depuracao. `url` abre numa aba nova quando o navegador ja existia.
+ * `escondida`: o robo abre a janela FORA DA TELA (nao pisca na frente da pessoa
+ * durante o envio); logo depois ela some tambem da barra de tarefas.
  */
-async function abrir({ perfil = PERFIL_PADRAO, navegador = null, url = "about:blank", esperaMs = 20000 } = {}) {
+async function abrir({ perfil = PERFIL_PADRAO, navegador = null, url = "about:blank", esperaMs = 20000, escondida = false } = {}) {
     let porta = await portaAberta(perfil);
     if (porta) return { porta, perfil, reaproveitado: true };
     fs.mkdirSync(perfil, { recursive: true });
     try { fs.unlinkSync(path.join(perfil, "DevToolsActivePort")); } catch (_) { /* nao existia */ }
     const processo = spawn(acharNavegador(navegador), [
         `--user-data-dir=${perfil}`, "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1",
-        "--no-first-run", "--no-default-browser-check", "--disable-features=Translate", url,
-    ], { detached: true, stdio: "ignore" });
+        "--no-first-run", "--no-default-browser-check", "--disable-features=Translate",
+        // Posicao sempre explicita: o Chrome guarda a ultima no perfil, e a janela
+        // aberta fora da tela pelo robo voltaria fora da tela para o login.
+        ...(escondida
+            ? ["--window-position=-32000,-32000", "--window-size=1366,900",
+                // Escondida/fora da tela o Chrome poderia "pausar" a pagina.
+                "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling"]
+            : ["--window-position=80,60", "--window-size=1366,900"]),
+        url,
+    ], { detached: true, stdio: "ignore", windowsHide: escondida });
     processo.unref();
     const limite = Date.now() + esperaMs;
     while (Date.now() < limite) {
@@ -162,4 +172,24 @@ async function conectar(porta, { aba = null, urlContem = null } = {}) {
     };
 }
 
-module.exports = { abrir, conectar, listarAbas, novaAba, acharNavegador, portaAberta, PERFIL_PADRAO };
+// Esconder / mostrar a janela (ferramentas/janela-robo.ps1): o robo trabalha
+// com ela escondida (fora da tela e da barra de tarefas); aparece so para login.
+const SCRIPT_JANELA = path.join(RAIZ, "ferramentas", "janela-robo.ps1");
+function janela(perfil, acao) {
+    // Teste automatico nunca mexe em janela de verdade.
+    if (process.platform !== "win32" || process.env.NODE_TEST_CONTEXT) return Promise.resolve(false);
+    return new Promise((resolve) => {
+        let processo;
+        try {
+            processo = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", SCRIPT_JANELA,
+                "-Perfil", path.resolve(perfil), "-Acao", acao], { stdio: "ignore", windowsHide: true });
+        } catch (_) { resolve(false); return; }
+        const limite = setTimeout(() => { try { processo.kill(); } catch (_) { /* ja saiu */ } resolve(false); }, 15000);
+        processo.on("exit", (codigo) => { clearTimeout(limite); resolve(codigo === 0); });
+        processo.on("error", () => { clearTimeout(limite); resolve(false); });
+    });
+}
+const esconderJanela = (perfil = PERFIL_PADRAO) => janela(perfil, "esconder");
+const mostrarJanela = (perfil = PERFIL_PADRAO) => janela(perfil, "mostrar");
+
+module.exports = { abrir, conectar, listarAbas, novaAba, acharNavegador, portaAberta, esconderJanela, mostrarJanela, PERFIL_PADRAO };

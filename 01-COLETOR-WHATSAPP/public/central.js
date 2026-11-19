@@ -100,19 +100,33 @@ function vigiarColeta() {
         faixa.classList.toggle("parada", Boolean(parada));
         faixa.classList.toggle("oculto", !texto);
     };
+    // O WhatsApp derruba a conexao de vez em quando e o programa religa sozinho
+    // em segundos (e as mensagens desse intervalo chegam assim que volta). Antes,
+    // pegar um desses segundos ja acendia o alarme — parecia que tinha caido.
+    // Agora: so avisa na hora quando precisa de alguem (QR Code / desconectado);
+    // reconexao automatica so vira aviso se passar de 1 minuto.
+    let foraDesde = null;
     const conferir = async () => {
         try {
             const resposta = await fetch("/api/status", { cache: "no-store" });
             const status = await resposta.json();
             const whats = status?.whatsapp?.status;
-            if (whats === "conectado") mostrar("");
-            else mostrar(`WhatsApp ${whats || "desconectado"}: notas novas NÃO estão chegando. Abra o Painel principal para reconectar.`);
+            if (whats === "conectado") { foraDesde = null; mostrar(""); return; }
+            foraDesde ??= Date.now();
+            if (["aguardando_qr", "aguardando_codigo", "desconectado"].includes(whats) || !whats) {
+                mostrar("WhatsApp pede QR Code: notas novas NÃO estão chegando. Abra o Painel principal e leia o QR com o celular.", true);
+            } else if (whats === "erro") {
+                mostrar("WhatsApp parado por erro: notas novas NÃO estão chegando. Abra o Painel principal para ver o motivo.", true);
+            } else if (Date.now() - foraDesde >= 60000) {
+                const minutos = Math.max(1, Math.round((Date.now() - foraDesde) / 60000));
+                mostrar(`WhatsApp tentando reconectar há ${minutos} min (internet do computador?). As mensagens desse período chegam quando voltar.`);
+            } else mostrar("");
         } catch (_) {
             mostrar("A coleta do WhatsApp está PARADA. Ela religa sozinha em até 1 minuto; se não voltar, use 'Reiniciar coleta' no ícone perto do relógio.", true);
         }
     };
     conferir();
-    setInterval(conferir, 30000);
+    setInterval(conferir, 20000);
 }
 
 const moeda = (valor) => (valor == null ? "—" : Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
@@ -227,6 +241,24 @@ function mudarTipo(valor) {
     executar(carregarLista);
 }
 
+/** Texto do filtro ativo ("de 12/11/2026 · de Almir"), ou null sem filtro nenhum. */
+function descricaoDoFiltro() {
+    const partes = [];
+    const intervalo = intervaloDoPeriodo(estado.periodo);
+    if (intervalo) {
+        const quando = intervalo.de && intervalo.de === intervalo.ate ? `de ${dataBr(intervalo.de)}`
+            : `de ${intervalo.de ? dataBr(intervalo.de) : "…"} até ${intervalo.ate ? dataBr(intervalo.ate) : "…"}`;
+        partes.push(estado.periodo.pela === "recebida" ? `que chegaram ${quando}` : quando);
+    }
+    if (estado.operador && estado.operador !== "todos") {
+        partes.push(`de ${(estado.operadoresDaAba || []).find((o) => o.id === estado.operador)?.nome || estado.operador}`);
+    }
+    if (estado.tipo && estado.tipo !== "todos") {
+        partes.push(`tipo ${ROTULO_TIPO_FILTRO[estado.tipo] || estado.opcoes?.tipos?.find((t) => t.codigo === estado.tipo)?.rotulo || estado.tipo}`);
+    }
+    return partes.length ? partes.join(" · ") : null;
+}
+
 function desenharFiltroPeriodo(resumo, tipos = []) {
     const p = estado.periodo;
     const hoje = new Date();
@@ -279,16 +311,38 @@ function desenharFiltroPeriodo(resumo, tipos = []) {
             } finally { evento.target.disabled = false; }
         }),
     }, "📁 Enviar fotos ao Drive") : null;
-    // Na aba Aprovadas: sobe para o Conta Azul todas as aprovadas que ainda nao foram enviadas (a conta e escolhida na janela).
+    // Em Prontas para enviar: com filtro (data/operador/tipo) envia SO as notas da lista
+    // na tela; sem filtro, todas as prontas. Antes o botao ignorava o filtro e mandava
+    // todas, mesmo com a lista mostrando so as de um dia.
+    const filtroAtivo = descricaoDoFiltro();
+    const visiveis = (estado.itensVisiveis || []).map((item) => item.id);
     const botaoEnviarTodas = estado.aba === "aprovadas" ? el("button", {
-        type: "button", class: "chip-operador", title: "Envia ao Conta Azul todas as notas aprovadas que ainda não subiram, com a foto anexada. Você escolhe a conta (teste ou oficial) antes de confirmar.",
-        onclick: () => executar(() => abrirEnvio({ todas: true })),
-    }, "📤 Enviar todas ao Conta Azul") : null;
+        type: "button", class: "chip-operador", disabled: Boolean(filtroAtivo && !visiveis.length),
+        title: filtroAtivo
+            ? `Envia ao Conta Azul SÓ as ${visiveis.length} nota(s) desta lista (${filtroAtivo}), com a foto anexada. Você escolhe a conta e confere os números antes de confirmar.`
+            : "Envia ao Conta Azul todas as notas prontas que ainda não subiram, com a foto anexada (as do histórico antigo nunca vão). Você escolhe a conta (teste ou oficial) antes de confirmar. As enviadas para a oficial passam para \"Enviadas\".",
+        onclick: () => executar(() => (filtroAtivo ? abrirEnvio({ ids: visiveis, filtro: filtroAtivo }) : abrirEnvio({ todas: true }))),
+    }, filtroAtivo ? `📤 Enviar as ${visiveis.length} desta lista ao Conta Azul` : "📤 Enviar todas ao Conta Azul") : null;
+    // So o filtro em si (período + tipo): as acoes da aba (Drive, enviar,
+    // reclassificar...) vao numa barra separada (#acoesAba), para nao virar
+    // uma fileira so de botoes e chips misturados.
     trocarFilhos($("#filtroPeriodo"),
         el("span", { class: "rotulo-operadores" }, "Período:"), ...chips,
         controle ? controle() : null, p.modo !== "todas" ? pela : null,
         filtroTipo,
-        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null, botaoDrive, botaoEnviarTodas,
+        resumo ? el("span", { class: "resumo-periodo" }, `${resumo.notas} nota(s) · ${moeda(resumo.valor)}`) : null);
+    const barraAcoes = $("#acoesAba");
+    const botaoUploadManual = el("button", { type: "button", class: "chip-operador",
+        title: "Para uma nota que não chegou pelo WhatsApp (ex.: caiu a conexão, foto só salva no celular): manda a foto aqui, escolhendo de quem é, e ela entra no mesmo fluxo (leitura, revisão, aprovação).",
+        onclick: () => executar(abrirUploadManual) }, "📎 Enviar nota que não chegou");
+    // Em Para revisar, com filtro (ex.: um dia): aprova de uma vez SO as notas da lista
+    // na tela. Sem filtro nao aparece, para nunca aprovar a fila inteira sem querer.
+    const botaoAprovarTodas = estado.aba === "revisar" && filtroAtivo && visiveis.length ? el("button", {
+        type: "button", class: "chip-operador aprovar-lista",
+        title: `Aprova de uma vez as ${visiveis.length} nota(s) desta lista (${filtroAtivo}). A nota aberta é salva antes. As que estiverem faltando campo obrigatório não são aprovadas e ficam na lista.`,
+        onclick: (evento) => executar(() => aprovarDaLista(visiveis, filtroAtivo, evento.target)),
+    }, `✅ Aprovar as ${visiveis.length} desta lista`) : null;
+    trocarFilhos(barraAcoes, botaoUploadManual, botaoDrive, botaoEnviarTodas, botaoAprovarTodas,
         estado.aba === "revisar" ? el("button", { type: "button", class: "chip-operador", title: "A IA lê suas observações e as mensagens da gerência, propõe regras (centro e cartão de cada operador) e reclassifica as notas em revisão. Não lê as fotos de novo.",
             onclick: () => executar(abrirReclassificacao) }, "🔁 Reclassificar com minhas observações") : null,
         estado.aba === "revisar" ? el("button", { type: "button", class: "chip-operador", title: "A IA lê agora as mensagens novas da Vanessa e do Murillo (sozinha ela lê uma vez por dia, às 18:30). Mudança de projeto ou cartão aparece no topo para Confirmar.",
@@ -301,6 +355,7 @@ function desenharFiltroPeriodo(resumo, tipos = []) {
                     avisar(r.adiadas ? "A assinatura do Claude não respondeu agora; tente mais tarde." : `Gerência: ${r.analisadas} mensagem(ns) nova(s) lida(s), ${r.avisos} com mudança de projeto/cartão.`, r.adiadas ? "erro" : "ok");
                 } finally { evento.target.disabled = false; }
             }) }, "📣 Ler mensagens da gerência") : null);
+    barraAcoes.classList.toggle("vazia", !barraAcoes.children.length);
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +366,94 @@ const dataBrCurta = (iso) => (iso ? iso.split("-").reverse().join("/") : "");
 const ROTULO_CAMPO = { centro: "Centro de custo", cartao: "Cartão" };
 
 function fecharJanela() { $("#janelaRegras")?.remove(); }
+
+// ---------------------------------------------------------------------------
+// Nota que nao chegou pelo WhatsApp (upload manual da foto)
+// ---------------------------------------------------------------------------
+
+async function abrirUploadManual() {
+    fecharJanela();
+    // Arquivo: clicar para escolher, arrastar para a caixa ou colar (Ctrl+V) com a janela aberta.
+    const TIPOS_ACEITOS = { "image/jpeg": ".jpg", "image/png": ".png", "image/bmp": ".bmp", "application/pdf": ".pdf" };
+    const arquivo = el("input", { type: "file", accept: Object.keys(TIPOS_ACEITOS).join(","), class: "oculto" });
+    let arquivoEscolhido = null;
+    let urlPrevia = null;
+    const previa = el("div", { class: "zona-arquivo-previa" });
+    const zona = el("div", { class: "zona-arquivo", tabindex: "0", role: "button", "aria-label": "Escolher, arrastar ou colar a foto ou PDF da nota" },
+        el("div", { class: "zona-arquivo-texto" },
+            el("b", {}, "Clique para escolher, arraste o arquivo aqui ou cole (Ctrl+V)"),
+            el("span", {}, "Foto (JPG, PNG, BMP) ou PDF da nota")),
+        previa);
+    const definirArquivo = (f) => {
+        if (!f) return;
+        const tipo = f.type || "";
+        const ext = (f.name?.match(/\.[a-z0-9]+$/i)?.[0] || "").toLowerCase();
+        const valido = TIPOS_ACEITOS[tipo] || [".jpg", ".jpeg", ".png", ".bmp", ".pdf"].includes(ext);
+        if (!valido) { erro.textContent = `"${f.name || "arquivo"}" não é foto (JPG/PNG/BMP) nem PDF.`; erro.classList.remove("oculto"); return; }
+        // Imagem colada costuma vir sem nome (ou "image.png"): da um nome com a extensao certa.
+        if (!ext && TIPOS_ACEITOS[tipo]) f = new File([f], `colada_${Date.now()}${TIPOS_ACEITOS[tipo]}`, { type: tipo });
+        arquivoEscolhido = f;
+        erro.classList.add("oculto");
+        if (urlPrevia) URL.revokeObjectURL(urlPrevia);
+        urlPrevia = URL.createObjectURL(f);
+        const ehPdf = tipo === "application/pdf" || /\.pdf$/i.test(f.name);
+        trocarFilhos(previa,
+            ehPdf ? el("span", { class: "zona-arquivo-icone" }, "📄") : el("img", { src: urlPrevia, alt: "Prévia da nota" }),
+            el("span", { class: "zona-arquivo-nome" }, `${f.name} · ${(f.size / 1024).toFixed(0)} KB`),
+            el("button", { type: "button", class: "ghost", onclick: (e) => { e.stopPropagation(); arquivoEscolhido = null; arquivo.value = ""; trocarFilhos(previa); zona.classList.remove("com-arquivo"); } }, "Trocar"));
+        zona.classList.add("com-arquivo");
+    };
+    arquivo.addEventListener("change", () => definirArquivo(arquivo.files?.[0]));
+    zona.addEventListener("click", () => arquivo.click());
+    zona.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); arquivo.click(); } });
+    zona.addEventListener("dragover", (e) => { e.preventDefault(); zona.classList.add("arrastando"); });
+    zona.addEventListener("dragleave", () => zona.classList.remove("arrastando"));
+    const aoColar = (e) => {
+        if (!document.body.contains(zona)) { document.removeEventListener("paste", aoColar); return; }
+        const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === "file");
+        if (!item) return; // texto colado na legenda segue normal
+        e.preventDefault();
+        definirArquivo(item.getAsFile());
+    };
+    document.addEventListener("paste", aoColar);
+    const pessoas = estado.opcoes?.pessoas || [];
+    const quem = el("select", { "aria-label": "De quem é a nota" },
+        el("option", { value: "" }, "Não sei / outro"),
+        ...pessoas.map((p) => el("option", { value: p.id }, p.nome)));
+    const legenda = el("textarea", { rows: 3, placeholder: "Legenda/comentário que viria junto da foto no WhatsApp (opcional): centro de custo, forma de pagamento, quem participou…" });
+    const erro = el("p", { class: "aviso-ia oculto" });
+    const botaoEnviar = el("button", { type: "button", class: "primary" }, "Enviar para processar");
+    botaoEnviar.addEventListener("click", () => executar(async () => {
+        if (!arquivoEscolhido) { erro.textContent = "Escolha a foto (ou PDF) da nota."; erro.classList.remove("oculto"); return; }
+        erro.classList.add("oculto");
+        botaoEnviar.disabled = true;
+        try {
+            const arquivo_base64 = await arquivoParaBase64(arquivoEscolhido);
+            const resposta = await fetch("/api/documentos/upload", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ arquivo_base64, nome_arquivo: arquivoEscolhido.name, legenda: legenda.value.trim() || null, pessoa_id: quem.value || null }),
+            });
+            const dados = await resposta.json().catch(() => ({}));
+            if (!resposta.ok) throw new Error(dados.erro || `Erro ${resposta.status}`);
+            fecharJanela();
+            avisar(`Nota enviada: vai passar pela leitura (Azure) e aparecer em "Para revisar" em instantes${quem.value ? "" : " — como não foi dito de quem é, vai como remetente não identificado"}.`, "ok");
+        } finally { botaoEnviar.disabled = false; }
+    }));
+    const janela = el("div", { class: "janela-fundo", id: "janelaRegras", onclick: (e) => { if (e.target.id === "janelaRegras") fecharJanela(); } },
+        el("div", { class: "janela", role: "dialog", "aria-label": "Enviar nota que não chegou" },
+            el("div", { class: "janela-topo" }, el("b", {}, "📎 Enviar nota que não chegou pelo WhatsApp"), el("button", { type: "button", class: "ghost", onclick: fecharJanela }, "✕")),
+            el("div", { class: "janela-corpo" },
+                el("p", { class: "origem" }, "Use só quando a foto não chegou pelo WhatsApp de jeito nenhum (ex.: a conexão caiu, ou o operador só tem a foto salva). Ela entra no mesmo fluxo de sempre: leitura do Azure, revisão e aprovação."),
+                el("div", { class: "campo-arquivo" }, el("span", {}, "Foto ou PDF da nota"), zona, arquivo),
+                el("label", {}, el("span", {}, "De quem é"), quem),
+                el("label", {}, el("span", {}, "Legenda / comentário (opcional)"), legenda),
+                erro,
+                el("div", { class: "janela-acoes" }, botaoEnviar))));
+    // Soltar o arquivo em qualquer ponto da janela tambem vale (e o navegador nao abre o arquivo no lugar da Central).
+    janela.addEventListener("dragover", (e) => e.preventDefault());
+    janela.addEventListener("drop", (e) => { e.preventDefault(); zona.classList.remove("arrastando"); definirArquivo(e.dataTransfer?.files?.[0]); });
+    document.body.append(janela);
+}
 
 async function abrirReclassificacao() {
     fecharJanela();
@@ -379,7 +522,7 @@ function blocoEnvioContaAzul(detalhe) {
     return el("div", { class: "bloco envio-ca" }, el("h3", {}, "Conta Azul"),
         envios.length ? el("ul", { class: "historico" }, envios.map(linha)) : el("p", { class: "origem" }, "Esta nota ainda não foi enviada ao Conta Azul."),
         el("div", { class: "acoes" },
-            el("button", { type: "button", class: "primary", title: "Cria o lançamento no Conta Azul com as informações desta nota e anexa a foto. Você escolhe a conta antes de confirmar.",
+            el("button", { type: "button", class: "primary", title: "Cria o lançamento no Conta Azul com as informações desta nota e anexa a foto, na conta escolhida no botão do topo (teste ou OFICIAL). Envia na hora, sem perguntar.",
                 onclick: () => executar(() => abrirEnvio({ ids: [detalhe.id] })) }, "📤 Enviar ao Conta Azul")));
 }
 
@@ -433,46 +576,39 @@ async function recarregarDepoisDoEnvio() {
 }
 
 /** Janela de envio: escolhe a conta, confirma e mostra o resultado. */
-async function abrirEnvio({ ids = null, todas = false }) {
+async function abrirEnvio({ ids = null, todas = false, filtro = null }) {
     fecharEnvio();
+    // Varias notas escolhidas (lista filtrada): roda em segundo plano, como "todas".
+    const varias = !todas && (ids?.length || 0) > 1;
+    const listaIds = !todas && ids ? (ids.length > 40 ? `${ids.slice(0, 40).map((id) => `#${id}`).join(", ")} e mais ${ids.length - 40}` : ids.map((id) => `#${id}`).join(", ")) : "";
     const corpo = el("div", { class: "janela-corpo" }, el("p", { class: "origem" }, "Conferindo as contas do Conta Azul…"));
     const janela = el("div", { class: "janela-fundo", id: "janelaRegras", onclick: (e) => { if (e.target.id === "janelaRegras") fecharEnvio(); } },
         el("div", { class: "janela", role: "dialog", "aria-label": "Enviar ao Conta Azul" },
-            el("div", { class: "janela-topo" }, el("b", {}, todas ? "📤 Enviar todas ao Conta Azul" : `📤 Enviar a nota #${ids[0]} ao Conta Azul`), el("button", { type: "button", class: "ghost", onclick: fecharEnvio }, "✕")),
+            el("div", { class: "janela-topo" }, el("b", {}, todas ? "📤 Enviar todas ao Conta Azul" : varias || filtro ? `📤 Enviar ${ids.length} nota(s) desta lista ao Conta Azul` : `📤 Enviar a nota #${ids[0]} ao Conta Azul`), el("button", { type: "button", class: "ghost", onclick: fecharEnvio }, "✕")),
             corpo));
     document.body.append(janela);
     const situacao = await api("/envio/situacao");
     // Ja tem um envio rodando (talvez iniciado por outra pessoa): mostra o andamento dele.
     if (situacao.tarefa?.status === "RODANDO") { desenharAndamentoEnvio(corpo, situacao.tarefa); acompanharEnvio(corpo); return; }
 
-    let conta = (situacao.contas.find((c) => c.liberada) || situacao.contas[0]).conta;
-    const confirmoOficial = el("input", { type: "checkbox" });
-    const linhaConfirmacao = el("label", { class: "regra oculto" }, confirmoOficial,
-        el("span", {}, el("b", {}, "Confirmo o envio para a conta OFICIAL"), el("small", {}, "São lançamentos de verdade na empresa real. A API não apaga lançamento: o que subir errado só sai pela tela do Conta Azul.")));
-    const botaoEnviar = el("button", { type: "button", class: "primary" }, "Enviar");
-    const oQueVai = el("p", {});
-    const atualizar = () => {
-        const escolhida = situacao.contas.find((c) => c.conta === conta);
-        linhaConfirmacao.classList.toggle("oculto", conta !== "oficial");
-        oQueVai.textContent = todas
-            ? `${escolhida.pendentes ?? 0} nota(s) aprovada(s) ainda não enviada(s) para a ${NOME_CONTA[conta]} serão enviadas, uma a uma.`
-            : `A nota #${ids[0]} será enviada para a ${NOME_CONTA[conta]}.`;
-        botaoEnviar.disabled = !escolhida.liberada || (todas && !escolhida.pendentes) || (conta === "oficial" && !confirmoOficial.checked);
-    };
-    confirmoOficial.addEventListener("change", atualizar);
-    const opcaoConta = (c) => {
-        const motivo = !c.liberada ? (c.conta === "oficial" ? "ainda não liberada para envio" : "envio desligado no config")
-            : !c.conectada ? "liberada, mas a API desta conta não está conectada" : `${c.pendentes ?? 0} nota(s) aprovada(s) esperando envio`;
-        return el("label", { class: `regra ${c.liberada ? "" : "recusada"}` },
-            el("input", { type: "radio", name: "contaEnvio", value: c.conta, checked: c.conta === conta, disabled: !c.liberada, onchange: () => { conta = c.conta; atualizar(); } }),
-            el("span", {}, el("b", {}, c.conta === "oficial" ? "Conta OFICIAL (empresa real)" : "Conta de teste"), el("small", {}, `${motivo}${c.empresa_id ? ` · empresa ${c.empresa_id}` : ""}`)));
-    };
+    // A conta e a escolhida no botao do topo (Conta de teste / Conta OFICIAL): o
+    // envio nao pergunta de novo (trocar para a OFICIAL ja pede digitar OFICIAL).
+    let conta = "teste";
+    try { conta = (await (await fetch("/api/conta-azul/perfil")).json()).perfil === "oficial" ? "oficial" : "teste"; } catch (_) { /* fica a de teste */ }
+    const escolhida = situacao.contas.find((c) => c.conta === conta) || { liberada: false };
+    const motivoBloqueio = !situacao.lancamento_habilitado ? "O lançamento está desligado no config (central.lancamento_habilitado): nada será enviado."
+        : !escolhida.liberada ? `A ${NOME_CONTA[conta]} não está liberada para envio${conta === "oficial" ? " (config.json → central.envio_conta_azul.oficial)" : " (envio desligado no config)"}.`
+            : todas && !escolhida.pendentes ? `Não há nota pronta esperando envio para a ${NOME_CONTA[conta]}.` : null;
+    const botaoEnviar = el("button", { type: "button", class: "primary", disabled: Boolean(motivoBloqueio) }, conta === "oficial" ? "Enviar para a conta OFICIAL" : "Enviar para a conta de teste");
+    const oQueVai = el("p", {}, todas
+        ? `${escolhida.pendentes ?? 0} nota(s) pronta(s) ainda não enviada(s) vão para a ${NOME_CONTA[conta]}, uma a uma (TODAS as prontas, sem filtro).`
+        : `SÓ estas ${ids.length} nota(s)${filtro ? ` (${filtro})` : ""} vão para a ${NOME_CONTA[conta]}, uma a uma: ${listaIds}. As outras prontas não vão. Nota que já subiu para essa conta não sobe de novo (aparece como "já foi enviada").`);
     botaoEnviar.addEventListener("click", () => executar(async () => {
         const autor = revisor();
         botaoEnviar.disabled = true;
-        trocarFilhos(corpo, el("p", { class: "origem" }, todas ? "Começando o envio…" : "Enviando: criando o lançamento e anexando a foto… (leva alguns segundos)"));
+        trocarFilhos(corpo, el("p", { class: "origem" }, todas || varias ? "Começando o envio…" : "Enviando: criando o lançamento e anexando a foto… (leva alguns segundos)"));
         try {
-            const { tarefa } = await api("/envio/enviar", { conta, ids, todas, autor, aguardar: !todas });
+            const { tarefa } = await api("/envio/enviar", { conta, ids, todas, autor, aguardar: !todas && !varias });
             desenharAndamentoEnvio(corpo, tarefa);
             if (tarefa.status === "RODANDO") acompanharEnvio(corpo);
             else await recarregarDepoisDoEnvio();
@@ -481,25 +617,92 @@ async function abrirEnvio({ ids = null, todas = false }) {
                 el("div", { class: "janela-acoes" }, el("button", { type: "button", class: "primary", onclick: fecharEnvio }, "Fechar")));
         }
     }));
+    // Uma nota so: envia direto na conta do topo, sem perguntar nada.
+    if (!todas && !varias && !filtro) {
+        const falta = motivoBloqueio || ($("#revisor").value.trim() ? null : "Escreva o seu nome no campo Revisor (topo da página) e clique de novo.");
+        if (falta) {
+            trocarFilhos(corpo, el("p", { class: "aviso-ia" }, falta),
+                el("div", { class: "janela-acoes" }, el("button", { type: "button", class: "primary", onclick: fecharEnvio }, "Fechar")));
+            return;
+        }
+        botaoEnviar.click();
+        return;
+    }
     trocarFilhos(corpo,
-        situacao.lancamento_habilitado ? null : el("p", { class: "aviso-ia" }, "O lançamento está desligado no config (central.lancamento_habilitado): nada será enviado."),
-        el("h4", {}, "Para qual conta?"),
-        ...situacao.contas.map(opcaoConta),
-        linhaConfirmacao,
+        motivoBloqueio ? el("p", { class: "aviso-ia" }, motivoBloqueio) : null,
+        el("p", {}, el("b", {}, `Conta: ${conta === "oficial" ? "OFICIAL (empresa real)" : "de teste"}`), el("small", { class: "origem" }, " · a escolhida no botão do topo da Central")),
         oQueVai,
-        el("p", { class: "origem" }, "O programa cria o lançamento com as informações da nota e o robô de tela anexa a foto. A janela do robô dessa conta precisa estar aberta e logada (atalho 18); se não estiver, nada é criado. Nota já enviada para a conta não sobe de novo."),
-        el("p", { class: "origem" }, `Quem pode enviar: ${situacao.podem_enviar.join(", ")} (nome no campo Revisor).`),
+        el("p", { class: "origem" }, "O programa cria o lançamento com as informações da nota e o robô de tela anexa a foto (a janela do robô dessa conta abre sozinha se estiver fechada; precisa estar logada). Nota já enviada para a conta não sobe de novo."),
         el("div", { class: "janela-acoes" }, botaoEnviar, el("button", { type: "button", class: "ghost", onclick: fecharEnvio }, "Cancelar")));
-    atualizar();
+}
+
+// Nome de cada etapa (etiqueta nos resultados da busca).
+const NOME_ABA = {
+    revisar: "Para revisar", aprovadas: "Pronta p/ enviar", problema: "Envio com problema", enviadas: "Enviada (oficial)",
+    fora: "Duplicada/descartada", simuladas: "Treino IA",
+};
+// Lista vazia: o que isso quer dizer em cada etapa.
+const VAZIO_DA_ABA = {
+    revisar: "Nada esperando revisão.", aprovadas: "Tudo em dia: nenhuma nota aprovada esperando envio ao Conta Azul oficial.",
+    problema: "Nenhum envio com problema. 👍", enviadas: "Nenhuma nota lançada no Conta Azul oficial ainda.",
+};
+
+function itemDaLista(item, { comEtapa = false } = {}) {
+    const rotulo = item.tipo ? item.tipo.replaceAll("_", " ") : "SEM TIPO";
+    return el("button", {
+        class: "item", type: "button", "aria-current": item.id === estado.selecionada ? "true" : "false",
+        onclick: () => selecionar(item.id),
+    },
+    el("span", { class: "topo" }, el("span", {}, `#${item.id} · ${rotulo}`), el("span", {}, moeda(item.valor))),
+    el("span", { class: "sub" }, `${dataBr(item.data)} · ${item.fornecedor || "fornecedor não lido"}`),
+    el("span", { class: "sub" }, `${item.remetente || "remetente não vinculado"} · ${item.centro_custo || "sem centro"}`),
+    el("span", {},
+        comEtapa && item.aba ? el("span", { class: "etiqueta etapa", title: "Em que etapa da esteira a nota está" }, NOME_ABA[item.aba] || item.aba) : null,
+        comEtapa && item.aba ? " " : null,
+        item.pendencias ? el("span", { class: "etiqueta pend" }, `${item.pendencias} pendência(s)`) : el("span", { class: "etiqueta okk" }, "sem pendências"),
+        item.corrigida ? " " : null, item.corrigida ? el("span", { class: "etiqueta" }, "corrigida") : null,
+        item.sem_comprovante ? " " : null, item.sem_comprovante ? el("span", { class: "etiqueta mau" }, "sem comprovante") : null,
+        (item.envios || []).flatMap((e) => [" ", el("span", { class: `etiqueta ${e.status === "ENVIADO" ? "okk" : "pend"}`, title: "Já enviada ao Conta Azul" },
+            `📤 ${e.conta === "oficial" ? "oficial" : e.conta === "teste" ? "teste" : "outra empresa"}${e.status === "ENVIADO" ? "" : " (pendência)"}`)])));
+}
+
+// Busca rapida: procura em TODAS as etapas e mostra em qual cada nota esta.
+estado.busca = "";
+async function carregarBusca() {
+    const termo = estado.busca;
+    const { itens, contagem } = await api(`/busca?q=${encodeURIComponent(termo)}`);
+    if (termo !== estado.busca) return; // a pessoa ja digitou outra coisa
+    mostrarContagem(contagem);
+    const resumoBusca = $("#buscaResumo");
+    resumoBusca.textContent = `${itens.length >= 200 ? "200+ " : itens.length} resultado(s) em todas as etapas · filtros de operador/período não valem na busca`;
+    resumoBusca.classList.remove("oculto");
+    const lista = $("#lista");
+    lista.replaceChildren();
+    if (!itens.length) {
+        lista.append(el("div", { class: "vazio" }, `Nenhuma nota encontrada para "${termo}".`));
+        mostrarVazio();
+        return;
+    }
+    for (const item of itens) lista.append(itemDaLista(item, { comEtapa: true }));
+    if (estado.selecionada == null || !itens.some((item) => item.id === estado.selecionada)) await selecionar(itens[0].id);
+}
+
+function modoBusca(ativo) {
+    for (const id of ["#filtroOperador", "#filtroPeriodo", "#acoesAba"]) $(id).classList.toggle("oculto", ativo);
+    if (!ativo) $("#buscaResumo").classList.add("oculto");
 }
 
 async function carregarLista() {
+    if (estado.busca) return carregarBusca();
     const filtro = estado.operador && estado.operador !== "todos" ? `&operador=${encodeURIComponent(estado.operador)}` : "";
     const filtroTipo = estado.tipo && estado.tipo !== "todos" ? `&tipo=${encodeURIComponent(estado.tipo)}` : "";
     const intervalo = intervaloDoPeriodo(estado.periodo);
     const filtroData = intervalo ? `${intervalo.de ? `&de=${intervalo.de}` : ""}${intervalo.ate ? `&ate=${intervalo.ate}` : ""}&pela=${estado.periodo.pela}` : "";
     const { itens, contagem, operadores, tipos, total_da_aba: totalDaAba, periodo } = await api(`/despesas?aba=${encodeURIComponent(estado.aba)}${filtro}${filtroTipo}${filtroData}`);
     mostrarContagem(contagem);
+    // O botao de envio da aba usa exatamente as notas desta lista (com filtro).
+    estado.itensVisiveis = itens;
+    estado.operadoresDaAba = operadores || [];
     desenharFiltroOperador(operadores || [], totalDaAba ?? itens.length);
     desenharFiltroPeriodo(periodo, tipos || []);
     const lista = $("#lista");
@@ -507,26 +710,13 @@ async function carregarLista() {
     if (!itens.length) {
         const nome = (operadores || []).find((item) => item.id === estado.operador)?.nome;
         const noPeriodo = intervaloDoPeriodo(estado.periodo) ? " neste período" : "";
-        lista.append(el("div", { class: "vazio" }, nome ? `Nenhuma nota de ${nome} nesta aba${noPeriodo}.` : `Nada nesta aba${noPeriodo}.`));
+        const semFiltro = !nome && !noPeriodo && !(estado.tipo && estado.tipo !== "todos");
+        lista.append(el("div", { class: "vazio" }, nome ? `Nenhuma nota de ${nome} nesta aba${noPeriodo}.`
+            : semFiltro && VAZIO_DA_ABA[estado.aba] ? VAZIO_DA_ABA[estado.aba] : `Nada nesta aba${noPeriodo}.`));
         if (!itens.some((item) => item.id === estado.selecionada)) mostrarVazio();
         return;
     }
-    for (const item of itens) {
-        const rotulo = item.tipo ? item.tipo.replaceAll("_", " ") : "SEM TIPO";
-        lista.append(el("button", {
-            class: "item", type: "button", "aria-current": item.id === estado.selecionada ? "true" : "false",
-            onclick: () => selecionar(item.id),
-        },
-        el("span", { class: "topo" }, el("span", {}, `#${item.id} · ${rotulo}`), el("span", {}, moeda(item.valor))),
-        el("span", { class: "sub" }, `${dataBr(item.data)} · ${item.fornecedor || "fornecedor não lido"}`),
-        el("span", { class: "sub" }, `${item.remetente || "remetente não vinculado"} · ${item.centro_custo || "sem centro"}`),
-        el("span", {},
-            item.pendencias ? el("span", { class: "etiqueta pend" }, `${item.pendencias} pendência(s)`) : el("span", { class: "etiqueta okk" }, "sem pendências"),
-            item.corrigida ? " " : null, item.corrigida ? el("span", { class: "etiqueta" }, "corrigida") : null,
-            item.sem_comprovante ? " " : null, item.sem_comprovante ? el("span", { class: "etiqueta mau" }, "sem comprovante") : null,
-            (item.envios || []).flatMap((e) => [" ", el("span", { class: `etiqueta ${e.status === "ENVIADO" ? "okk" : "pend"}`, title: "Já enviada ao Conta Azul" },
-                `📤 ${e.conta === "oficial" ? "oficial" : e.conta === "teste" ? "teste" : "outra empresa"}${e.status === "ENVIADO" ? "" : " (pendência)"}`)]))));
-    }
+    for (const item of itens) lista.append(itemDaLista(item));
     if (estado.selecionada == null || !itens.some((item) => item.id === estado.selecionada)) await selecionar(itens[0].id);
 }
 
@@ -553,7 +743,7 @@ function origemDe(campos, chave) {
     const mapa = {
         data_competencia: campos.data_competencia, valor: campos.valor, fornecedor: campos.fornecedor, litros: campos.abastecimento?.litros,
         odometro: campos.abastecimento?.odometro, placa: campos.abastecimento?.placa, tipo: campos.tipo, pessoas: campos.pessoas,
-        descricao: campos.descricao, categoria: campos.categoria, centro_custo: campos.centro_custo, pagamento: campos.pagamento,
+        descricao: campos.descricao, categoria: campos.categoria, centro_custo: campos.centro_custo, pagamento: campos.pagamento, conta_pix: campos.pagamento,
     };
     return mapa[chave]?.origem || null;
 }
@@ -575,9 +765,13 @@ function controle(campo, valor, desabilitado) {
             rotulo: `${c.nome}${c.ativo === false ? " (inativo)" : c.ativo == null ? " (não confirmado)" : ""}${c.id ? "" : " · sem ID"}`,
             grupo: c.ativo === true ? "Projetos ativos" : "Inativos / não confirmados" })).sort((a, b) => Number(b.grupo === "Projetos ativos") - Number(a.grupo === "Projetos ativos")),
             { livre: true, placeholder: "Digite ou escolha o centro de custo", vazio: "Nenhum centro com esse nome. O texto digitado fica como informado na revisão." });
-        case "pagamento": return combo(comum, valor, [
-            ...opcoes.cartoes.map((cartao) => ({ valor: cartao.codigo, rotulo: cartao.rotulo, grupo: "Cartões" })),
+        // As contas de PIX (C6 SN, Banco do Brasil, Reembolso) nao aparecem aqui: escolhe "PIX"
+        // e a conta vai no campo "Conta do PIX" logo abaixo. Nota com uma delas mostra "PIX".
+        case "pagamento": return combo(comum, opcoes.cartoes.some((c) => c.opcao_pix && c.codigo === valor) ? "PIX" : valor, [
+            ...opcoes.cartoes.filter((cartao) => !cartao.opcao_pix).map((cartao) => ({ valor: cartao.codigo, rotulo: cartao.rotulo, grupo: "Cartões" })),
             ...PAGAMENTOS_EXTRA.map(([codigo, rotulo]) => ({ valor: codigo, rotulo, grupo: "Outras formas" }))], { livre: false, placeholder: "Escolha ou digite o pagamento" });
+        case "conta_pix": return combo(comum, valor, opcoes.cartoes.filter((cartao) => cartao.opcao_pix || cartao.codigo === valor)
+            .map((cartao) => ({ valor: cartao.codigo, rotulo: cartao.rotulo_pix || cartao.rotulo })), { livre: false, placeholder: "De qual conta saiu o PIX?" });
         default: return campo.chave === "fornecedor"
             ? combo(comum, valor, (opcoes.fornecedores || []).map((nome) => ({ valor: nome, rotulo: nome })), { livre: true, placeholder: "Escolha ou digite o fornecedor" })
             : el("input", { ...comum, value: valor ?? "" });
@@ -676,14 +870,8 @@ function blocoMotivo(campo, valorAtual) {
     const sugerido = vazio && estado.opcoes.informados_pelo_operador?.includes(campo.chave) ? "NAO_INFORMADO" : campo.erro_sugerido;
     const motivo = el("select", { class: "motivo-erro", "aria-label": `Motivo da correção de ${campo.rotulo}` },
         estado.opcoes.tipos_erro.map((tipo) => el("option", { value: tipo.codigo, selected: tipo.codigo === sugerido }, tipo.rotulo)));
+    // Explicacao sempre opcional, inclusive no motivo "Outro" (pedido do Yan, 16/11/2026).
     const explicacao = el("input", { class: "explicacao-erro", maxlength: 300, placeholder: "Explique o erro (opcional) — ex.: operador não disse o cartão" });
-    const ajustar = () => {
-        const outro = motivo.value === "OUTRO";
-        explicacao.placeholder = outro ? "Obrigatório: descreva qual foi o erro" : "Explique o erro (opcional) — ex.: operador não disse o cartão";
-        explicacao.required = outro;
-    };
-    motivo.addEventListener("change", ajustar);
-    ajustar();
     return el("div", { class: "tipo-erro" }, el("span", {}, "Motivo da correção:"), motivo, explicacao);
 }
 
@@ -712,16 +900,77 @@ function tipoPeloFornecedor(fornecedor, tipoAtual, horaNota) {
     return null;
 }
 
+// Refeicoes cuja descricao segue o padrao "JANTAR - 3 PESSOAS".
+const TIPOS_DESCRICAO_REFEICAO = ["ALMOCO", "JANTAR", "CAFE_DA_MANHA"];
+
+/**
+ * Ao escolher o tipo na revisao, ja preenche (sem precisar salvar):
+ *  - categoria: a do tipo (Almoço -> "Refeição - Almoço"), se a categoria nao
+ *    foi mexida a mao nesta edicao;
+ *  - descricao: "ALMOÇO - " / "JANTAR - 3 PESSOAS" / "CAFÉ DA MANHÃ - ", se a
+ *    descricao esta vazia ou ainda e o padrao de outra refeicao (nunca apaga o
+ *    que foi escrito a mao). Mudar "Pessoas" depois atualiza o numero.
+ */
+function preencherPeloTipo(campos, detalhe) {
+    const entrada = (chave) => campos.querySelector(`#c-${chave}`);
+    const tipo = entrada("tipo");
+    const categoria = entrada("categoria");
+    const descricao = entrada("descricao");
+    const pessoas = entrada("pessoas");
+    if (!tipo || tipo.disabled) return;
+    const infoTipo = (codigo) => estado.opcoes?.tipos?.find((t) => t.codigo === codigo) || null;
+    const rotulosRefeicao = TIPOS_DESCRICAO_REFEICAO.map((codigo) => infoTipo(codigo)?.rotulo).filter(Boolean);
+    let categoriaMexida = false;
+    let descricaoMexida = false;
+    categoria?.addEventListener("input", (e) => { if (e.isTrusted) categoriaMexida = true; });
+    descricao?.addEventListener("input", (e) => { if (e.isTrusted) descricaoMexida = true; });
+    // Descricao que ainda e o padrao de refeicao ("JANTAR - " ou "JANTAR - 3 PESSOAS"), ou vazia.
+    const descricaoDePadrao = () => {
+        const texto = String(descricao?.value || "").trim().toUpperCase();
+        return !texto || rotulosRefeicao.some((rotulo) => new RegExp(`^${rotulo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*-\\s*(\\d+(\\s+PESSOAS?)?)?$`).test(texto));
+    };
+    // trocouTipo: escolher Almoço/Jantar/Café da manhã reescreve a descricao mesmo que
+    // ela viesse de outro modelo (ex.: bebida) — so nao mexe se voce digitou nela agora.
+    const montarDescricao = (trocouTipo = false) => {
+        const info = infoTipo(valorDoControle(tipo));
+        if (!descricao || descricaoMexida || !info || !TIPOS_DESCRICAO_REFEICAO.includes(info.codigo)) return;
+        if (!trocouTipo && !descricaoDePadrao()) return;
+        const n = Number(String(pessoas?.value ?? detalhe.valores.pessoas ?? "").replace(/\D/g, ""));
+        const novo = n > 0 ? `${info.rotulo} - ${n} ${n === 1 ? "PESSOA" : "PESSOAS"}` : `${info.rotulo} - `;
+        if (descricao.value === novo) return;
+        descricao.value = novo;
+        descricao.dispatchEvent(new Event("input"));
+        descricao.dispatchEvent(new Event("change"));
+    };
+    tipo.addEventListener("change", () => {
+        const info = infoTipo(valorDoControle(tipo));
+        if (!info) return;
+        if (categoria && !categoriaMexida && info.categoria && valorDoControle(categoria) !== info.categoria) {
+            if (typeof categoria.definir === "function") categoria.definir(info.categoria);
+        }
+        montarDescricao(true);
+    });
+    pessoas?.addEventListener("input", () => montarDescricao());
+}
+
 /** A previa acompanha a revisao: tipo mostra/esconde campos; fornecedor escolhido muda o tipo. */
 function ligarCamposDependentes(campos, detalhe) {
     const entrada = (chave) => campos.querySelector(`#c-${chave}`);
     const tipo = entrada("tipo");
     const fornecedor = entrada("fornecedor");
+    const pagamento = entrada("pagamento");
     const aplicar = () => {
         const atual = tipo ? valorDoControle(tipo) : detalhe.valores.tipo;
-        for (const linha of campos.querySelectorAll(".campo")) linha.classList.toggle("oculto", !campoCabeNoTipo(linha.dataset.chave, atual));
+        // "Conta do PIX" so aparece com pagamento PIX.
+        const ehPix = (pagamento ? valorDoControle(pagamento) : detalhe.valores.pagamento) === "PIX";
+        for (const linha of campos.querySelectorAll(".campo")) {
+            linha.classList.toggle("oculto", !campoCabeNoTipo(linha.dataset.chave, atual) || (linha.dataset.chave === "conta_pix" && !ehPix));
+        }
     };
     tipo?.addEventListener("change", aplicar);
+    preencherPeloTipo(campos, detalhe);
+    pagamento?.addEventListener("change", aplicar);
+    pagamento?.addEventListener("input", aplicar);
     fornecedor?.addEventListener("change", () => {
         if (!tipo || typeof tipo.definir !== "function") return;
         const novo = tipoPeloFornecedor(valorDoControle(fornecedor), valorDoControle(tipo), detalhe.campos.hora_da_nota?.valor);
@@ -778,7 +1027,21 @@ function blocoFoto(detalhe) {
     if (!detalhe.imagem_url) {
         return el("div", { class: "foto" }, el("div", { class: "vazio" }, detalhe.midia ? "Imagem não encontrada nas pastas de dados." : "Despesa sem foto (informada só por mensagem)."));
     }
+    if (detalhe.imagem_tipo === "pdf") return visualizadorDePdf(detalhe.imagem_url, `Comprovante da despesa #${detalhe.id}`, false);
     return visualizadorDeFoto(detalhe.imagem_url, `Comprovante da despesa #${detalhe.id}`, false);
+}
+
+/** Nota que veio em PDF: mostrada pelo leitor de PDF do navegador (zoom e paginas dele). */
+function visualizadorDePdf(url, titulo, telaCheia) {
+    const quadro = el("iframe", { src: `${url}#view=FitH`, title: titulo, class: "foto-pdf" });
+    const botoes = el("div", { class: "foto-acoes" },
+        el("span", { class: "etiqueta" }, "📄 PDF"),
+        telaCheia
+            ? el("button", { type: "button", class: "primary", onclick: fecharTelaCheia }, "Fechar (Esc)")
+            : el("button", { type: "button", class: "secondary", onclick: () => abrirTelaCheia(url, titulo, true) }, "Tela cheia"),
+        el("a", { class: "secondary botao-link", href: url, target: "_blank", rel: "noopener" }, "Abrir em nova aba"),
+        el("span", { class: "origem" }, "Use o zoom e as páginas do próprio leitor de PDF"));
+    return el("div", { class: `foto${telaCheia ? " cheia" : ""}` }, botoes, el("div", { class: "foto-area pdf" }, quadro));
 }
 
 /**
@@ -825,9 +1088,9 @@ function visualizadorDeFoto(url, alt, telaCheia) {
     return el("div", { class: `foto${telaCheia ? " cheia" : ""}` }, botoes, area);
 }
 
-function abrirTelaCheia(url, alt) {
+function abrirTelaCheia(url, alt, pdf = false) {
     fecharTelaCheia();
-    const camada = el("div", { class: "tela-cheia", id: "telaCheia", role: "dialog", "aria-label": "Foto em tela cheia" }, visualizadorDeFoto(url, alt, true));
+    const camada = el("div", { class: "tela-cheia", id: "telaCheia", role: "dialog", "aria-label": "Foto em tela cheia" }, pdf ? visualizadorDePdf(url, alt, true) : visualizadorDeFoto(url, alt, true));
     camada.addEventListener("click", (evento) => { if (evento.target === camada) fecharTelaCheia(); });
     document.body.append(camada);
 }
@@ -861,23 +1124,66 @@ function blocoMensagem(detalhe) {
         partes.length ? partes : el("p", { class: "origem" }, "Sem legenda."));
 }
 
+/**
+ * Nota antiga misturada com as novas: "🧠 Mandar para Treino IA" tira da esteira
+ * (fica so para treinar a IA, nunca vai ao Conta Azul). No Treino IA: "Voltar
+ * para a esteira" (menos as do historico importado, que so existem para treino).
+ */
+function botaoTreinoIa(detalhe) {
+    if (detalhe.do_historico) return null;
+    const mover = (ativo) => executar(async () => {
+        await api(`/despesas/${detalhe.id}/treino-ia`, { ativo, autor: revisor() });
+        estado.selecionada = null;
+        await carregarLista();
+    }, ativo ? `Nota #${detalhe.id} mandada para o Treino IA (fora da esteira; não vai para o Conta Azul).` : `Nota #${detalhe.id} voltou para a esteira.`);
+    return detalhe.treino_ia
+        ? el("button", { type: "button", class: "secondary", title: "Volta esta nota para a esteira normal (Para revisar → Prontas para enviar → Enviadas).", onclick: () => mover(false) }, "↩ Voltar para a esteira")
+        : el("button", { type: "button", class: "secondary", title: "Nota antiga misturada com as novas: sai da esteira e vai para a aba Treino IA. Lá ela ainda pode ser revisada e aprovada para treinar a IA, mas nunca é enviada ao Conta Azul.",
+            onclick: () => mover(true) }, "🧠 Mandar para Treino IA");
+}
+
+/** A nota ja virou (ou pode ter virado) lancamento no Conta Azul oficial? */
+function lancadaNaOficial(detalhe) {
+    return (detalhe.envios || []).some((e) => e.conta === "oficial" && ["ENVIADO", "ENVIADO_INCOMPLETO", "INCERTO", "EM_ANDAMENTO"].includes(e.status));
+}
+
 function desenharDetalhe() {
     const detalhe = estado.detalhe;
     const [nomeEstado, classeEstado] = NOMES_ESTADO[detalhe.estado] || [detalhe.estado, ""];
-    const campos = el("div", { class: "campos" }, estado.opcoes.campos.map((campo) => linhaCampo(campo, detalhe)));
-    ligarCamposDependentes(campos, detalhe);
+    // "Editar" numa nota aprovada (ainda nao lancada na oficial): campos abertos ali mesmo.
+    const editandoAprovada = detalhe.estado === "APROVADO" && estado.editandoAprovada === detalhe.id && !lancadaNaOficial(detalhe);
+    const vista = editandoAprovada ? { ...detalhe, editavel: true } : detalhe;
+    const campos = el("div", { class: "campos" }, estado.opcoes.campos.map((campo) => linhaCampo(campo, vista)));
+    ligarCamposDependentes(campos, vista);
     const acoes = el("div", { class: "acoes" });
-    if (detalhe.editavel) {
+    if (editandoAprovada) {
+        acoes.append(
+            el("button", { type: "button", class: "primary", title: "Salva a correção (a nota continua aprovada) e já envia esta nota ao Conta Azul, na conta escolhida no topo.",
+                onclick: () => executar(() => salvarAprovada(campos, true)) }, "💾 Salvar e enviar ao Conta Azul"),
+            el("button", { type: "button", class: "secondary", onclick: () => executar(() => salvarAprovada(campos, false), "Correção salva. A nota continua aprovada.") }, "Só salvar"),
+            el("button", { type: "button", class: "ghost", onclick: () => { estado.editandoAprovada = null; desenharDetalhe(); } }, "Cancelar"));
+    } else if (detalhe.editavel) {
         acoes.append(
             el("button", { type: "button", class: "secondary", onclick: () => executar(() => salvar(campos), "Correções e comentário salvos.") }, "Salvar correções"),
             el("button", { type: "button", class: "primary", onclick: () => executar(() => aprovar(campos), "Aprovada. Virou exemplo de treino.") }, "Salvar e aprovar"),
+            botaoTreinoIa(detalhe),
             marcadorNaoUsar(),
             detalhe.correcoes.length ? null : el("button", { type: "button", class: "ghost", title: "Gera a prévia de novo com os cadastros atuais (sem chamar o OCR)", onclick: () => executar(regenerar, "Prévia gerada de novo.") }, "Regerar prévia"));
+    } else if (lancadaNaOficial(detalhe)) {
+        // Ja virou lancamento no Conta Azul oficial: reabrir ou descartar aqui nao muda nada la.
+        acoes.append(el("p", { class: "origem" }, "🔒 Já lançada no Conta Azul OFICIAL. Para corrigir ou excluir, faça direto no Conta Azul (mudar aqui não muda lá)."));
     } else {
-        acoes.append(el("button", { type: "button", class: "secondary", onclick: () => executar(reabrir, "Reaberta para revisão.") },
-            detalhe.estado === "BLOQUEADO_DUPLICADO" ? "Não é duplicata: revisar" : "Reabrir"));
+        acoes.append(el("button", { type: "button", class: "secondary",
+            title: detalhe.estado === "APROVADO" ? "Aprovou por engano? Volta para \"Para revisar\" (ainda não foi enviada ao Conta Azul oficial)." : null,
+            onclick: () => executar(reabrir, "Voltou para revisão.") },
+        detalhe.estado === "BLOQUEADO_DUPLICADO" ? "Não é duplicata: revisar" : detalhe.estado === "APROVADO" ? "↩ Voltar para revisão" : "Reabrir"));
+        if (detalhe.estado === "APROVADO") {
+            acoes.prepend(el("button", { type: "button", class: "primary", title: "Corrige um detalhe aqui mesmo, sem voltar para \"Para revisar\". Depois é só salvar e enviar.",
+                onclick: () => { estado.editandoAprovada = detalhe.id; desenharDetalhe(); } }, "✏️ Editar"));
+            acoes.append(botaoTreinoIa(detalhe));
+        }
     }
-    if (detalhe.estado !== "DESCARTADO") {
+    if (detalhe.estado !== "DESCARTADO" && !lancadaNaOficial(detalhe)) {
         const motivo = el("input", { placeholder: "Motivo do descarte (ex.: não é despesa)", maxlength: 200 });
         acoes.append(el("div", { class: "descarte" }, motivo,
             el("button", { type: "button", class: "danger ghost", onclick: () => executar(() => descartar(motivo.value), "Descartada.") }, "Descartar")));
@@ -1011,6 +1317,19 @@ async function salvar(campos) {
     await recarregar();
 }
 
+/** Botao "Editar" de nota aprovada: corrige (continua aprovada) e, se pedido, envia so ela ao Conta Azul. */
+async function salvarAprovada(campos, enviar) {
+    const autor = revisor();
+    const id = estado.selecionada;
+    await salvarComentarioPendente(autor);
+    const alteracoes = alteracoesDe(campos);
+    if (alteracoes.length) await api(`/despesas/${id}/corrigir-aprovada`, { alteracoes, autor });
+    else if (!enviar) throw new Error("Nenhum campo foi alterado.");
+    estado.editandoAprovada = null;
+    await recarregar();
+    if (enviar) await abrirEnvio({ ids: [id] });
+}
+
 /** "Centro e pagamento nao sao reais" (notas antigas de teste): esses dois campos ficam fora do treino. */
 function marcadorNaoUsar() {
     let marcado = false;
@@ -1030,6 +1349,30 @@ async function aprovar(campos) {
     await api(`/despesas/${estado.selecionada}/aprovar`, { autor, nao_usar_no_treino: naoUsar });
     estado.selecionada = null;
     await recarregar();
+}
+
+/** Botao "Aprovar as N desta lista": salva a nota aberta (se mudou algo) e aprova todas as da lista. */
+async function aprovarDaLista(ids, filtro, botao) {
+    const autor = revisor();
+    const itens = (estado.itensVisiveis || []).filter((item) => ids.includes(item.id));
+    const total = itens.reduce((soma, item) => soma + (Number(item.valor) || 0), 0);
+    if (!confirm(`Aprovar ${ids.length} nota(s) ${filtro}, total ${moeda(total)}?\n\nA nota aberta tem as alterações salvas antes. Nota faltando campo obrigatório não é aprovada e continua na lista.`)) return;
+    if (botao) botao.disabled = true;
+    try {
+        // Nota aberta com campo mudado ou comentario novo: salva antes, para nao aprovar sem a correcao.
+        const campos = document.querySelector(".campos");
+        if (estado.selecionada != null && ids.includes(estado.selecionada) && estado.detalhe?.editavel && campos) {
+            await salvarComentarioPendente(autor);
+            const alteracoes = alteracoesDe(campos);
+            if (alteracoes.length) await api(`/despesas/${estado.selecionada}/corrigir`, { alteracoes, autor });
+        }
+        const r = await api("/despesas/aprovar-varias", { ids, autor });
+        estado.selecionada = null;
+        await recarregar();
+        if (r.falhas.length) {
+            avisar(`${r.aprovadas.length} aprovada(s). ${r.falhas.length} não: ${r.falhas.slice(0, 4).map((f) => `#${f.id} ${f.erro}`).join(" · ")}${r.falhas.length > 4 ? " …" : ""}`);
+        } else avisar(`${r.aprovadas.length} nota(s) aprovada(s). Viraram exemplo de treino.`, "ok");
+    } finally { if (botao) botao.disabled = false; }
 }
 
 async function descartar(motivo) {
@@ -1099,7 +1442,10 @@ async function carregarRemetentes() {
 function mostrarContagem(contagem) {
     for (const [aba, total] of Object.entries(contagem)) {
         const alvo = document.querySelector(`[data-n="${aba}"]`);
-        if (alvo) alvo.textContent = total;
+        if (!alvo) continue;
+        alvo.textContent = total;
+        // Envio com problema fica vermelho enquanto tiver alguma nota la.
+        if (aba === "problema") alvo.classList.toggle("alerta", total > 0);
     }
 }
 
@@ -1218,12 +1564,15 @@ function blocoPlanilha(planilha, pct) {
 async function trocarAba(aba) {
     estado.aba = aba;
     estado.selecionada = null;
+    // Clicar numa etapa sai da busca.
+    if (estado.busca) { estado.busca = ""; $("#buscaNotas").value = ""; modoBusca(false); }
     history.replaceState(null, "", `#${aba}`);
     for (const botao of document.querySelectorAll(".abas button")) botao.setAttribute("aria-selected", botao.dataset.aba === aba ? "true" : "false");
     const area = { treino: "#areaTreino", centros: "#areaCentros" }[aba] || "#areaRevisao";
     for (const id of ["#areaRevisao", "#areaTreino", "#areaCentros"]) $(id).classList.toggle("oculto", id !== area);
     $("#filtroOperador").classList.toggle("oculto", area !== "#areaRevisao");
     $("#filtroPeriodo").classList.toggle("oculto", area !== "#areaRevisao");
+    $("#acoesAba").classList.toggle("oculto", area !== "#areaRevisao");
     await executar({ treino: carregarTreino, centros: carregarCentros }[aba] || carregarLista);
 }
 
@@ -1315,9 +1664,18 @@ async function carregarCentros() {
 
     area.replaceChildren(
         el("p", { class: "origem" }, "Este cadastro diz ao sistema quais projetos estão ativos, qual centro do Conta Azul corresponde a cada um e como os operadores os escrevem. ",
-            "Ele não cria nada no Conta Azul: para criar o centro lá, use o painel principal (Gerenciar centros de custo) e depois sincronize. O centro novo aparece aqui como \"não confirmado\" para você confirmar."),
+            "Ele não cria nada no Conta Azul. Centro criado lá entra aqui sozinho uma vez por dia (ou na hora, pelo botão abaixo) e aparece como \"não confirmado\" para você confirmar."),
         novo,
         el("div", { class: "acoes" },
+            el("button", { type: "button", class: "secondary", title: "Lê agora os centros de custo ativos da conta OFICIAL do Conta Azul e inclui os que ainda não estão no programa (o programa também faz sozinho uma vez por dia). Não apaga nem renomeia nada.",
+                onclick: (evento) => executar(async () => {
+                    evento.target.disabled = true;
+                    try {
+                        const r = await api("/centros/sincronizar", {});
+                        avisar(r.novos.length ? `${r.novos.length} centro(s) novo(s) incluído(s): ${r.novos.join(", ")}.` : `Nenhum centro novo: os ${r.no_conta_azul} centros ativos do Conta Azul já estão no programa.`, "ok");
+                        if (r.novos.length) await carregarCentros();
+                    } finally { evento.target.disabled = false; }
+                }) }, "🔄 Buscar centros novos no Conta Azul"),
             el("button", { type: "button", class: estado.filtroCentros === "ativos" ? "primary" : "secondary", onclick: () => { estado.filtroCentros = "ativos"; executar(carregarCentros); } }, "Ativos e não confirmados"),
             el("button", { type: "button", class: estado.filtroCentros === "todos" ? "primary" : "secondary", onclick: () => { estado.filtroCentros = "todos"; executar(carregarCentros); } }, `Todos (${dados.projetos.length})`),
             el("button", { type: "button", class: "ghost", title: "Gera de novo as prévias em revisão que ninguém corrigiu, com o cadastro atual", onclick: () => executar(async () => {
@@ -1382,9 +1740,39 @@ async function iniciar() {
         try { localStorage.setItem("vmac-tema", novo); } catch (_) { /* sem armazenamento */ }
     });
     for (const botao of document.querySelectorAll(".abas button")) botao.addEventListener("click", () => trocarAba(botao.dataset.aba));
+    // Busca: espera a pessoa parar de digitar (0,3 s); 2+ letras busca em todas as
+    // etapas, campo vazio volta para a etapa que estava aberta. Esc limpa.
+    let buscaTimer = null;
+    const campoBusca = $("#buscaNotas");
+    const aplicarBusca = async () => {
+        const termo = campoBusca.value.trim();
+        const novo = termo.length >= 2 ? termo : "";
+        if (novo === estado.busca) return;
+        if (novo && ["treino", "centros"].includes(estado.aba)) await trocarAba("revisar");
+        estado.busca = novo;
+        estado.selecionada = null;
+        modoBusca(Boolean(novo));
+        await executar(carregarLista);
+    };
+    campoBusca.addEventListener("input", () => { clearTimeout(buscaTimer); buscaTimer = setTimeout(aplicarBusca, 300); });
+    campoBusca.addEventListener("keydown", (evento) => { if (evento.key === "Escape") { campoBusca.value = ""; clearTimeout(buscaTimer); aplicarBusca(); } });
     vigiarColeta();
     carregarAvisosGerencia();
     setInterval(carregarAvisosGerencia, 60000);
+    // A lista so carregava uma vez, ao abrir a pagina: uma nota ja processada
+    // so aparecia depois de um F5 manual. Atualiza sozinha, sem mexer no
+    // detalhe aberto (carregarLista so troca a selecao se o item sumiu da lista).
+    // Mas carregarLista tambem REDESENHA os filtros (desenharFiltroPeriodo/
+    // desenharFiltroOperador trocam os elementos do zero) — se isso acontecesse
+    // enquanto a pessoa esta com um campo de data aberto ou o dropdown de
+    // ano/tipo focado, o controle era substituido debaixo da mao dela (parecia
+    // "travar": o clique nao fazia nada, ou o campo perdia o foco no meio da
+    // digitacao). Por isso pula o ciclo quando o foco esta dentro do filtro.
+    const mexendoNoFiltro = () => {
+        const ativo = document.activeElement;
+        return Boolean(ativo && (["#filtroPeriodo", "#filtroOperador"].some((seletor) => $(seletor)?.contains(ativo))));
+    };
+    setInterval(() => { if (!["treino", "centros"].includes(estado.aba) && !mexendoNoFiltro() && document.activeElement !== campoBusca) executar(carregarLista); }, 15000);
     try {
         estado.opcoes = await api("/opcoes");
         const rotuloCentro = (centro) => `${centro.projeto && centro.projeto !== centro.nome ? `${centro.projeto} · ` : ""}${centro.ativo === true ? "ativo" : centro.ativo === false ? "inativo" : "não confirmado"}${centro.id ? "" : " · sem ID"}`;

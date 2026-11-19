@@ -73,11 +73,40 @@
     "forma_pagamento": "PIX",
     "conta_conta_azul_id": null,
     "conta_conta_azul": "C6 - Conta Corrente - SN",
+    "opcao_pix": true,
+    "rotulo_pix": "C6 SN",
     "apelidos": [
       "c6 sn",
       "c6 - sn",
       "conta c6 sn",
       "pix c6 sn"
+    ]
+  },
+  {
+    "codigo": "BB_PIX",
+    "rotulo": "PIX BB",
+    "forma_pagamento": "PIX",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": "Banco do Brasil - Conta Corrente",
+    "opcao_pix": true,
+    "rotulo_pix": "Banco do Brasil",
+    "apelidos": [
+      "pix bb",
+      "pix banco do brasil",
+      "pix do bb"
+    ]
+  },
+  {
+    "codigo": "PIX_REEMBOLSO",
+    "rotulo": "PIX - Reembolso",
+    "forma_pagamento": "PIX",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": null,
+    "opcao_pix": true,
+    "rotulo_pix": "Reembolso",
+    "apelidos": [
+      "pix reembolso",
+      "reembolso via pix"
     ]
   },
   {
@@ -95,6 +124,21 @@
       "credito porto seguro",
       "porto bank credito",
       "porto"
+    ]
+  },
+  {
+    "codigo": "NUBANK",
+    "rotulo": "CRÉDITO NUBANK",
+    "forma_pagamento": "CARTAO_CREDITO",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": "Nubank - Conta Corrente",
+    "apelidos": [
+      "credito nubank",
+      "nubank credito",
+      "nubank - credito",
+      "cartao nubank",
+      "cartao nubank credito",
+      "nubank"
     ]
   }
 ]

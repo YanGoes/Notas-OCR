@@ -109,6 +109,8 @@ function criarEnvioCentral({ lerConfig = lerConfigPadrao, contaAzul = null, envi
         } else {
             lista = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
             if (!lista.length) throw new Error("Nenhuma despesa informada.");
+            const antigas = conta === "oficial" && env().doHistorico ? env().doHistorico(db, lista) : [];
+            if (antigas.length) throw new Error(`Nota(s) ${antigas.map((id) => `#${id}`).join(", ")} estão no Treino IA (notas antigas, já lançadas no Conta Azul na época): enviar para a conta oficial duplicaria o lançamento. Nada foi enviado.`);
         }
         const nova = {
             id: proximaTarefa, conta, todas: Boolean(todas), total: lista.length, resultados: [], status: "RODANDO", erro: null, por,
@@ -138,7 +140,20 @@ function criarEnvioCentral({ lerConfig = lerConfigPadrao, contaAzul = null, envi
         return { parando: true };
     }
 
-    return { situacao, enviosDaDespesa, enviadasDaLista, iniciar, parar, andamento: () => resumoDaTarefa(tarefa) };
+    /** ID da empresa da conta OFICIAL (a esteira considera "enviada" so o que subiu para ela). */
+    function empresaOficial() {
+        try { return env().empresaDaConta(lerConfig(), "oficial") || null; } catch (_) { return null; }
+    }
+
+    /** A nota ja virou lancamento na conta OFICIAL? (aí reabrir/descartar aqui nao desfaz nada la) */
+    function lancadaNaOficial(db, despesaId) {
+        const empresa = empresaOficial();
+        if (!empresa) return false;
+        return Boolean(db.prepare(`SELECT 1 FROM envios_conta_azul WHERE despesa_id = ? AND empresa_id = ?
+            AND status IN ('ENVIADO', 'ENVIADO_INCOMPLETO', 'INCERTO', 'EM_ANDAMENTO') LIMIT 1`).get(despesaId, empresa));
+    }
+
+    return { situacao, enviosDaDespesa, enviadasDaLista, iniciar, parar, empresaOficial, lancadaNaOficial, andamento: () => resumoDaTarefa(tarefa) };
 }
 
 module.exports = { criarEnvioCentral, CONTAS };

@@ -22,7 +22,8 @@ const regrasOperador = require("./regras-operador");
 
 const DIAS_FONTES = 45;
 const OPERADOR_SQL = "COALESCE(msg.pessoa_id, json_extract(d.campos, '$.remetente.pessoa_id'))";
-const SIMULADA_SQL = "COALESCE(msg.remetente_id, '') LIKE 'historico:%'";
+// Historico antigo ou nota mandada a mao para o "Treino IA": nao ensina regra de operador nem e reclassificada.
+const SIMULADA_SQL = "(COALESCE(msg.remetente_id, '') LIKE 'historico:%' OR d.treino_ia_em IS NOT NULL)";
 const CAMPO_DA_CORRECAO = { centro_custo: "centro", pagamento: "cartao" };
 
 const desdeDias = (dias) => new Date(Date.now() - dias * 86400000).toISOString();

@@ -107,6 +107,15 @@ test("cabecalho de lote do Almir e entendido sem rotulos padronizados", () => {
     assert.deepEqual(resultado.dados.itens_citados.map((item) => item.descricao), ["Coca-Cola"]);
 });
 
+test("legenda do dia com 'Despesasm' e cartao logo depois de 'Centro de custo' (Almir 13/11/2026)", () => {
+    const resultado = interpretar(cad, { pessoa: pessoa("almir"), temMidia: true,
+        texto: "Despesasm 13/11/2026\nCentro de custo\nCRÉDITO C6\nSP / deslocamento\nQtd 3 janta\nQtd  3 abastecimento" });
+    assert.equal(resultado.dados.data_declarada, "2026-11-13");
+    assert.equal(resultado.dados.pagamento.cartao, "C6");
+    assert.equal(resultado.dados.projeto_texto, "SP / deslocamento");
+    assert.deepEqual(resultado.dados.quantidades.map((item) => [item.tipo, item.quantidade]), [["JANTAR", 3], ["ABASTECIMENTO", 3]]);
+});
+
 test("projeto escrito numa linha solta depois de 'Despesas <data>' vira o projeto do lote", () => {
     const resultado = interpretar(cad, { pessoa: pessoa("almir"), texto: "Despesas 06/10/2026\nGOINFRA FWD\nCRÉDITO C6\nAbastecimento" });
     assert.equal(resultado.intencao, INTENCOES.INICIO_LOTE_DIARIO);

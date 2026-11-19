@@ -4,7 +4,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { versaoWhatsAppWeb, diagnosticarQueda } = require("../src/whatsapp-conexao");
+const { versaoWhatsAppWeb, diagnosticarQueda, LIMITE_FALHAS_SESSAO } = require("../src/whatsapp-conexao");
 
 test("usa a versao do site do WhatsApp Web, nao a lista defasada da biblioteca", async () => {
     const baileys = {
@@ -44,10 +44,27 @@ test("cada motivo de queda vira a acao certa", () => {
     assert.equal(diagnosticarQueda(408, { registrado: false, statusAnterior: "aguardando_qr" }).acao, "NOVO_QR");
     // Outra copia com a mesma sessao: para (nao fica brigando pela conexao).
     assert.equal(diagnosticarQueda(440, { registrado: true }).acao, "PARAR");
-    // Sessao corrompida: descarta e gera QR novo.
+    // 500 antes de vincular (sem sessao registrada): descarta e gera QR novo.
     assert.deepEqual([diagnosticarQueda(500).acao, diagnosticarQueda(500).limparSessao], ["NOVO_QR", true]);
     // Saida pedida pela pessoa: para e limpa, sem mensagem de erro.
     assert.deepEqual(diagnosticarQueda(401, { saidaPedida: true }), { acao: "PARAR", limparSessao: true, mensagem: null });
     // Queda de rede comum: reconecta com espera crescente.
     assert.equal(diagnosticarQueda(428, { registrado: true }).acao, "RECONECTAR_COM_ESPERA");
+});
+
+test("500 com sessao vinculada (ex.: 'Stream Errored (ack)') reconecta SEM apagar a sessao", () => {
+    // O Baileys poe 500 em qualquer erro de stream desconhecido: nao e sessao estragada.
+    // Caso real de 13/11: conectado, cai com 500 (ack) -> antes pedia QR novo.
+    const ack = diagnosticarQueda(500, { registrado: true, statusAnterior: "conectado", falhasSessaoSeguidas: 1 });
+    assert.deepEqual(ack, { acao: "RECONECTAR_COM_ESPERA", limparSessao: false, mensagem: null });
+    // Mesmo repetindo algumas vezes, continua tentando com a sessao salva.
+    assert.equal(diagnosticarQueda(500, { registrado: true, falhasSessaoSeguidas: LIMITE_FALHAS_SESSAO - 1 }).limparSessao, false);
+    assert.equal(diagnosticarQueda(411, { registrado: true, falhasSessaoSeguidas: 2 }).limparSessao, false);
+});
+
+test("sessao que falha seguidas vezes sem nunca conectar e descartada (QR novo)", () => {
+    const estragada = diagnosticarQueda(500, { registrado: true, falhasSessaoSeguidas: LIMITE_FALHAS_SESSAO });
+    assert.equal(estragada.acao, "NOVO_QR");
+    assert.equal(estragada.limparSessao, true);
+    assert.match(estragada.mensagem, /QR Code novo/);
 });

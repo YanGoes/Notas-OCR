@@ -130,7 +130,7 @@ function scriptDeAnexar(eventoId, novo, { valor = null, arquivo = null } = {}) {
  * a empresa logada (abre a janela se estiver fechada); `anexarArquivo` e
  * `anexarLink` gravam o anexo no lancamento.
  */
-function criarRobo({ conta = "teste", perfil = perfilDaConta(conta), navegadorExe = null } = {}) {
+function criarRobo({ conta = "teste", perfil = perfilDaConta(conta), navegadorExe = null, esconderJanela = true } = {}) {
     let sessao = null;
 
     async function pagina() {
@@ -140,7 +140,9 @@ function criarRobo({ conta = "teste", perfil = perfilDaConta(conta), navegadorEx
             if (String(url).startsWith(SITE)) return sessao;
         }
         if (sessao) { sessao.fechar(); sessao = null; }
-        const { porta, reaproveitado } = await navegador.abrir({ perfil, navegador: navegadorExe, url: SITE });
+        const { porta, reaproveitado } = await navegador.abrir({ perfil, navegador: navegadorExe, url: SITE, escondida: esconderJanela });
+        // Some da barra de tarefas ja na abertura (antes so sumia depois do site carregar).
+        if (esconderJanela && !reaproveitado) await navegador.esconderJanela(perfil);
         let abas = await navegador.listarAbas(porta);
         if (!abas.some((aba) => /contaazul\.com/.test(aba.url))) { await navegador.novaAba(porta, SITE); }
         // O site redireciona sozinho: para o painel (logado) ou para o login.
@@ -154,18 +156,40 @@ function criarRobo({ conta = "teste", perfil = perfilDaConta(conta), navegadorEx
         }
         if (!alvo) {
             const noLogin = abas.some((aba) => aba.url.includes("login.contaazul.com"));
-            throw new Error(noLogin ? `Robô sem login no Conta Azul (conta ${conta}): entre com o usuário na janela do robô que abriu e tente de novo.`
-                : `A janela do robô (conta ${conta}) não abriu o Conta Azul. Abra-a pelo atalho 18 e entre com o usuário.`);
+            // Precisa da pessoa (login): a janela, que fica escondida, aparece na tela.
+            if (esconderJanela) await navegador.mostrarJanela(perfil);
+            throw new Error(noLogin ? `Robô sem login no Conta Azul (conta ${conta}): a janela do robô apareceu na tela — entre com o usuário nela e envie de novo.`
+                : `A janela do robô (conta ${conta}) não abriu o Conta Azul. Abra-a pelo ícone verde perto do relógio (Robô do Conta Azul) e entre com o usuário.`);
         }
         sessao = await navegador.conectar(porta, { aba: alvo });
+        // Janela/aba recem-aberta: espera o site terminar de carregar antes de usar
+        // (chamada feita no meio do carregamento e abortada pelo proprio site).
+        const pronta = Date.now() + 15000;
+        while (Date.now() < pronta) {
+            const estado = await sessao.avaliar("document.readyState").catch(() => null);
+            if (estado === "complete") break;
+            await esperar(500);
+        }
+        // Logado e pronto: some da tela e da barra de tarefas (continua funcionando).
+        if (esconderJanela) await navegador.esconderJanela(perfil);
         return sessao;
     }
 
     /** Confere a sessao e, se informada, a empresa logada na janela. Nao grava nada. */
     async function verificar({ empresaId = null } = {}) {
-        const s = await pagina();
-        const r = await s.avaliar(`fetch(${JSON.stringify(USUARIO)}, { credentials: 'include', headers: { Accept: 'application/json' } })
-            .then(async (resp) => ({ http: resp.status, dados: resp.ok ? await resp.json().catch(() => null) : null })).catch(() => ({ http: 0 }))`);
+        // Logo depois de abrir a janela, o site ainda redireciona (painel, troca de
+        // empresa...) e a conferencia podia cair no meio: dava "nao conseguiu falar
+        // com o Conta Azul" mesmo com tudo certo (13/11/2026). Tenta por ~15 s antes
+        // de desistir. Falta de login continua saindo na hora (vem de pagina()).
+        let r = { http: 0 };
+        for (let tentativa = 0; tentativa < 6; tentativa += 1) {
+            const s = await pagina();
+            r = await s.avaliar(`fetch(${JSON.stringify(USUARIO)}, { credentials: 'include', headers: { Accept: 'application/json' } })
+                .then(async (resp) => ({ http: resp.status, dados: resp.ok ? await resp.json().catch(() => null) : null })).catch(() => ({ http: 0 }))`)
+                .catch(() => ({ http: 0 })); // pagina recarregou no meio: tenta de novo
+            if (r.http !== 0) break;
+            await esperar(2500);
+        }
         if (r.http === 0) throw new Error(`A janela do robô (conta ${conta}) não conseguiu falar com o Conta Azul (sem internet ou página fora do site).`);
         if (r.http !== 200 || !r.dados?.idEmpresa) throw new Error(`A sessão do robô no Conta Azul expirou (conta ${conta}): entre de novo na janela do robô.`);
         const logada = String(r.dados.idEmpresa);

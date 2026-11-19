@@ -89,6 +89,18 @@ test("operador do cadastro vence; sem operador vai para Nao identificado; simula
     assert.equal(fs.readdirSync(path.join(c.raiz, "Almir", "01-26", "05")).length, 0);
 });
 
+test("pasta_drive_operador escolhida a mao vence o operador real, sem mudar o dono da despesa", () => {
+    const c = cenario();
+    const { id } = c.despesa({ operador: "Jhonathan", data: "2026-01-05" });
+    c.db.prepare("UPDATE despesas SET pasta_drive_operador = 'Almir' WHERE id = ?").run(id);
+    const r = drive.arquivarPendentes(c.db, { pessoas: [] }, { config: c.config, localizar: c.localizar });
+    assert.equal(r.erros.length, 0, JSON.stringify(r.erros));
+    assert.ok(fs.existsSync(path.join(c.raiz, "Almir", "01-26", "05", `#${id} ALMOCO R$ 50,00.jpeg`)));
+    assert.equal(fs.readdirSync(path.join(c.raiz, "Jonathan", "01-26", "05")).length, 0);
+    const campos = JSON.parse(c.db.prepare("SELECT campos FROM despesas WHERE id = ?").get(id).campos);
+    assert.equal(campos.remetente.valor, "Jhonathan");
+});
+
 test("Drive fechado ou desligado nao derruba nada", () => {
     const c = cenario();
     c.despesa({ operador: "Almir" });

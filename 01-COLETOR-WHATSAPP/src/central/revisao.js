@@ -15,7 +15,7 @@ const { agora, json, lerJson, transacao } = require("./banco");
 const cadastros = require("./cadastros");
 const contexto = require("./contexto");
 const { lerDespesa, regenerarPrevia, registrarHistorico, ESTADOS_REGERAVEIS } = require("./orquestrador");
-const { TIPOS, descricaoAbastecimento, descricaoRefeicao, refeicaoPeloHorario, comComplemento, litrosBr, LITROS_MAXIMO_GERADOR } = require("./regras-vmac");
+const { TIPOS, descricaoAbastecimento, descricaoRefeicao, refeicaoPeloHorario, comComplemento, marcarReembolso, litrosBr, LITROS_MAXIMO_GERADOR } = require("./regras-vmac");
 const { normalizar } = require("./texto");
 
 // Motivo de cada correcao. NAO_INFORMADO = a informacao nao existia (o
@@ -62,6 +62,10 @@ const CAMPOS = {
     categoria: { rotulo: "Categoria", caminho: ["categoria", "nome"], erro: "CLASSIFICACAO", tipo: "categoria" },
     centro_custo: { rotulo: "Centro de custo", caminho: ["centro_custo", "nome"], erro: "CLASSIFICACAO", tipo: "centro" },
     pagamento: { rotulo: "Pagamento", caminho: ["pagamento", "cartao"], erro: "CLASSIFICACAO", tipo: "pagamento" },
+    // So para pagamento PIX: de qual conta saiu (C6 SN, Banco do Brasil, Reembolso).
+    // Grava o "cartao" de forma PIX do cartoes.json (opcao_pix), que da a conta
+    // financeira do lancamento no Conta Azul.
+    conta_pix: { rotulo: "Conta do PIX", caminho: ["pagamento", "cartao"], erro: "CLASSIFICACAO", tipo: "conta_pix" },
     // Opcional: reembolso, pagamento fora do cartao, recado do operador. Vai para a observacao no Conta Azul.
     observacao: { rotulo: "Observação (reembolso, etc.)", caminho: ["observacao", "valor"], erro: "NAO_INFORMADO", tipo: "texto" },
     // Opcional: "Descrição" do anexo no Conta Azul (ao lado da foto). Ex.: "REEMBOLSO LORRAN".
@@ -128,10 +132,14 @@ function opcoesCentro(cad) {
 function opcoes(cad) {
     return {
         campos: Object.entries(CAMPOS).map(([chave, campo]) => ({ chave, rotulo: campo.rotulo, erro_sugerido: campo.erro, tipo: campo.tipo })),
-        tipos: Object.entries(TIPOS).map(([codigo, tipo]) => ({ codigo, rotulo: tipo.rotulo })),
+        // categoria: nome (como aparece na lista) da categoria que o tipo leva — a tela ja
+        // preenche ao escolher o tipo; refeicao: a descricao ja vem "JANTAR - ".
+        tipos: Object.entries(TIPOS).map(([codigo, tipo]) => ({ codigo, rotulo: tipo.rotulo, refeicao: Boolean(tipo.refeicao),
+            categoria: tipo.categoria ? cadastros.categoriaPorNome(cad, tipo.categoria)?.nome || null : null })),
         categorias: opcoesCategoria(cad),
         centros: opcoesCentro(cad),
-        cartoes: (cad.cartoes || []).map((cartao) => ({ codigo: cartao.codigo, rotulo: cartao.rotulo, forma: cartao.forma_pagamento })),
+        cartoes: (cad.cartoes || []).map((cartao) => ({ codigo: cartao.codigo, rotulo: cartao.rotulo, forma: cartao.forma_pagamento,
+            opcao_pix: Boolean(cartao.opcao_pix), rotulo_pix: cartao.rotulo_pix || null })),
         pessoas: (cad.pessoas || []).map((pessoa) => ({ id: pessoa.id, nome: pessoa.nome })),
         fornecedores: [...new Set([...(cad.fornecedores?.opcoes || []), ...Object.values(cad.fornecedores?.genericos_por_tipo || {}),
             ...(cad.fornecedores?.recorrentes || []).map((item) => item.nome)])],
@@ -218,10 +226,22 @@ function aplicar(cad, campos, chave, valor) {
         return;
     }
     if (campo.tipo === "pagamento") {
+        // "PIX" escolhido numa nota que ja tem a conta do PIX: mantem a conta.
+        if (valor === "PIX" && campos.pagamento?.forma === "PIX" && campos.pagamento?.cartao) return;
         const cartao = valor ? (cad.cartoes || []).find((item) => item.codigo === valor) : null;
         campos.pagamento = cartao
             ? { forma: cartao.forma_pagamento, cartao: cartao.codigo, rotulo: cartao.rotulo, conta_id: cartao.conta_conta_azul_id || null, ...MARCA }
             : { forma: valor || null, cartao: null, rotulo: valor || null, ...MARCA };
+        return;
+    }
+    if (campo.tipo === "conta_pix") {
+        // So vale com pagamento PIX (se o pagamento mudou para cartao, a conta do PIX e ignorada).
+        if (campos.pagamento?.forma !== "PIX") return false;
+        const cartao = valor ? (cad.cartoes || []).find((item) => item.codigo === valor && item.forma_pagamento === "PIX") : null;
+        if (valor && !cartao) throw new Error(`Conta do PIX desconhecida (${valor}).`);
+        campos.pagamento = cartao
+            ? { forma: "PIX", cartao: cartao.codigo, rotulo: cartao.rotulo, conta_id: cartao.conta_conta_azul_id || null, ...MARCA }
+            : { forma: "PIX", cartao: null, rotulo: "PIX", ...MARCA };
         return;
     }
     const destino = pai(campos, campo.caminho);
@@ -233,6 +253,7 @@ function aplicar(cad, campos, chave, valor) {
 /** Valor atual de um campo, no formato que a Central compara e grava. */
 function valorDe(campos, chave) {
     if (CAMPOS[chave].tipo === "pagamento") return campos?.pagamento?.cartao || campos?.pagamento?.forma || null;
+    if (CAMPOS[chave].tipo === "conta_pix") return campos?.pagamento?.forma === "PIX" ? campos.pagamento.cartao || null : null;
     return ler(campos, CAMPOS[chave].caminho);
 }
 
@@ -347,14 +368,16 @@ function corrigir(db, cad, despesaId, alteracoes, autor) {
         if (!TIPOS_ERRO.includes(tipoErro)) throw new Error(`Tipo de erro inválido: ${tipoErro}.`);
         const observacao = String(alteracao.observacao || "").replace(/\s+/g, " ").trim();
         if (observacao.length > 300) throw new Error(`${CAMPOS[chave].rotulo}: explicação longa demais (máximo 300 caracteres).`);
-        if (tipoErro === "OUTRO" && !observacao) throw new Error(`${CAMPOS[chave].rotulo}: escreva qual foi o erro (motivo "Outro").`);
+        // Motivo "Outro" sem explicacao e aceito (pedido do Yan, 16/11/2026: nao quer essa barreira).
         if (iguais(anterior, novo)) continue;
-        aplicar(cad, campos, chave, novo);
+        if (aplicar(cad, campos, chave, novo) === false) continue;
         registros.push({ chave, anterior, novo, tipoErro, observacao: observacao || null });
     }
     if (!registros.length) return { despesa, alteradas: 0 };
     acompanharTipo(cad, campos, registros);
     atualizarDescricao(campos);
+    // Conta do PIX = Reembolso: "(REEMBOLSO)" no fim da descricao (sai se trocar a conta).
+    marcarReembolso(campos);
     ajustarCategoriaAdministrativa(cad, campos, registros);
 
     transacao(db, () => {
@@ -373,10 +396,13 @@ function corrigir(db, cad, despesaId, alteracoes, autor) {
 // ---------------------------------------------------------------------------
 
 function faltandoParaAprovar(campos) {
-    return OBRIGATORIOS_PARA_APROVAR.filter((chave) => {
+    const faltando = OBRIGATORIOS_PARA_APROVAR.filter((chave) => {
         const valor = valorDe(campos, chave);
         return valor === null || valor === undefined || valor === "";
     });
+    // PIX sem a conta de onde saiu: o lancamento nao teria conta financeira.
+    if (campos?.pagamento?.forma === "PIX" && !campos.pagamento.cartao) faltando.push("conta_pix");
+    return faltando;
 }
 
 /** Entrada do exemplo: so o que a IA tinha no momento (leitura + mensagem), nunca a resposta. */
@@ -452,6 +478,50 @@ function aprovar(db, despesaId, autor, { naoUsarNoTreino = [] } = {}) {
     return lerDespesa(db, despesaId);
 }
 
+/**
+ * Aprova varias de uma vez (botao "Aprovar todas desta lista", ex.: todas as
+ * notas de um dia ja conferidas). Cada uma passa pela mesma conferencia de
+ * aprovar(): a que estiver faltando campo obrigatorio (sem comentario dizendo
+ * por que) nao e aprovada e volta em `falhas` com o motivo.
+ */
+function aprovarVarias(db, ids, autor) {
+    const quem = String(autor || "").trim();
+    if (!quem) throw new Error("Informe quem está aprovando.");
+    const lista = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    if (!lista.length) throw new Error("Nenhuma nota para aprovar.");
+    const aprovadas = [];
+    const falhas = [];
+    for (const id of lista) {
+        try {
+            aprovar(db, id, quem);
+            aprovadas.push(id);
+        } catch (erro) { falhas.push({ id, erro: erro.message }); }
+    }
+    return { aprovadas, falhas };
+}
+
+/**
+ * Corrige uma nota JA APROVADA (botao "Editar" em Prontas para enviar), sem ela
+ * sair da etapa: reabre, corrige e aprova de novo numa transacao so — se a
+ * aprovacao falhar (ex.: campo obrigatorio apagado), nada muda.
+ * (A rota barra nota ja lancada no Conta Azul oficial: corrigir aqui nao muda la.)
+ */
+function corrigirAprovada(db, cad, despesaId, alteracoes, autor, opcoesAprovar = {}) {
+    const despesa = lerDespesa(db, despesaId);
+    if (!despesa) throw new Error(`Despesa #${despesaId} não encontrada.`);
+    if (despesa.estado !== ESTADOS.APROVADO) throw new Error(`Despesa #${despesaId} está ${despesa.estado}; o "Editar" é para nota aprovada.`);
+    // Campos que ja estavam fora do treino continuam fora.
+    const exemplo = db.prepare("SELECT rotulos FROM exemplos_treino WHERE despesa_id = ?").get(despesaId);
+    let jaFora = [];
+    try { jaFora = JSON.parse(exemplo?.rotulos || "{}")._nao_usar_no_treino || []; } catch (_) { /* sem exemplo */ }
+    const naoUsarNoTreino = [...new Set([...jaFora, ...(opcoesAprovar.naoUsarNoTreino || [])])];
+    return transacao(db, () => {
+        reabrir(db, despesaId, "editada depois de aprovada", autor);
+        if (Array.isArray(alteracoes) && alteracoes.length) corrigir(db, cad, despesaId, alteracoes, autor);
+        return aprovar(db, despesaId, autor, { ...opcoesAprovar, naoUsarNoTreino });
+    });
+}
+
 /** Descarta (nao e despesa, foto ilegivel, duplicata confirmada...). Sai do treino. */
 function descartar(db, despesaId, motivo, autor) {
     const quem = String(autor || "").trim();
@@ -481,6 +551,29 @@ function reabrir(db, despesaId, motivo, autor) {
     transacao(db, () => {
         mudarEstado(db, despesa, ESTADOS.AGUARDANDO_REVISAO, `reaberta: ${String(motivo || "sem motivo").trim()}`.slice(0, 300), quem);
         db.prepare("DELETE FROM exemplos_treino WHERE despesa_id = ?").run(despesaId);
+    });
+    return lerDespesa(db, despesaId);
+}
+
+/**
+ * Manda uma nota (antiga) para o "Treino IA", ou devolve para a esteira.
+ * No Treino IA a nota continua podendo ser revisada e aprovada (vira exemplo
+ * para a IA), mas sai de "Para revisar"/"Prontas"/"Enviadas" e nunca e enviada
+ * ao Conta Azul. Nota do historico importado ja nasce la e nao volta.
+ */
+function moverParaTreino(db, despesaId, ativo, autor) {
+    const quem = String(autor || "").trim();
+    if (!quem) throw new Error("Informe quem está revisando.");
+    const despesa = lerDespesa(db, despesaId);
+    if (!despesa) throw new Error(`Despesa #${despesaId} não encontrada.`);
+    if (!ativo) {
+        const remetente = despesa.mensagem_ref ? db.prepare("SELECT remetente_id FROM mensagens WHERE id = ?").get(despesa.mensagem_ref)?.remetente_id : null;
+        if (String(remetente || "").startsWith("historico:")) throw new Error(`A nota #${despesaId} veio do histórico importado: ela só existe para o Treino IA.`);
+    }
+    transacao(db, () => {
+        db.prepare("UPDATE despesas SET treino_ia_por = ?, treino_ia_em = ?, atualizado_em = ? WHERE id = ?")
+            .run(ativo ? quem : null, ativo ? agora() : null, agora(), despesaId);
+        registrarHistorico(db, despesaId, despesa.estado, despesa.estado, ativo ? `movida para o Treino IA (${quem})` : `voltou do Treino IA para a esteira (${quem})`);
     });
     return lerDespesa(db, despesaId);
 }
@@ -543,18 +636,96 @@ function regenerarPendentes(db, cad, { regras = {}, hoje = new Date() } = {}) {
 // Consultas para o painel
 // ---------------------------------------------------------------------------
 
+// ESTEIRA: cada nota real fica numa etapa so.
+//   revisar   -> aguardando revisao (inclui as "classificadas", que eram uma aba a parte)
+//   aprovadas -> "Prontas para enviar": aprovadas que ainda nao subiram para a conta OFICIAL
+//   problema  -> o envio para a OFICIAL falhou, ficou incompleto/incerto ou subiu sem a foto
+//   enviadas  -> lancadas na conta OFICIAL (envio para a conta de teste nao conta: e ensaio)
+// As tres ultimas sao todas estado APROVADO: a etapa vem do ULTIMO envio da nota
+// para a empresa oficial (tabela envios_conta_azul), nada novo e gravado.
+const ETAPAS_ENVIO = ["aprovadas", "problema", "enviadas"];
 const ABAS = {
-    revisar: [ESTADOS.AGUARDANDO_REVISAO],
-    classificadas: [ESTADOS.CLASSIFICADO],
+    revisar: [ESTADOS.AGUARDANDO_REVISAO, ESTADOS.CLASSIFICADO],
     aprovadas: [ESTADOS.APROVADO],
+    problema: [ESTADOS.APROVADO],
+    enviadas: [ESTADOS.APROVADO],
     fora: [ESTADOS.BLOQUEADO_DUPLICADO, ESTADOS.DESCARTADO],
-    // Notas do treino com o historico (ferramentas/treino-historico.js) ainda
-    // sem decisao: ficam aqui, fora de "Para revisar" e "Classificadas".
-    simuladas: [ESTADOS.AGUARDANDO_REVISAO, ESTADOS.CLASSIFICADO],
+    // Notas do treino com o historico (ferramentas/treino-historico.js): ficam
+    // aqui, fora da esteira — inclusive as ja aprovadas, que sao notas ANTIGAS
+    // ja lancadas no Conta Azul (envia-las de novo duplicaria o lancamento).
+    simuladas: [ESTADOS.AGUARDANDO_REVISAO, ESTADOS.CLASSIFICADO, ESTADOS.APROVADO],
 };
-const SIMULADA_SQL = "COALESCE(msg.remetente_id, '') LIKE 'historico:%'";
-/** Filtro de origem por aba: simuladas so na aba delas; nas abas de revisao, so as reais. */
-const filtroOrigem = (aba) => (aba === "simuladas" ? `AND ${SIMULADA_SQL}` : ["revisar", "classificadas"].includes(aba) ? `AND NOT ${SIMULADA_SQL}` : "");
+// "Treino IA": historico antigo (treino-historico.js) ou nota antiga mandada a mao pelo botao.
+const SIMULADA_SQL = "(COALESCE(msg.remetente_id, '') LIKE 'historico:%' OR d.treino_ia_em IS NOT NULL)";
+/** Filtro de origem por aba: simuladas so na aba delas; na esteira, so as reais. */
+const filtroOrigem = (aba) => (aba === "simuladas" ? `AND ${SIMULADA_SQL}` : ["revisar", ...ETAPAS_ENVIO].includes(aba) ? `AND NOT ${SIMULADA_SQL}` : "");
+
+/** Literal SQL seguro do ID da empresa oficial (vem do config; so letras, numeros e hifen). */
+const empresaSql = (empresaOficial) => (/^[A-Za-z0-9-]+$/.test(String(empresaOficial || "")) ? `'${empresaOficial}'` : "NULL");
+
+/** Etapa de envio de uma nota APROVADA, pelo ultimo envio dela para a conta oficial. */
+function etapaEnvioSql(empresaOficial) {
+    return `COALESCE((SELECT CASE
+            WHEN e.status = 'ENVIADO' AND COALESCE(CASE WHEN json_valid(e.relatorio) THEN json_extract(e.relatorio, '$.anexo.ok') END, 1) <> 0 THEN 'enviadas'
+            WHEN e.status = 'EM_ANDAMENTO' THEN 'aprovadas'
+            ELSE 'problema' END
+        FROM envios_conta_azul e WHERE e.despesa_id = d.id AND e.empresa_id = ${empresaSql(empresaOficial)} AND e.status <> 'SUBSTITUIDO'
+        ORDER BY e.id DESC LIMIT 1), 'aprovadas')`;
+}
+
+/** Em qual aba a nota esta (para a contagem e para a busca). */
+function abaDaNota(estadoNota, simulada, etapaEnvio) {
+    if (simulada && ABAS.simuladas.includes(estadoNota)) return "simuladas";
+    if (estadoNota === ESTADOS.APROVADO) return etapaEnvio || "aprovadas";
+    return Object.keys(ABAS).find((chave) => !["simuladas", ...ETAPAS_ENVIO].includes(chave) && ABAS[chave].includes(estadoNota)) || null;
+}
+
+/** Quantas notas em cada aba (os numeros nas abas e na barra da esteira). */
+function contarAbas(db, empresaOficial) {
+    const contagem = Object.fromEntries(Object.keys(ABAS).map((nome) => [nome, 0]));
+    for (const { estado, simulada, etapa, total } of db.prepare(`SELECT d.estado, (${SIMULADA_SQL}) AS simulada,
+            CASE WHEN d.estado = '${ESTADOS.APROVADO}' THEN ${etapaEnvioSql(empresaOficial)} END AS etapa, COUNT(*) AS total
+        FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref GROUP BY 1, 2, 3`).all()) {
+        const nome = abaDaNota(estado, simulada, etapa);
+        if (nome) contagem[nome] += total;
+    }
+    return contagem;
+}
+
+/** "150", "150,50", "R$ 1.234,56" -> numero; texto que nao e valor -> null. */
+function valorDaBusca(texto) {
+    const limpo = String(texto || "").replace(/r\$|\s/gi, "");
+    if (!/^\d[\d.,]*$/.test(limpo)) return null;
+    const normal = limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo;
+    const numero = Number(normal);
+    return Number.isFinite(numero) ? numero : null;
+}
+
+/**
+ * Busca rapida em TODAS as etapas de uma vez (fornecedor, descricao, quem
+ * mandou, centro de custo, numero da nota ou valor). Cada item diz em que aba
+ * esta, para a pessoa se localizar.
+ */
+function buscar(db, texto, { empresaOficial = null, limite = 200 } = {}) {
+    const termo = String(texto || "").trim().toLowerCase();
+    if (!termo) return [];
+    const numeroNota = /^#?\d+$/.test(termo) ? Number(termo.replace("#", "")) : null;
+    const valor = valorDaBusca(termo);
+    const como = `%${termo.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const etapa = etapaEnvioSql(empresaOficial);
+    const texto_ = (expr) => `lower(COALESCE(${expr}, '')) LIKE ? ESCAPE '\\'`;
+    const linhas = db.prepare(`
+        SELECT d.*, m.recebida_em, msg.remetente_nome, ${OPERADOR_SQL} AS operador, (${SIMULADA_SQL}) AS simulada,
+            CASE WHEN d.estado = '${ESTADOS.APROVADO}' THEN ${etapa} END AS etapa_envio,
+            (SELECT COUNT(*) FROM correcoes c WHERE c.despesa_id = d.id) AS correcoes
+        FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
+        WHERE ${texto_("json_extract(d.campos, '$.fornecedor.valor')")} OR ${texto_("json_extract(d.campos, '$.descricao.valor')")}
+            OR ${texto_("msg.remetente_nome")} OR ${texto_("json_extract(d.campos, '$.remetente.valor')")} OR ${texto_("json_extract(d.campos, '$.centro_custo.nome')")}
+            OR d.id = ? OR ABS(COALESCE(json_extract(d.campos, '$.valor.valor'), -1) - ?) < 0.005
+        ORDER BY COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
+        .all(como, como, como, como, como, numeroNota ?? -1, valor ?? -1e9, limite);
+    return linhas.map((linha) => ({ ...resumo(linha), aba: abaDaNota(linha.estado, linha.simulada, linha.etapa_envio) }));
+}
 
 // Operador = a PESSOA que mandou a nota (nao o grupo: um grupo pode ter
 // varios operadores). Sem vinculo, cai em "nao identificado".
@@ -609,10 +780,14 @@ function filtroPeriodo({ de = null, ate = null, pela = "nota" } = {}) {
  */
 const TIPO_SQL = "json_extract(d.campos, '$.tipo.valor')";
 
-function listar(db, { aba = "revisar", limite = 300, operador = null, tipo = null, cad = null, de = null, ate = null, pela = "nota" } = {}) {
+function listar(db, { aba = "revisar", limite = 300, operador = null, tipo = null, cad = null, de = null, ate = null, pela = "nota", empresaOficial = null } = {}) {
     if (!ABAS[aba]) aba = "revisar";
     const estados = ABAS[aba];
-    const origem = filtroOrigem(aba);
+    // Etapas da esteira depois da aprovacao: mesmo estado, separadas pelo envio a conta oficial.
+    const origem = `${filtroOrigem(aba)} ${ETAPAS_ENVIO.includes(aba) ? `AND ${etapaEnvioSql(empresaOficial)} = '${aba}'` : ""}`;
+    // Enviadas: a enviada por ultimo primeiro.
+    const ordemEnvio = aba === "enviadas"
+        ? `(SELECT MAX(e.criado_em) FROM envios_conta_azul e WHERE e.despesa_id = d.id AND e.empresa_id = ${empresaSql(empresaOficial)}) DESC,` : "";
     const marcadores = estados.map(() => "?").join(",");
     const filtrarOperador = operador && operador !== "todos";
     const filtrarTipo = tipo && tipo !== "todos";
@@ -626,14 +801,9 @@ function listar(db, { aba = "revisar", limite = 300, operador = null, tipo = nul
             (SELECT COUNT(*) FROM correcoes c WHERE c.despesa_id = d.id) AS correcoes
         FROM despesas d LEFT JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
         WHERE d.estado IN (${marcadores}) ${origem} ${periodo.sql} ${filtrosExtra}
-        ORDER BY ${periodo.ativo && pela !== "recebida" ? `${DATA_DA_NOTA_SQL} DESC,` : ""} COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
+        ORDER BY ${ordemEnvio} ${periodo.ativo && pela !== "recebida" ? `${DATA_DA_NOTA_SQL} DESC,` : ""} COALESCE(m.recebida_em, d.criado_em) DESC, d.id DESC LIMIT ?`)
         .all(...estados, ...periodo.parametros, ...parametrosExtra, periodo.ativo ? teto : Math.min(Number(limite) || 300, teto));
-    const contagem = Object.fromEntries(Object.keys(ABAS).map((nome) => [nome, 0]));
-    for (const { estado, simulada, total } of db.prepare(`SELECT d.estado, (${SIMULADA_SQL}) AS simulada, COUNT(*) AS total
-        FROM despesas d LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref GROUP BY 1, 2`).all()) {
-        const nome = simulada && ABAS.simuladas.includes(estado) ? "simuladas" : Object.keys(ABAS).find((chave) => chave !== "simuladas" && ABAS[chave].includes(estado));
-        if (nome) contagem[nome] += total;
-    }
+    const contagem = contarAbas(db, empresaOficial);
 
     const nomes = nomesDasPessoas(cad);
     const porOperador = new Map();
@@ -691,6 +861,9 @@ function detalhar(db, despesaId) {
         correcoes: db.prepare("SELECT campo, valor_anterior, valor_novo, tipo_erro, observacao, autor, em FROM correcoes WHERE despesa_id = ? ORDER BY id").all(despesaId)
             .map((linha) => ({ ...linha, valor_anterior: lerJson(linha.valor_anterior), valor_novo: lerJson(linha.valor_novo) })),
         editavel: EDITAVEIS.includes(despesa.estado),
+        // Treino IA: mandada a mao (pode voltar) ou do historico importado (nao volta).
+        treino_ia: Boolean(despesa.treino_ia_em) || String(mensagem?.remetente_id || "").startsWith("historico:"),
+        do_historico: String(mensagem?.remetente_id || "").startsWith("historico:"),
         valores: Object.fromEntries(Object.keys(CAMPOS).map((chave) => [chave, valorDe(despesa.campos, chave)])),
     };
 }
@@ -866,7 +1039,7 @@ function comentariosParaIa(db, limite = 50) {
 module.exports = {
     comentarParaIa, comentariosParaIa,
     CAMPOS, ESTADOS, ABAS, TIPOS_ERRO, SEM_OPERADOR, erroSugerido, nomesDasPessoas,
-    opcoes, listar, detalhar, corrigir, aprovar, descartar, reabrir, vincularRemetente, metricas, remetentesNaoVinculados, ignorarRemetente,
+    opcoes, listar, buscar, contarAbas, detalhar, corrigir, corrigirAprovada, aprovar, aprovarVarias, descartar, reabrir, moverParaTreino, vincularRemetente, metricas, remetentesNaoVinculados, ignorarRemetente,
     regenerar: regenerarPrevia, regenerarPendentes, marcarNaoUsarNoTreino, CAMPOS_EXCLUIVEIS_DO_TREINO,
     valorDoCampo: valorDe,
 };

@@ -275,6 +275,34 @@ function adicionarApelidoCentro(ctx, { projeto, apelido } = {}) {
     return { projeto: atualizado.nome_oficial, apelidos: atualizado.apelidos };
 }
 
+/**
+ * Muda SO a pasta do Drive onde a foto de uma nota e arquivada (ex.: "arquiva
+ * a #458 na pasta do Almir"). Nao mexe no operador/dono da despesa para o
+ * resto do sistema (relatorios, Conta Azul) — e so onde a copia da foto fica.
+ * operador vazio/null volta a usar o operador real da despesa.
+ */
+// `id` (uma nota) ou `ids` (varias de uma vez, num Confirmar so).
+const idsDaPasta = ({ id, ids } = {}) => [...new Set((Array.isArray(ids) && ids.length ? ids : [id]).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+
+function definirPastaDriveConfirmado(ctx, { id, ids, operador } = {}) {
+    const lista = idsDaPasta({ id, ids });
+    if (!lista.length) throw new Error("Informe a nota (id) ou as notas (ids).");
+    const faltando = lista.filter((n) => !ctx.db.prepare("SELECT 1 FROM despesas WHERE id = ?").get(n));
+    if (faltando.length) throw new Error(`Despesa(s) não encontrada(s): ${faltando.map((n) => `#${n}`).join(", ")}. Nada foi mudado.`);
+    const limpo = String(operador || "").trim() || null;
+    const mudar = ctx.db.prepare("UPDATE despesas SET pasta_drive_operador = ?, pasta_drive_definida_por = ?, pasta_drive_definida_em = ? WHERE id = ?");
+    require("../central/banco").transacao(ctx.db, () => { for (const n of lista) mudar.run(limpo, ctx.pessoa || "assistente", agora(), n); });
+    return lista.length === 1 && !(Array.isArray(ids) && ids.length > 1)
+        ? { id: lista[0], pasta_drive_operador: limpo }
+        : { ids: lista, quantidade: lista.length, pasta_drive_operador: limpo };
+}
+
+function resumoPastaDrive({ id, ids, operador }) {
+    const lista = idsDaPasta({ id, ids });
+    const notas = lista.length === 1 ? `da despesa #${lista[0]}` : `de ${lista.length} despesas (${lista.map((n) => `#${n}`).join(", ")})`;
+    return operador ? `Arquivar a foto ${notas} na pasta do Drive de "${operador}" (não muda o operador da despesa, só onde a foto fica)` : `Voltar a foto ${notas} a arquivar na pasta do Drive do operador real`;
+}
+
 const contaDoLancamento = (conta) => (String(conta || "").toLowerCase() === "oficial" ? "oficial" : "teste");
 
 function resumoLancamento({ ids = [], conta } = {}) {
@@ -456,6 +484,9 @@ const FERRAMENTAS = [
         resumir: (p) => `Ensinar a IA a reconhecer "${p.apelido}" como o centro/projeto "${p.projeto}"`,
         descricao: "Quando um operador escreve o centro de custo de um jeito que a IA não reconhece (ex.: cabeçalho 'Centro de Custo: OAE ETEL PR' não bate com o nome oficial do projeto), adiciona esse texto como apelido do projeto já cadastrado, para passar a reconhecer sozinha da próxima vez. Use cadastros(tipo:'centros') antes para achar o nome oficial certo. Depois de confirmar, rode reclassificar_filtrado (por operador ou centro) para já corrigir as notas que estão em revisão. Vira um botão Confirmar.",
         esquema: { type: "object", properties: { projeto: { type: "string", description: "nome oficial do projeto/centro já cadastrado" }, apelido: { type: "string", description: "o texto exato que o operador usa" } }, required: ["projeto", "apelido"] } },
+    { nome: "definir_pasta_drive", grava: true, executar: definirPastaDriveConfirmado, resumir: resumoPastaDrive,
+        descricao: "Muda SÓ a pasta do Drive onde a foto de uma ou VÁRIAS notas é arquivada (ex.: 'arquiva a foto da #458 na pasta do Almir'). Várias notas: mande TODAS em `ids` numa chamada só (um Confirmar para todas). Não muda o operador/dono da despesa para o resto do sistema (relatórios, Conta Azul) — é só o lugar onde a cópia da foto fica guardada; a data continua a da nota. operador vazio/null volta a usar o operador real da despesa. Vira um botão Confirmar.",
+        esquema: { type: "object", properties: { id: { type: "integer", description: "uma nota" }, ids: { type: "array", items: { type: "integer" }, description: "várias notas de uma vez (use no lugar de id)" }, operador: { type: "string", description: "nome da pasta/pessoa no Drive; vazio para voltar ao operador real" } } } },
 ];
 
 const porNome = new Map(FERRAMENTAS.map((ferramenta) => [ferramenta.nome, ferramenta]));

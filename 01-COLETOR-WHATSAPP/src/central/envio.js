@@ -72,6 +72,7 @@ function dadosDaDespesa(campos) {
         descricao: campos.descricao?.valor || null,
         categoria: campos.categoria?.nome || null,
         centro: campos.centro_custo?.nome || null,
+        projeto: campos.centro_custo?.projeto || null,
         forma: campos.pagamento?.forma || null,
         cartao: campos.pagamento?.rotulo || campos.pagamento?.cartao || null,
         cartao_codigo: campos.pagamento?.cartao || null,
@@ -88,9 +89,40 @@ function acharPorNome(lista, nome) {
     return alvo ? lista.find((item) => normalizar(item.nome) === alvo) || null : null;
 }
 
+/**
+ * Centro de custo: no Conta Azul o prefixo ("CTVM - LP") costuma ficar no
+ * campo codigo e a tela mostra "codigo - nome". Vale o nome igual ou o
+ * "codigo - nome" igual ao da Central (continua exato, nunca um parecido).
+ */
+function acharCentro(lista, nome) {
+    const alvo = normalizar(nome);
+    if (!alvo) return null;
+    return lista.find((item) => normalizar(item.nome) === alvo)
+        || lista.find((item) => item.codigo && normalizar(`${item.codigo} - ${item.nome}`) === alvo) || null;
+}
+
 /** Categoria e centro da empresa conectada com o MESMO nome da Central (nunca um parecido). */
 function mapear(dados, { categorias, centros }) {
-    return { categoria: acharPorNome(categorias, dados.categoria), centro: acharPorNome(centros, dados.centro) };
+    return { categoria: acharPorNome(categorias, dados.categoria), centro: acharCentro(centros, dados.centro) };
+}
+
+function lerProjetos() {
+    try { return JSON.parse(fs.readFileSync(path.join(RAIZ, "configuracao", "projetos.json"), "utf8")).projetos || []; } catch (_) { return []; }
+}
+
+/**
+ * Nota aprovada com um centro que nao existe no Conta Azul, mas cujo projeto
+ * teve o centro corrigido no cadastro depois (ex.: "CTVN" digitado errado em
+ * projetos.json): vale o centro ATUAL do cadastro daquele projeto, pelo nome
+ * exato do projeto e do centro (nunca um parecido). Devolve { nome, centro } ou null.
+ */
+function centroPeloCadastro(dados, centros, projetos = []) {
+    if (!dados.projeto) return null;
+    const projeto = projetos.find((p) => p.ativo !== false && normalizar(p.nome_oficial) === normalizar(dados.projeto));
+    const nome = projeto?.centro_conta_azul;
+    if (!nome || normalizar(nome) === normalizar(dados.centro)) return null;
+    const centro = acharCentro(centros, nome);
+    return centro ? { nome, centro } : null;
 }
 
 /**
@@ -98,7 +130,18 @@ function mapear(dados, { categorias, centros }) {
  * pelo nome exato. So quando a nota nao tem fornecedor aprovado e que vale o
  * CNPJ lido — nunca um nome lido sem CNPJ, que costuma ser lixo do cupom.
  */
-async function resolverFornecedor(api, dados) {
+async function resolverFornecedor(api, dados, cache = null) {
+    // No envio em lote o mesmo fornecedor (ex.: POSTOS DE COMBUSTÍVEL) se repete:
+    // guarda so o que foi ACHADO (um "nao existe" pode deixar de valer quando o
+    // envio cria o cadastro na conta de teste).
+    const chave = dados.fornecedor ? `n:${normalizar(dados.fornecedor)}` : `d:${dados.fornecedor_cnpj || ""}`;
+    if (cache?.has(chave)) return cache.get(chave);
+    const achado = await buscarFornecedor(api, dados);
+    if (cache && achado) cache.set(chave, achado);
+    return achado;
+}
+
+async function buscarFornecedor(api, dados) {
     const ativo = (lista) => lista.find((p) => p.ativo !== false && (p.perfis || []).includes("Fornecedor")) || null;
     if (dados.fornecedor) {
         const lista = await api.buscarPessoas({ busca: dados.fornecedor });
@@ -190,11 +233,22 @@ async function carregarCatalogo(api) {
     return { categorias, centros, contas };
 }
 
+// Notas do treino com o historico (remetente "historico:...") e notas antigas
+// mandadas a mao para o "Treino IA": ja lancadas no Conta Azul na epoca. Nunca
+// entram no envio — duplicariam o lancamento.
+const HISTORICO_SQL = "(d.treino_ia_em IS NOT NULL OR EXISTS (SELECT 1 FROM mensagens msg WHERE msg.id = d.mensagem_ref AND COALESCE(msg.remetente_id, '') LIKE 'historico:%'))";
+
 /** Despesas aprovadas que ainda nao subiram (ou cuja tentativa falhou sem criar nada). */
 function pendentesDeEnvio(db, empresaId) {
-    return db.prepare(`SELECT d.id FROM despesas d WHERE d.estado = 'APROVADO' AND NOT EXISTS (
+    return db.prepare(`SELECT d.id FROM despesas d WHERE d.estado = 'APROVADO' AND NOT ${HISTORICO_SQL} AND NOT EXISTS (
         SELECT 1 FROM envios_conta_azul e WHERE e.despesa_id = d.id AND e.empresa_id = ?
         AND e.status IN ('ENVIADO', 'ENVIADO_INCOMPLETO', 'EM_ANDAMENTO', 'INCERTO')) ORDER BY d.id`).all(empresaId).map((l) => l.id);
+}
+
+/** Das despesas pedidas, as que sao do historico antigo (nao podem ir para a conta oficial). */
+function doHistorico(db, ids) {
+    if (!ids.length) return [];
+    return db.prepare(`SELECT d.id FROM despesas d WHERE d.id IN (${ids.map(() => "?").join(",")}) AND ${HISTORICO_SQL}`).all(...ids).map((l) => l.id);
 }
 
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -224,7 +278,8 @@ function roboPadrao(config, conta = "teste") {
     if (process.env.NODE_TEST_CONTEXT) throw new Error("O robô de tela de verdade não é usado em teste automático: passe um robô falso.");
     if (!robosCompartilhados.has(conta)) {
         const opcoes = config.central?.robo_conta_azul || {};
-        robosCompartilhados.set(conta, require("./anexo-conta-azul").criarRobo({ conta, navegadorExe: opcoes.navegador || null }));
+        // A janela do robo fica escondida (aparece so para login); config.central.robo_conta_azul.esconder_janela: false desliga.
+        robosCompartilhados.set(conta, require("./anexo-conta-azul").criarRobo({ conta, navegadorExe: opcoes.navegador || null, esconderJanela: opcoes.esconder_janela !== false }));
     }
     return robosCompartilhados.get(conta);
 }
@@ -278,7 +333,7 @@ async function linkParaEnvio(db, despesa, { config, linkDaFoto, esperaLinkMs }) 
 
 /** Monta o plano sem gravar nada no Conta Azul (so leituras). */
 async function planejar(db, despesaId, { api, config = lerConfig(), catalogo = null, empresa: empresaConferida = null,
-    conta: contaCa = "teste", cartoes = null, linkDaFoto = drive.linkDaFoto, localizar = localizarFoto, esperaLinkMs = 0, robo = null } = {}) {
+    conta: contaCa = "teste", cartoes = null, projetos = null, linkDaFoto = drive.linkDaFoto, localizar = localizarFoto, esperaLinkMs = 0, robo = null, cacheFornecedor = null } = {}) {
     const empresa = empresaConferida || await exigirEmpresa(api, config, contaCa);
     const teste = contaCa === "teste";
     const despesa = carregarDespesa(db, despesaId);
@@ -300,8 +355,12 @@ async function planejar(db, despesaId, { api, config = lerConfig(), catalogo = n
     const cat = catalogo || await carregarCatalogo(api);
     if (!dados.categoria) throw new Error(`Despesa #${despesaId} está sem categoria: corrija na Central.`);
     const mapa = mapear(dados, cat);
+    if (dados.centro && !mapa.centro) {
+        const doCadastro = centroPeloCadastro(dados, cat.centros, projetos || lerProjetos());
+        if (doCadastro) { mapa.centro = doCadastro.centro; dados.centro = doCadastro.nome; }
+    }
     const financeira = contaFinanceira(dados, cat.contas, cartoes || lerCartoes());
-    const fornecedor = await resolverFornecedor(api, dados);
+    const fornecedor = await resolverFornecedor(api, dados, cacheFornecedor);
     // O que a Central diz e ainda nao existe na empresa conectada. Nada e trocado por parecido.
     const faltam = [
         mapa.categoria ? null : { tipo: "categoria", nome: dados.categoria },
@@ -332,6 +391,16 @@ function observacaoFinal(dados, linkFoto = null) {
     return [...new Set(partes)].join(" | ") || null;
 }
 
+// Forma de pagamento da Central -> codigo do Conta Azul ("metodo_pagamento").
+// Conferido lendo lancamentos da conta oficial em 13/11/2026: o PIX la e
+// PIX_PAGAMENTO_INSTANTANEO ("Pix - Pagamento Instantaneo" na tela); mandar
+// so "PIX" nao e um codigo que o Conta Azul conheca. Cartoes tem o mesmo nome.
+const METODO_DO_CONTA_AZUL = {
+    PIX: "PIX_PAGAMENTO_INSTANTANEO", CARTAO_CREDITO: "CARTAO_CREDITO", CARTAO_DEBITO: "CARTAO_DEBITO",
+    DINHEIRO: "DINHEIRO", BOLETO: "BOLETO_BANCARIO", TRANSFERENCIA: "TRANSFERENCIA_BANCARIA",
+};
+const metodoDoContaAzul = (forma) => (forma ? METODO_DO_CONTA_AZUL[forma] || forma : null);
+
 function corpoDoLancamento(plano) {
     const { dados, mapa, conta, fornecedor } = plano;
     const valor = Number(dados.valor.toFixed(2));
@@ -346,7 +415,7 @@ function corpoDoLancamento(plano) {
         condicao_pagamento: { parcelas: [{
             descricao, data_vencimento: dados.data, conta_financeira: conta.id,
             detalhe_valor: { valor_bruto: valor },
-            ...(dados.forma ? { metodo_pagamento: dados.forma } : {}),
+            ...(dados.forma ? { metodo_pagamento: metodoDoContaAzul(dados.forma) } : {}),
         }] },
     };
 }
@@ -366,7 +435,7 @@ function conferir(plano, corpo, { criado, parcela, busca }) {
         linha("fornecedor", plano.fornecedor.nome, busca?.fornecedor?.nome || null, busca?.fornecedor?.id === plano.fornecedor.id,
             `achado pelo ${plano.fornecedor.por}`),
         linha("conta financeira", plano.conta.nome, parcela?.conta_financeira?.nome || null, parcela?.conta_financeira?.id === plano.conta.id),
-        linha("forma de pagamento", plano.dados.forma, parcela?.metodo_pagamento || null, !plano.dados.forma || parcela?.metodo_pagamento === plano.dados.forma),
+        linha("forma de pagamento", metodoDoContaAzul(plano.dados.forma), parcela?.metodo_pagamento || null, !plano.dados.forma || parcela?.metodo_pagamento === metodoDoContaAzul(plano.dados.forma)),
         linha("descrição", corpo.descricao, parcela?.descricao || null, parcela?.descricao === corpo.descricao),
         linha("observação", corpo.observacao || null, criado?.observacao || null, (criado?.observacao || null) === (corpo.observacao || null),
             "a leitura da parcela não devolve a observação; conferida na resposta da criação"),
@@ -477,8 +546,11 @@ async function enviar(db, despesaId, { api, config = lerConfig(), autor = "siste
         relatorio.etapas.push({ etapa: plano.anexar === "arquivo" ? "foto anexada ao lançamento (robô de tela)" : "link da foto gravado na aba Anexo (robô de tela)", ok: Boolean(relatorio.anexo.ok) });
     }
     try {
-        const parcela = await api.obterParcelaFinanceira(relatorio.parcela_id);
-        const busca = await api.buscarContasPagar({ data_vencimento_de: corpo.data_competencia, data_vencimento_ate: corpo.data_competencia });
+        // As duas leituras sao independentes: vao juntas (envio mais rapido).
+        const [parcela, busca] = await Promise.all([
+            api.obterParcelaFinanceira(relatorio.parcela_id),
+            api.buscarContasPagar({ data_vencimento_de: corpo.data_competencia, data_vencimento_ate: corpo.data_competencia }),
+        ]);
         const item = (busca?.itens || busca?.items || []).find((i) => i.id === relatorio.parcela_id) || null;
         relatorio.etapas.push({ etapa: "lançamento relido no Conta Azul", ok: Boolean(parcela && item) });
         relatorio.conferencia = conferir(plano, corpo, { criado, parcela, busca: item });
@@ -547,13 +619,47 @@ async function anexarPendentes(db, { robo = null, config = lerConfig(), conta = 
  * contaAzul.comPerfil(conta, ...) para a API usar a conta certa. Cada nota tem
  * o seu resultado: o erro de uma nao impede as outras.
  */
-async function enviarLote(db, ids, { api, config = lerConfig(), conta = "teste", autor = "sistema", pausaMs = 1500, aoAvancar = null, sinal = null, ...opcoes } = {}) {
+/**
+ * Robo do lote com a conferencia de sessao guardada: antes cada nota abria a
+ * conferencia de novo (~1 s por nota). Agora confere no inicio e so repete
+ * depois de `validadeMs` ou quando um anexo falha (sessao pode ter caido).
+ */
+function roboDoLote(robo, validadeMs = 120000) {
+    if (!robo) return robo;
+    const lote = Object.create(robo);
+    let valeAte = 0;
+    let empresaConferida = null;
+    let ultima = null;
+    lote.verificar = async (opcoes = {}) => {
+        const empresa = String(opcoes.empresaId ?? "");
+        if (ultima && Date.now() < valeAte && empresa === empresaConferida) return ultima;
+        ultima = await robo.verificar(opcoes);
+        valeAte = Date.now() + validadeMs;
+        empresaConferida = empresa;
+        return ultima;
+    };
+    for (const nome of ["anexarArquivo", "anexarLink"]) {
+        if (typeof robo[nome] !== "function") continue;
+        lote[nome] = async (...args) => {
+            const r = await robo[nome](...args);
+            if (!r?.ok) valeAte = 0; // falhou: a proxima nota confere a sessao de novo antes de criar
+            return r;
+        };
+    }
+    return lote;
+}
+
+async function enviarLote(db, ids, { api, config = lerConfig(), conta = "teste", autor = "sistema", pausaMs = 250, aoAvancar = null, sinal = null, ...opcoes } = {}) {
     const empresa = await exigirEmpresa(api, config, conta);
     const modo = modoDaFoto(config);
     // Trava antes de comecar: robo sem sessao ou em outra empresa nao deixa criar nada.
-    const robo = opcoes.robo || (modo.arquivo || modo.link ? roboPadrao(config, conta) : null);
-    if (robo) await robo.verificar({ empresaId: empresa.id });
-    const catalogo = opcoes.catalogo || await carregarCatalogo(api);
+    const robo = roboDoLote(opcoes.robo || (modo.arquivo || modo.link ? roboPadrao(config, conta) : null));
+    // Conferencia do robo e catalogo (categorias, centros, contas) em paralelo: o inicio do envio fica mais rapido.
+    const [, catalogo] = await Promise.all([
+        robo ? robo.verificar({ empresaId: empresa.id }) : null,
+        opcoes.catalogo || carregarCatalogo(api),
+    ]);
+    if (!opcoes.cacheFornecedor) opcoes.cacheFornecedor = new Map();
     const resultados = [];
     let parado = false;
     for (const [n, id] of ids.entries()) {
@@ -598,7 +704,7 @@ function relatorioEmTexto(r) {
 }
 
 module.exports = {
-    dadosDaDespesa, mapear, fornecedorParaCriar, liberarReenvio, resolverFornecedor, exigirEmpresaDeTeste, exigirEmpresa, empresaDaConta, planejar,
-    carregarCatalogo, pendentesDeEnvio, observacaoFinal, modoDaFoto, contaFinanceira, anexarPendentes, enviarLote, fecharRobo,
+    dadosDaDespesa, mapear, centroPeloCadastro, fornecedorParaCriar, liberarReenvio, resolverFornecedor, exigirEmpresaDeTeste, exigirEmpresa, empresaDaConta, planejar,
+    carregarCatalogo, pendentesDeEnvio, doHistorico, observacaoFinal, modoDaFoto, contaFinanceira, anexarPendentes, enviarLote, fecharRobo,
     corpoDoLancamento, enviar, conferir, relatorioEmTexto, localizarFoto,
 };

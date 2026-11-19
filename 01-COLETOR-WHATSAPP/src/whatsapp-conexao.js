@@ -81,9 +81,12 @@ const CODIGOS = {
  * @param {boolean} contexto.saidaPedida — a pessoa clicou em "Sair do WhatsApp"
  * @param {boolean} contexto.registrado — a sessao ja estava vinculada ao celular
  * @param {string} contexto.statusAnterior — estado antes da queda
+ * @param {number} contexto.falhasSessaoSeguidas — quedas 500/411 seguidas (contando
+ *   esta) sem nenhuma conexao bem-sucedida no meio
  * @returns {{acao: 'PARAR'|'NOVO_QR'|'RECONECTAR_JA'|'RECONECTAR_COM_ESPERA', limparSessao: boolean, mensagem: string|null}}
  */
-function diagnosticarQueda(codigo, { saidaPedida = false, registrado = false, statusAnterior = "" } = {}) {
+const LIMITE_FALHAS_SESSAO = 5;
+function diagnosticarQueda(codigo, { saidaPedida = false, registrado = false, statusAnterior = "", falhasSessaoSeguidas = 1 } = {}) {
     if (saidaPedida) return { acao: "PARAR", limparSessao: true, mensagem: null };
     switch (codigo) {
         case CODIGOS.RESTART_REQUIRED:
@@ -97,6 +100,17 @@ function diagnosticarQueda(codigo, { saidaPedida = false, registrado = false, st
             return { acao: "PARAR", limparSessao: true, mensagem: "A sessão foi encerrada pelo celular (aparelho removido em Aparelhos conectados). Clique em Conectar para gerar um QR Code novo." };
         case CODIGOS.BAD_SESSION:
         case CODIGOS.MULTIDEVICE_MISMATCH:
+            // 500 NAO quer dizer que a sessao estragou: o Baileys poe 500 em QUALQUER
+            // erro de stream que ele nao conhece (ver getErrorCodeFromStreamError em
+            // node_modules/@whiskeysockets/baileys/lib/Utils/generics.js). O caso real
+            // daqui e "Stream Errored (ack)", um soluco do servidor do WhatsApp: a
+            // sessao continua valida e reconectar resolve. Antes, todo 500 apagava a
+            // sessao e exigia QR novo — foi a causa de TODAS as perdas de vinculo de
+            // 03/11 a 13/11 (uma delas deixou a coleta parada por ~23 h). So descarta
+            // se a sessao falhar varias vezes seguidas SEM nunca chegar a conectar.
+            if (registrado && falhasSessaoSeguidas < LIMITE_FALHAS_SESSAO) {
+                return { acao: "RECONECTAR_COM_ESPERA", limparSessao: false, mensagem: null };
+            }
             return { acao: "NOVO_QR", limparSessao: true, mensagem: "A sessão salva estava inválida e foi descartada. Leia o QR Code novo." };
         case CODIGOS.CONNECTION_REPLACED:
             return { acao: "PARAR", limparSessao: false, mensagem: "Outra cópia do programa abriu esta mesma sessão do WhatsApp. Feche as outras janelas do programa e clique em Conectar." };
@@ -113,4 +127,4 @@ function diagnosticarQueda(codigo, { saidaPedida = false, registrado = false, st
     }
 }
 
-module.exports = { versaoWhatsAppWeb, diagnosticarQueda, registrarLog, CODIGOS, ARQUIVO_LOG };
+module.exports = { versaoWhatsAppWeb, diagnosticarQueda, registrarLog, CODIGOS, ARQUIVO_LOG, LIMITE_FALHAS_SESSAO };

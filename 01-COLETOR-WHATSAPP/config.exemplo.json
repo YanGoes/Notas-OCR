@@ -12,8 +12,8 @@
   "exigir_legenda": true,
   "numero_conta_ai": "5511999999999",
   "aceitar_webp": false,
-  "aguardar_comentario_segundos": 45,
-  "janela_associacao_comentario_segundos": 45,
+  "aguardar_comentario_segundos": 20,
+  "janela_associacao_comentario_segundos": 20,
   "conta_azul": {
     "habilitada": false,
     "aceitar_despesa_automaticamente": false,

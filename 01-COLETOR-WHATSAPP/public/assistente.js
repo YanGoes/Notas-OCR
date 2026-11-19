@@ -313,7 +313,7 @@
                     if (ev.tipo === "texto_parcial") { parcial += ev.texto; resposta.lastChild.replaceWith(markdown(parcial)); area.scrollTop = area.scrollHeight; }
                     else if (ev.tipo === "ferramenta") status(descreverFerramenta(ev));
                     else if (ev.tipo === "uso_plano") mostrarUso(ev);
-                    else if (ev.tipo === "anexos") status(ev.texto);
+                    else if (ev.tipo === "anexos" || ev.tipo === "acao") status(ev.texto);
                     else if (ev.tipo === "inicio") status("");
                     else if (ev.tipo === "final" || ev.tipo === "falha") final = ev;
                 }

@@ -59,6 +59,8 @@ O computador precisa ficar ligado e com internet para receber as notas. Em segun
    - Pessoa fora do cadastro: use "Cadastrar pessoa nova" (nome + telefone).
    - O que **você** escreve no privado nunca é lido como nota.
    - **"Buscar mensagens anteriores"** (ao lado de cada pessoa marcada) pede ao celular até 50 mensagens antigas daquela conversa. Precisa existir ao menos uma mensagem dessa conversa recebida com a pessoa já marcada; se não houver, mande um "ok" no privado e tente de novo.
+   - Nos **grupos marcados** o mesmo botão pede ao celular até 50 mensagens **anteriores à primeira que chegou depois da última queda/reconexão** (o que caiu enquanto estava fora). Clicar de novo volta mais no tempo. Se nada chegou no grupo desde a reconexão, peça um "ok" no grupo e tente de novo. Fotos já lidas são ignoradas. O celular nem sempre devolve mensagens antigas.
+   - **Nota em PDF:** o PDF mandado como documento (no grupo ou no privado) entra igual à foto: é lido, aparece na Central (com o leitor de PDF do navegador, botão "Abrir em nova aba") e vai anexado ao lançamento no Conta Azul e copiado para o Drive como `.pdf`. A legenda do documento vale como a legenda da foto. Planilhas e outros documentos são ignorados.
 
 A sessão fica salva em `.baileys_sessao/`, então o QR só é pedido de novo se o aparelho for removido no celular.
 

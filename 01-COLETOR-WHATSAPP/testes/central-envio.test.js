@@ -123,6 +123,21 @@ test("envia o que esta na Central (fornecedor aprovado, categoria, centro, conta
     await assert.rejects(envio.enviar(db, id, { api, config: CONFIG, cartoes: CARTOES_T }), /já foi enviada/);
 });
 
+test("PIX vai ao Conta Azul como PIX_PAGAMENTO_INSTANTANEO (codigo lido na conta oficial), na conta da Conta do PIX", () => {
+    const plano = {
+        dados: { valor: 120.5, data: "2026-11-13", descricao: "ALMOÇO - 2 PESSOAS (REEMBOLSO)", forma: "PIX" },
+        mapa: { categoria: { id: "cat", nome: "ALMOÇO" }, centro: null }, conta: { id: "conta-bb", nome: "Banco do Brasil - Conta Corrente" }, fornecedor: { id: "f1" },
+    };
+    const parcela = envio.corpoDoLancamento(plano).condicao_pagamento.parcelas[0];
+    assert.equal(parcela.metodo_pagamento, "PIX_PAGAMENTO_INSTANTANEO");
+    assert.equal(parcela.conta_financeira, "conta-bb");
+    assert.equal(envio.corpoDoLancamento({ ...plano, dados: { ...plano.dados, forma: "CARTAO_DEBITO" } }).condicao_pagamento.parcelas[0].metodo_pagamento, "CARTAO_DEBITO");
+    // Conferencia: o PIX relido do Conta Azul bate com o pedido.
+    const linhaForma = envio.conferir({ ...plano, link_na_observacao: null, anexar: "arquivo" }, envio.corpoDoLancamento(plano),
+        { criado: {}, parcela: { metodo_pagamento: "PIX_PAGAMENTO_INSTANTANEO" }, busca: {} }).find((l) => l.campo === "forma de pagamento");
+    assert.equal(linhaForma.ok, true);
+});
+
 test("aponta o que nao ficou gravado", async () => {
     const db = banco.abrir(":memory:");
     const id = criarDespesa(db);
@@ -167,6 +182,35 @@ test("nada e trocado por parecido: categoria e centro so pelo nome exato da Cent
         { categorias: [{ id: "x", nome: "Materiais Aplicados na Prestação de Serviços" }, { id: "y", nome: " material de campo " }], centros: [{ id: "t", nome: "TESTE CC" }] });
     assert.equal(m.categoria.id, "y");
     assert.equal(m.centro, null);
+});
+
+test("centro com o prefixo no codigo do Conta Azul: vale 'codigo - nome' igual ao da Central", () => {
+    const centros = [
+        { id: "outro", codigo: "CTVM - LP", nome: "DYNA GOINFRA CICLO III - FWD" },
+        { id: "certo", codigo: "CTVM - LP", nome: "IMTRAFF CICLO II - MT" },
+        { id: "semcod", codigo: "", nome: "CTVM - LP - ETEL OAEs GO" },
+    ];
+    const achar = (centro) => envio.mapear({ categoria: "x", centro }, { categorias: [], centros }).centro;
+    assert.equal(achar("CTVM - LP - IMTRAFF CICLO II - MT").id, "certo");
+    assert.equal(achar("IMTRAFF CICLO II - MT").id, "certo");
+    assert.equal(achar("CTVM - LP - ETEL OAEs GO").id, "semcod");
+    assert.equal(achar("CTVM - SN - IMTRAFF CICLO II - MT"), null);
+    assert.equal(achar("IMTRAFF CICLO II"), null);
+});
+
+test("centro corrigido no cadastro do projeto depois da aprovacao: vale o centro atual do projeto, exato", () => {
+    const centros = [{ id: "s3", codigo: "CTVM - SN", nome: "S3 ENG - BR/SP FWD" }];
+    const projetos = [
+        { nome_oficial: "S3 ENG - BR/SP FWD", centro_conta_azul: "CTVM - SN - S3 ENG - BR/SP FWD", ativo: true },
+        { nome_oficial: "INATIVO", centro_conta_azul: "CTVM - SN - S3 ENG - BR/SP FWD", ativo: false },
+    ];
+    const achado = envio.centroPeloCadastro({ centro: "CTVN - SN - S3 ENG - BR/SP FWD", projeto: "S3 ENG - BR/SP FWD" }, centros, projetos);
+    assert.equal(achado.centro.id, "s3");
+    assert.equal(achado.nome, "CTVM - SN - S3 ENG - BR/SP FWD");
+    assert.equal(envio.centroPeloCadastro({ centro: "X", projeto: null }, centros, projetos), null);
+    assert.equal(envio.centroPeloCadastro({ centro: "X", projeto: "S3 ENG" }, centros, projetos), null);
+    assert.equal(envio.centroPeloCadastro({ centro: "X", projeto: "INATIVO" }, centros, projetos), null);
+    assert.equal(envio.centroPeloCadastro({ centro: "X", projeto: "S3 ENG - BR/SP FWD" }, [{ id: "o", codigo: "CTVM - LP", nome: "OUTRO" }], projetos), null);
 });
 
 test("na conta de teste, o cadastro que falta e criado com o MESMO nome da Central antes de lancar", async () => {
@@ -431,6 +475,25 @@ test("conta oficial: nada e trocado nem inventado (categoria, centro, cartao, fo
     assert.equal(porNome.conta.id, "conta-bb");
     await assert.rejects(envio.planejar(db, id, { ...opcoes, api: apiOficial(), cartoes: [{ codigo: "BB", rotulo: "CRÉDITO BB", conta_conta_azul: "Inter - Conta Corrente" }] }), /conta financeira "Inter - Conta Corrente" não existe/);
     assert.ok(!semFornecedor.chamadas.some((c) => ["fornecedor", "centro", "criar"].includes(c[0])));
+});
+
+test("lote mais rapido: confere o robo e busca o fornecedor uma vez so; anexo que falha faz conferir de novo", async () => {
+    const db = banco.abrir(":memory:");
+    const ids = [criarDespesa(db), criarDespesa(db), criarDespesa(db)];
+    const api = apiFalsa();
+    const robo = roboDeArquivo();
+    const r = await envio.enviarLote(db, ids, { api, config: CONFIG_ARQUIVO, cartoes: CARTOES_T, conta: "teste", autor: "yan", robo, localizar: () => FOTO, pausaMs: 0 });
+    assert.deepEqual(r.resumo, { completas: 3, incompletas: 0, incertas: 0, nao_enviadas: 0 });
+    assert.equal(robo.chamadas.filter((c) => c[0] === "verificar").length, 1);
+    assert.equal(robo.chamadas.filter((c) => c[0] === "arquivo").length, 3);
+    assert.equal(api.chamadas.filter((c) => c[0] === "pessoas").length, 1);
+
+    // Anexo falhou (sessao pode ter caido): a nota seguinte confere o robo de novo antes de criar.
+    const db2 = banco.abrir(":memory:");
+    const ids2 = [criarDespesa(db2), criarDespesa(db2)];
+    const falho = roboDeArquivo({ grava: false });
+    await envio.enviarLote(db2, ids2, { api: apiFalsa(), config: CONFIG_ARQUIVO, cartoes: CARTOES_T, conta: "teste", autor: "yan", robo: falho, localizar: () => FOTO, pausaMs: 0 });
+    assert.equal(falho.chamadas.filter((c) => c[0] === "verificar").length, 2);
 });
 
 test("lote: confere o robo antes, envia uma a uma e resume; o erro de uma nota nao para as outras", async () => {

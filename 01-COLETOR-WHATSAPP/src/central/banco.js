@@ -331,6 +331,22 @@ const MIGRACOES = [
     `
     ALTER TABLE despesas ADD COLUMN comentario_ia_anexos TEXT;
     `,
+    // 14 — Pasta do Drive escolhida a mao para UMA nota (ex.: "arquiva essa foto
+    // na pasta do Almir"), sem mudar quem e o operador/dono da despesa para o
+    // resto do sistema (relatorios, Conta Azul etc.). So central/arquivo-drive.js le.
+    `
+    ALTER TABLE despesas ADD COLUMN pasta_drive_operador TEXT;
+    ALTER TABLE despesas ADD COLUMN pasta_drive_definida_por TEXT;
+    ALTER TABLE despesas ADD COLUMN pasta_drive_definida_em TEXT;
+    `,
+    // 15 — Nota mandada a mao para o "Treino IA" (nota antiga que se misturava
+    // com as novas): sai da esteira (revisar -> prontas -> enviadas), fica so
+    // para treinar a IA e nunca vai para o Conta Azul. Coluna propria (e nao um
+    // campo da nota) para sobreviver a "Regerar previa" e a reclassificacao.
+    `
+    ALTER TABLE despesas ADD COLUMN treino_ia_por TEXT;
+    ALTER TABLE despesas ADD COLUMN treino_ia_em TEXT;
+    `,
 ];
 
 function agora() { return new Date().toISOString(); }
@@ -348,15 +364,23 @@ function migrar(db) {
     }
 }
 
+// Profundidade por conexao: transacao dentro de transacao vira SAVEPOINT (ex.:
+// corrigir uma nota aprovada = reabrir + corrigir + aprovar, tudo ou nada).
+const profundidade = new WeakMap();
 function transacao(db, fn) {
-    db.exec("BEGIN IMMEDIATE");
+    const nivel = profundidade.get(db) || 0;
+    const ponto = `sp_${nivel}`;
+    db.exec(nivel ? `SAVEPOINT ${ponto}` : "BEGIN IMMEDIATE");
+    profundidade.set(db, nivel + 1);
     try {
         const resultado = fn();
-        db.exec("COMMIT");
+        db.exec(nivel ? `RELEASE ${ponto}` : "COMMIT");
         return resultado;
     } catch (erro) {
-        db.exec("ROLLBACK");
+        db.exec(nivel ? `ROLLBACK TO ${ponto}; RELEASE ${ponto}` : "ROLLBACK");
         throw erro;
+    } finally {
+        profundidade.set(db, nivel);
     }
 }
 

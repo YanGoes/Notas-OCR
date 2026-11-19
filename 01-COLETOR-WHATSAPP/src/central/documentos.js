@@ -52,10 +52,32 @@ function pesoFiscal(ocr) {
 
 const RE_CABECALHO_NOTA = /documento\s+aux|danfe|nfc-?e\b|cupom\s+fiscal|nota\s+fiscal/gi;
 
-function centroELimites(poligono) {
-    const xs = [poligono[0], poligono[2], poligono[4], poligono[6]];
-    const ys = [poligono[1], poligono[3], poligono[5], poligono[7]];
+function centroELimites(poligono, girar = (x, y) => [x, y]) {
+    const pontos = [0, 2, 4, 6].map((i) => girar(poligono[i], poligono[i + 1]));
+    const xs = pontos.map((p) => p[0]);
+    const ys = pontos.map((p) => p[1]);
     return { x0: Math.min(...xs), x1: Math.max(...xs), y: ys.reduce((a, b) => a + b, 0) / 4 };
+}
+
+/**
+ * Foto de lado (nota deitada, texto na vertical): o Azure informa o angulo do
+ * texto na pagina. Gira as coordenadas para o texto ficar na horizontal antes
+ * de procurar colunas; sem isso as linhas verticais pareciam "colunas" e uma
+ * nota so era cortada em duas, as duas sem valor.
+ * @returns {{ girar: Function, largura: number }}
+ */
+function referencialDoTexto(pagina) {
+    const angulo = Number(pagina.angle);
+    if (!Number.isFinite(angulo) || Math.abs(angulo) < 20) return { girar: (x, y) => [x, y], largura: pagina.width };
+    const rad = (angulo * Math.PI) / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    // Direcao do texto (cos, sin) vira o eixo x.
+    const bruto = (x, y) => [x * cos + y * sin, -x * sin + y * cos];
+    const cantos = [[0, 0], [pagina.width, 0], [0, pagina.height], [pagina.width, pagina.height]].map(([x, y]) => bruto(x, y));
+    const minX = Math.min(...cantos.map((c) => c[0]));
+    const maxX = Math.max(...cantos.map((c) => c[0]));
+    const minY = Math.min(...cantos.map((c) => c[1]));
+    return { girar: (x, y) => { const [gx, gy] = bruto(x, y); return [gx - minX, gy - minY]; }, largura: maxX - minX };
 }
 
 function quantasNotasNoTexto(texto) {
@@ -79,8 +101,8 @@ function colunasDaFoto(analise) {
     const sinais = quantasNotasNoTexto(analise.content || "");
     if (sinais.chaves < 2 && sinais.cabecalhos < 2) return null;
 
-    const caixas = linhas.map((linha) => ({ ...centroELimites(linha.polygon), texto: linha.content }));
-    const largura = pagina.width;
+    const { girar, largura } = referencialDoTexto(pagina);
+    const caixas = linhas.map((linha) => ({ ...centroELimites(linha.polygon, girar), texto: linha.content }));
     let melhor = null;
     for (let corte = largura * 0.3; corte <= largura * 0.7; corte += largura / 100) {
         const cruzam = caixas.filter((c) => c.x0 < corte && c.x1 > corte).length;

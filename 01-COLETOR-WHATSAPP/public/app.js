@@ -78,12 +78,17 @@ function renderizarGrupos() {
   ].join("");
   const semGrupos = grupos.length ? "" : '<div class="empty">Conecte o WhatsApp e clique em "Atualizar lista" para ver os grupos.</div>';
   lista.innerHTML = `<div class="search-result-count">${encontrados.length} grupo(s) · ${contatosAchados.length} contato(s)</div>` + semGrupos + encontrados.map(({ grupo, indice }) =>
-    `<div class="group"><label class="group-main"><input type="checkbox" data-i="${indice}" ${grupo.selecionado ? "checked" : ""}><div><span>${escapar(grupo.nome)}</span><small>Grupo · ${escapar(grupo.id)}</small></div></label><label class="group-center"><span>Centro de custo padrao</span><select data-centro-i="${indice}" ${grupo.selecionado ? "" : "disabled"}>${opcoesCentro(grupo.centro_custo_id)}</select></label></div>`).join("")
+    `<div class="group"><label class="group-main"><input type="checkbox" data-i="${indice}" ${grupo.selecionado ? "checked" : ""}><div><span>${escapar(grupo.nome)}</span><small>Grupo · ${escapar(grupo.id)}</small></div></label><label class="group-center"><span>Centro de custo padrao</span><select data-centro-i="${indice}" ${grupo.selecionado ? "" : "disabled"}>${opcoesCentro(grupo.centro_custo_id)}</select></label>${grupo.selecionado ? `<button type="button" class="secondary" data-historico-grupo="${escapar(grupo.id)}" title="Pede ao celular as mensagens deste grupo anteriores à primeira que chegou depois da última queda">Buscar mensagens anteriores</button>` : ""}</div>`).join("")
     + contatosAchados.map(({ pessoa, indice }) =>
     `<div class="group"><label class="group-main"><input type="checkbox" data-contato="${indice}" ${pessoa.permitido ? "checked" : ""} ${pessoa.telefone_final ? "" : "disabled"}><div><span>${escapar(pessoa.nome)}</span><small>Contato (privado) · ${pessoa.telefone_final ? `telefone final …${escapar(pessoa.telefone_final)}` : "sem telefone no cadastro"}${pessoa.papel ? ` · ${escapar(pessoa.papel)}` : ""}</small></div></label>${pessoa.permitido ? `<button type="button" class="secondary" data-historico="${escapar(pessoa.id)}" title="Pede ao celular as mensagens anteriores desta conversa">Buscar mensagens anteriores</button>` : ""}</div>`).join("");
   lista.querySelectorAll("button[data-historico]").forEach((botao) => {
     botao.addEventListener("click", async () => {
       try { const resposta = await api(`/api/contatos/${encodeURIComponent(botao.dataset.historico)}/historico`, { method: "POST" }); aviso(resposta.mensagem); } catch (erro) { aviso(erro.message, true); }
+    });
+  });
+  lista.querySelectorAll("button[data-historico-grupo]").forEach((botao) => {
+    botao.addEventListener("click", async () => {
+      try { const resposta = await api(`/api/grupos/${encodeURIComponent(botao.dataset.historicoGrupo)}/historico`, { method: "POST" }); aviso(resposta.mensagem); } catch (erro) { aviso(erro.message, true); }
     });
   });
   lista.querySelectorAll("input[data-contato]").forEach((checkbox) => {

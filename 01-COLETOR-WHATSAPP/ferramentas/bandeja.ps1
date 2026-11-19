@@ -43,6 +43,8 @@ $script:ultimoStatus = ""
 $script:desistiu = $false
 $script:processo = $null
 $script:iniciadoEm = Get-Date
+$script:foraDesde = $null
+$script:avisouQueda = $false
 
 function Registrar([string]$texto) {
     $linha = "{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $texto
@@ -105,9 +107,19 @@ function Iniciar-Coleta {
 
 function Parar-Coleta {
     $id = Pid-Na-Porta
-    if ($id) {
-        try { Stop-Process -Id $id -Force -ErrorAction Stop; Registrar "coleta parada (processo $id)" } catch { Registrar "nao consegui parar o processo ${id}: $_" }
-    }
+    if (-not $id) { return }
+    # Pede para o proprio programa fechar a conexao do WhatsApp com calma antes
+    # de sair. So no Windows nao da para mandar um sinal que o Node escute
+    # (Stop-Process sempre mata na marra, sem aviso) - por isso o pedido e por
+    # HTTP. So se nao responder (processo travado) e que mata na forca mesmo.
+    try {
+        Invoke-RestMethod -Uri "$($painel)api/sistema/reiniciar" -Method Post -TimeoutSec 5 | Out-Null
+        for ($i = 0; $i -lt 15; $i++) {
+            Start-Sleep -Milliseconds 300
+            if (-not (Pid-Na-Porta)) { Registrar "coleta parada com calma (processo $id)"; return }
+        }
+    } catch { Registrar "pedido de parada com calma falhou (processo ${id}): $_" }
+    try { Stop-Process -Id $id -Force -ErrorAction Stop; Registrar "coleta parada na forca (processo $id)" } catch { Registrar "nao consegui parar o processo ${id}: $_" }
 }
 
 function Verificar {
@@ -141,12 +153,25 @@ function Verificar {
         Mostrar-Estado "atencao" "Coleta VMac: abrindo..."
         return
     }
+    # O WhatsApp derruba a conexao de vez em quando e o programa religa sozinho
+    # em segundos. So avisa (balao) quando precisa de alguem (QR Code, erro) ou
+    # quando a reconexao automatica passa de ~1 minuto - e uma vez so por queda.
     if ($whats -eq "conectado") {
         Mostrar-Estado "ok" "Coleta VMac: WhatsApp conectado"
+        $script:foraDesde = $null
+        $script:avisouQueda = $false
     } else {
         Mostrar-Estado "atencao" "Coleta VMac: WhatsApp $whats"
-        if ($script:ultimoStatus -eq "conectado") {
-            Avisar "WhatsApp desconectado" "A coleta esta aberta, mas o WhatsApp caiu. Abra o painel para reconectar." ([System.Windows.Forms.ToolTipIcon]::Warning)
+        if (-not $script:foraDesde) { $script:foraDesde = Get-Date }
+        $precisaDeAlguem = @("aguardando_qr", "aguardando_codigo", "desconectado", "erro") -contains $whats
+        $demorando = $script:foraDesde -lt (Get-Date).AddSeconds(-60)
+        if (-not $script:avisouQueda -and ($precisaDeAlguem -or $demorando)) {
+            $script:avisouQueda = $true
+            if ($precisaDeAlguem) {
+                Avisar "WhatsApp precisa de atencao" "As notas novas NAO estao chegando. Abra o painel do WhatsApp (QR Code ou motivo do erro)." ([System.Windows.Forms.ToolTipIcon]::Warning)
+            } else {
+                Avisar "WhatsApp reconectando" "Ja passou de 1 minuto tentando reconectar. Confira a internet do computador." ([System.Windows.Forms.ToolTipIcon]::Warning)
+            }
         }
     }
     $script:ultimoStatus = $whats
@@ -167,6 +192,25 @@ $menu.Items.Add("Reiniciar coleta").Add_Click({
     Iniciar-Coleta
     Mostrar-Estado "atencao" "Coleta VMac: reiniciando..."
 })
+# Robo do Conta Azul: o Chrome que anexa a foto no lancamento trabalha com a
+# janela ESCONDIDA. Aqui ela aparece (para fazer login) ou some de novo.
+function Mostrar-Robo([string]$conta) {
+    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    if (-not $node) { Registrar "node nao encontrado (mostrar robo)"; return }
+    Start-Process -FilePath $node -ArgumentList "ferramentas\abrir-navegador-conta-azul.js", $conta -WorkingDirectory $raiz -WindowStyle Hidden
+    Registrar "janela do robo ($conta) pedida pelo menu"
+}
+function Esconder-Robo {
+    foreach ($perfil in @("dados\navegador-conta-azul", "dados\navegador-conta-azul-oficial")) {
+        Start-Process powershell.exe -WindowStyle Hidden -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+            "-File", "`"$PSScriptRoot\janela-robo.ps1`"", "-Perfil", "`"$(Join-Path $raiz $perfil)`"", "-Acao", "esconder"
+    }
+}
+$menuRobo = New-Object System.Windows.Forms.ToolStripMenuItem "Robo do Conta Azul"
+[void]$menuRobo.DropDownItems.Add("Mostrar janela - conta OFICIAL (login)", $null, { Mostrar-Robo "oficial" })
+[void]$menuRobo.DropDownItems.Add("Mostrar janela - conta de teste (login)", $null, { Mostrar-Robo "teste" })
+[void]$menuRobo.DropDownItems.Add("Esconder janelas do robo", $null, { Esconder-Robo })
+[void]$menu.Items.Add($menuRobo)
 $menu.Items.Add("Ver registro (logs)").Add_Click({ Start-Process explorer.exe $logs })
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 $menu.Items.Add("Sair (parar a coleta)").Add_Click({

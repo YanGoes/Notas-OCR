@@ -31,6 +31,15 @@ async function chamar(ctx, nome, parametros) {
     let ferramenta;
     try { ferramenta = ferramentas.obter(nome, ctx.db); } catch (erro) { return { texto: erro.message, erro: true }; }
     if (ferramenta.grava) {
+        // A Central guarda UMA proposta por resposta: as seguintes eram jogadas fora em
+        // silencio e o assistente dizia que estavam esperando Confirmar.
+        if (ctx.direto) {
+            anotar(ctx.fila, nome, parametros);
+            return { texto: "Registrada: o programa EXECUTA esta ação assim que a sua resposta terminar (sem botão Confirmar; a pessoa já pediu). Registre agora as outras ações pedidas, se houver. Na resposta, diga o que vai ser feito; o resultado chega para você logo depois.", erro: false };
+        }
+        if (fs.existsSync(ctx.fila) && fs.readFileSync(ctx.fila, "utf8").trim()) {
+            return { texto: "NÃO registrada: já existe uma proposta nesta resposta e só cabe uma por vez. Não diga que esta ficou esperando Confirmar. Se for a mesma ação para várias notas, ela devia ir numa chamada só (ids). Diga à pessoa que esta parte fica para depois do Confirmar da primeira.", erro: true };
+        }
         anotar(ctx.fila, nome, parametros);
         return { texto: "Proposta registrada: a Central mostra um botão Confirmar para uma pessoa autorizada. Não chame outra ferramenta que grava; termine a resposta dizendo o que vai ser feito.", erro: false };
     }
@@ -71,7 +80,7 @@ function argumento(nome) {
 async function principal() {
     const { banco } = require("../central/banco");
     const cadastros = require("../central/cadastros");
-    const ctx = { db: banco(), cad: cadastros.carregar(), fila: argumento("fila"), pessoa: argumento("pessoa"), conversaId: Number(argumento("conversa")) || null };
+    const ctx = { db: banco(), cad: cadastros.carregar(), fila: argumento("fila"), pessoa: argumento("pessoa"), direto: argumento("direto") === "1", conversaId: Number(argumento("conversa")) || null };
     if (!ctx.fila) throw new Error("--fila obrigatório");
     const leitor = readline.createInterface({ input: process.stdin });
     for await (const linha of leitor) {
