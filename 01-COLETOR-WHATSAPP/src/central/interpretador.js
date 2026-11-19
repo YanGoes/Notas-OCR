@@ -135,6 +135,19 @@ function pagamentoDaLinha(cad, linha) {
     return metodo ? { forma: metodo, cartao: null, rotulo: metodo } : null;
 }
 
+// Cabecalho da mensagem do dia: "Despesas", "Despesa", "Despesasm" (digitado errado), "Data", "Dia".
+const RE_CABECALHO_DIA = /^(despes\w*|data|dia)\b/i;
+
+/** A linha e cartao/pagamento, data ou quantidade de um tipo — nao um nome de centro. */
+function linhaDeOutroAssunto(cad, linha, normal) {
+    if (RE_DATA.test(linha) || RE_PAGAMENTO.test(linha)) return true;
+    const quantidade = linha.match(RE_QUANTIDADE);
+    if (quantidade && tipoDoTexto(quantidade[2])) return true;
+    if (cadastros.pareceProjeto(cad, linha)) return false;
+    const pagamento = pagamentoDaLinha(cad, linha);
+    return Boolean(pagamento && (/^(cart[aã]o|cr[eé]dito|d[eé]bito|pix|dinheiro)\b/i.test(linha) || normal.split(" ").length <= 3));
+}
+
 /**
  * Le cada linha da mensagem e extrai o que ela diz.
  * @returns {object} dados extraidos, com `linhas_nao_entendidas` para auditoria
@@ -190,7 +203,8 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
         if (nomeRemetente && normal === normalizar(nomeRemetente)) continue;
 
         const data = linha.match(RE_DATA);
-        if (data && /^(despesas?|data|dia)\b/i.test(normal)) {
+        // "Despesas 13/11", "Despesasm 13/11/2026" (erro de digitacao), "Data", "Dia".
+        if (data && RE_CABECALHO_DIA.test(normal)) {
             dados.data_declarada = dataIso(data[1]);
             continue;
         }
@@ -205,7 +219,11 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
             else aguardandoProjeto = true;
             continue;
         }
-        if (aguardandoProjeto) {
+        // Linha depois de "Centro de custo" sozinho e o centro — a nao ser que seja
+        // claramente outra coisa (cartao, data, "Qtd 3 janta"): ai ela e lida pelo
+        // que e e o centro fica para a proxima linha ("Centro de custo / Cartão
+        // inter credito / SP / deslocamento", Almir 13/11/2026).
+        if (aguardandoProjeto && !linhaDeOutroAssunto(cad, linha, normal)) {
             dados.projeto_texto = linha;
             aguardandoProjeto = false;
             continue;
@@ -347,7 +365,7 @@ function extrair(cad, texto, { nomeRemetente = "", pessoa = null, referencia = n
     // Cabecalho "Despesas 06/10/2026" seguido de uma linha solta: na pratica
     // e o projeto escrito sem rotulo ("GOINFRA FWD"). Fica como texto do
     // projeto; se nao casar com o cadastro, a despesa vai para revisao.
-    const comecaComData = linhas.length && /^(despesas?|data|dia)\b/.test(normalizar(linhas[0])) && dados.data_declarada;
+    const comecaComData = linhas.length && RE_CABECALHO_DIA.test(normalizar(linhas[0])) && dados.data_declarada;
     if (!dados.projeto_texto && comecaComData && dados.linhas_nao_entendidas.length) {
         const candidata = dados.linhas_nao_entendidas.find((linha) => normalizar(linha).split(" ").length <= 8);
         if (candidata) {

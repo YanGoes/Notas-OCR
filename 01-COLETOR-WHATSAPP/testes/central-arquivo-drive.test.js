@@ -89,9 +89,43 @@ test("operador do cadastro vence; sem operador vai para Nao identificado; simula
     assert.equal(fs.readdirSync(path.join(c.raiz, "Almir", "01-26", "05")).length, 0);
 });
 
+test("pasta_drive_operador escolhida a mao vence o operador real, sem mudar o dono da despesa", () => {
+    const c = cenario();
+    const { id } = c.despesa({ operador: "Jhonathan", data: "2026-01-05" });
+    c.db.prepare("UPDATE despesas SET pasta_drive_operador = 'Almir' WHERE id = ?").run(id);
+    const r = drive.arquivarPendentes(c.db, { pessoas: [] }, { config: c.config, localizar: c.localizar });
+    assert.equal(r.erros.length, 0, JSON.stringify(r.erros));
+    assert.ok(fs.existsSync(path.join(c.raiz, "Almir", "01-26", "05", `#${id} ALMOCO R$ 50,00.jpeg`)));
+    assert.equal(fs.readdirSync(path.join(c.raiz, "Jonathan", "01-26", "05")).length, 0);
+    const campos = JSON.parse(c.db.prepare("SELECT campos FROM despesas WHERE id = ?").get(id).campos);
+    assert.equal(campos.remetente.valor, "Jhonathan");
+});
+
 test("Drive fechado ou desligado nao derruba nada", () => {
     const c = cenario();
     c.despesa({ operador: "Almir" });
     assert.match(drive.arquivarPendentes(c.db, {}, { config: { central: { arquivo_drive: { habilitado: true, raiz: "Z:\\nao-existe" } } } }).erro, /indisponível/);
     assert.equal(drive.arquivarPendentes(c.db, {}, { config: {} }).desligado, true);
+});
+
+test("link da foto: so com a copia no Drive e o ID definitivo", () => {
+    const c = cenario();
+    const a = c.despesa({ operador: "Almir" });
+    const idDefinitivo = "1Is6u32kmlssT9FdgsiPLhnsMpy9UsKFp";
+    assert.match(drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => idDefinitivo }).motivo, /ainda não foi copiada/);
+    drive.arquivarPendentes(c.db, { pessoas: [] }, { config: c.config, localizar: c.localizar });
+    const pronto = drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => idDefinitivo });
+    assert.equal(pronto.link, `https://drive.google.com/file/d/${idDefinitivo}/view`);
+    assert.ok(fs.existsSync(pronto.caminho));
+    // Drive ainda enviando (ID provisorio ou sem ID): sem link, mas vale esperar.
+    const enviando = drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => null });
+    assert.equal(enviando.link, null);
+    assert.equal(enviando.aguardar, true);
+    // Pasta comum (fora do Drive) nao tem ID: a leitura real devolve nulo, sem derrubar.
+    assert.equal(drive.idNoDrive(pronto.caminho), null);
+    assert.equal(drive.linkDaFoto(c.db, a.midiaId, { config: c.config }).link, null);
+    // Copia apagada da pasta, ou arquivo desligado: sem link e sem esperar.
+    fs.unlinkSync(pronto.caminho);
+    assert.match(drive.linkDaFoto(c.db, a.midiaId, { config: c.config, lerId: () => idDefinitivo }).motivo, /não está mais na pasta/);
+    assert.match(drive.linkDaFoto(c.db, a.midiaId, { config: {} }).motivo, /desligado/);
 });

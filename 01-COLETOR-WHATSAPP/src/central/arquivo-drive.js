@@ -119,7 +119,7 @@ function nomeDoArquivo(despesas, arquivoOriginal) {
  */
 function fotosParaArquivar(db, cad) {
     const nomes = new Map((cad?.pessoas || []).map((p) => [p.id, p.nome]));
-    const linhas = db.prepare(`SELECT d.id, d.midia_id, d.campos, m.arquivo, m.recebida_em, msg.pessoa_id, msg.remetente_nome
+    const linhas = db.prepare(`SELECT d.id, d.midia_id, d.campos, d.pasta_drive_operador, m.arquivo, m.recebida_em, msg.pessoa_id, msg.remetente_nome
         FROM despesas d JOIN midias m ON m.id = d.midia_id LEFT JOIN mensagens msg ON msg.id = d.mensagem_ref
         WHERE d.estado = 'APROVADO' ORDER BY d.midia_id, d.id`).all();
     const porMidia = new Map();
@@ -127,7 +127,9 @@ function fotosParaArquivar(db, cad) {
         const c = JSON.parse(l.campos);
         if (c.sem_comprovante?.valor) continue;
         const pessoaId = l.pessoa_id || c.remetente?.pessoa_id || null;
-        const operador = nomes.get(pessoaId) || c.remetente?.valor || l.remetente_nome || null;
+        // Pasta escolhida a mao (ex.: assistente, "arquiva na pasta do Almir")
+        // vence o operador real da despesa; so muda ONDE a foto fica no Drive.
+        const operador = String(l.pasta_drive_operador || "").trim() || nomes.get(pessoaId) || c.remetente?.valor || l.remetente_nome || null;
         const data = /^\d{4}-\d{2}-\d{2}$/.test(c.data_competencia?.valor || "") ? c.data_competencia.valor : String(l.recebida_em || "").slice(0, 10);
         const item = porMidia.get(l.midia_id) || { midia_id: l.midia_id, arquivo: l.arquivo, operador, data, despesas: [] };
         item.despesas.push({ id: l.id, tipo: c.tipo?.valor || null, valor: c.valor?.valor ?? null });
@@ -177,6 +179,40 @@ function arquivarPendentes(db, cad, { config = lerConfig(), simular = false, loc
     return relatorio;
 }
 
+// -----------------------------------------------------------------------------
+// LINK DA FOTO NO DRIVE
+// O Drive para computador guarda o ID de cada arquivo num fluxo ao lado dele
+// ("<arquivo>:user.drive.id"). Foto recem-copiada comeca com um ID provisorio
+// ("local-123") e ganha o definitivo quando o envio termina (~7 s, medido em
+// 11/11/2026). So o definitivo vira link.
+// -----------------------------------------------------------------------------
+const ID_DEFINITIVO = /^[A-Za-z0-9_-]{20,}$/;
+
+function idNoDrive(caminho) {
+    try {
+        const id = fs.readFileSync(`${caminho}:user.drive.id`, "utf8").trim();
+        return ID_DEFINITIVO.test(id) && !/^local-/i.test(id) ? id : null;
+    } catch (_) { return null; }
+}
+
+const linkDoId = (id) => `https://drive.google.com/file/d/${id}/view`;
+
+/**
+ * Link da foto arquivada de uma midia. Devolve { link, caminho } ou
+ * { link: null, motivo, aguardar } — `aguardar` diz que vale tentar de novo em
+ * instantes (o Drive ainda esta enviando).
+ */
+function linkDaFoto(db, midiaId, { config = lerConfig(), lerId = idNoDrive } = {}) {
+    const opcoes = config.central?.arquivo_drive || {};
+    if (!opcoes.habilitado || !opcoes.raiz) return { link: null, motivo: "o arquivo das fotos no Drive está desligado" };
+    const linha = midiaId ? db.prepare("SELECT caminho FROM arquivos_drive WHERE midia_id = ? AND raiz = ?").get(midiaId, String(opcoes.raiz)) : null;
+    if (!linha) return { link: null, motivo: "a foto ainda não foi copiada para o Drive" };
+    if (!fs.existsSync(linha.caminho)) return { link: null, caminho: linha.caminho, motivo: "a cópia da foto não está mais na pasta do Drive (ou o Google Drive está fechado)" };
+    const id = lerId(linha.caminho);
+    if (!id) return { link: null, caminho: linha.caminho, aguardar: true, motivo: "o Google Drive ainda não terminou de enviar a foto" };
+    return { link: linkDoId(id), caminho: linha.caminho };
+}
+
 /** Roda sozinho de tempos em tempos (Drive fechado: tenta de novo depois). */
 function agendar(obterBanco, obterCadastros, { intervaloMs = 10 * 60 * 1000 } = {}) {
     const rodar = () => {
@@ -193,4 +229,4 @@ function agendar(obterBanco, obterCadastros, { intervaloMs = 10 * 60 * 1000 } = 
     setInterval(rodar, intervaloMs).unref();
 }
 
-module.exports = { arquivarPendentes, fotosParaArquivar, destinoDe, pastaDoOperador, nomeDoArquivo, partesDoModelo, agendar, MODELO_PADRAO };
+module.exports = { arquivarPendentes, fotosParaArquivar, destinoDe, pastaDoOperador, nomeDoArquivo, partesDoModelo, agendar, MODELO_PADRAO, linkDaFoto, idNoDrive, linkDoId };

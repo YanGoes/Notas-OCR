@@ -22,6 +22,22 @@ test("usa texto bruto somente quando encontra valor total sem ambiguidade", () =
     });
 });
 
+test("combustivel com desconto: vale o 'Valor a Pagar', nao o total bruto (#524)", () => {
+    const texto = ["802-OLEO DIESEL COMUM S-10", "50,870 L X 7,990", "406,45", "Desconto", "-55,96", "Valor líquido", "350,49",
+        "Valor total R$", "406,45", "Desconto R$", "-55,96", "Valor a Pagar R$", "350,49", "FORMA DE PAGAMENTO", "VALOR PAGO R$", "350,49", "Cartão de Crédito"].join("\n");
+    assert.deepEqual(detalhesValorDoTexto(texto), { valor: 350.49, confianca: 0.9, origem: "rotulo_a_pagar" });
+});
+
+test("troco: 'valor pago' maior que o total nunca vira a despesa", () => {
+    assert.equal(valorDoTexto("VALOR TOTAL R$ 87,50\nVALOR PAGO R$ 100,00\nTROCO R$ 12,50"), null);
+    assert.equal(valorDoTexto("VALOR TOTAL R$ 87,50\nVALOR A PAGAR R$ 87,50\nVALOR PAGO R$ 100,00\nTROCO R$ 12,50"), 87.5);
+});
+
+test("total mal lido: vale o valor que se repete (a pagar + via do cartao) (#419)", () => {
+    const texto = ["CREDITO A VISTA", "399,39", "Valor Total RS", "309,38", "Descontos R$", "0,00", "Valor a Pagar R$", "399,39", "VALOR PAGO R$", "Dinheiro"].join("\n");
+    assert.deepEqual(detalhesValorDoTexto(texto), { valor: 399.39, confianca: 0.85, origem: "total_mais_repetido" });
+});
+
 test("rejeita data estruturada incompleta e recupera a data fiscal do texto", () => {
     assert.equal(valorCampo({ type: "date", content: "29/07/:" }), null);
     assert.equal(valorCampo({ type: "date", content: "29/07/26" }), "2026-07-29");

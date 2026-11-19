@@ -144,6 +144,41 @@ test("nao aprova sem centro de custo nem categoria", () => {
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM exemplos_treino").get().n, 0);
 });
 
+test("aprovar varias de uma vez (botao do dia): aprova as completas e devolve o motivo das que nao passaram", () => {
+    const { db, id } = cenario();
+    assert.throws(() => revisao.aprovarVarias(db, [id], ""), /quem está aprovando/);
+    assert.throws(() => revisao.aprovarVarias(db, [], "Yan"), /Nenhuma nota/);
+    const r = revisao.aprovarVarias(db, [id, id, 9999], "Yan");
+    assert.deepEqual(r.aprovadas, [id]);
+    assert.equal(r.falhas.length, 1);
+    assert.equal(r.falhas[0].id, 9999);
+    assert.equal(orquestrador.lerDespesa(db, id).estado, "APROVADO");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM exemplos_treino").get().n, 1);
+
+    const incompleta = cenario({ legenda: "" });
+    const r2 = revisao.aprovarVarias(incompleta.db, [incompleta.id], "Yan");
+    assert.deepEqual(r2.aprovadas, []);
+    assert.match(r2.falhas[0].erro, /Preencha antes de aprovar/);
+    assert.equal(orquestrador.lerDespesa(incompleta.db, incompleta.id).estado, "AGUARDANDO_REVISAO");
+});
+
+test("editar nota aprovada: corrige e continua aprovada; se a aprovacao falhar, nada muda", () => {
+    const { db, cad, id } = cenario();
+    assert.throws(() => revisao.corrigirAprovada(db, cad, id, [{ campo: "valor", valor: "80" }], "Yan"), /para nota aprovada/);
+    revisao.aprovar(db, id, "Yan", { naoUsarNoTreino: ["centro_custo"] });
+    const nova = revisao.corrigirAprovada(db, cad, id, [{ campo: "valor", valor: "80" }], "Yan");
+    assert.equal(nova.estado, "APROVADO");
+    assert.equal(nova.campos.valor.valor, 80);
+    const rotulos = JSON.parse(db.prepare("SELECT rotulos FROM exemplos_treino WHERE despesa_id = ?").get(id).rotulos);
+    assert.ok(rotulos._nao_usar_no_treino.includes("centro_custo"), "campo fora do treino continua fora");
+    // Apagar campo obrigatorio: aprovacao falha e a nota fica como estava (aprovada, valor 80).
+    assert.throws(() => revisao.corrigirAprovada(db, cad, id, [{ campo: "valor", valor: "" }], "Yan"), /Preencha antes de aprovar/);
+    const depois = orquestrador.lerDespesa(db, id);
+    assert.equal(depois.estado, "APROVADO");
+    assert.equal(depois.campos.valor.valor, 80);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM exemplos_treino").get().n, 1);
+});
+
 test("reabrir ou descartar tira o exemplo do treino", () => {
     const { db, id } = cenario();
     revisao.aprovar(db, id, "Yan");
@@ -191,14 +226,192 @@ test("previa com correcao humana nao e regerada", () => {
 
 test("listar separa as abas e conta cada uma", () => {
     const { db, id } = cenario();
-    // Legenda completa: a previa nasce sem pendencia, na aba "classificadas".
-    assert.equal(revisao.listar(db, { aba: "classificadas" }).itens[0].id, id);
-    assert.equal(revisao.listar(db, { aba: "revisar" }).itens.length, 0);
+    // Legenda completa: a previa nasce sem pendencia (CLASSIFICADO) e fica em "Para revisar".
+    assert.equal(orquestrador.lerDespesa(db, id).estado, "CLASSIFICADO");
+    assert.equal(revisao.listar(db, { aba: "revisar" }).itens[0].id, id);
     revisao.aprovar(db, id, "Yan");
     const lista = revisao.listar(db, { aba: "aprovadas" });
     assert.equal(lista.itens.length, 1);
     assert.equal(lista.contagem.aprovadas, 1);
     assert.equal(lista.contagem.revisar, 0);
+});
+
+// Conta do PIX (13/11/2026): pagamento PIX pede de qual conta saiu (C6 SN, Banco do Brasil, Reembolso).
+function cadComPix() {
+    const c = cadastros();
+    c.cartoes.push(
+        { codigo: "C6_SN", rotulo: "C6 - SN", forma_pagamento: "PIX", conta_conta_azul: "C6 - Conta Corrente - SN", opcao_pix: true, rotulo_pix: "C6 SN" },
+        { codigo: "BB_PIX", rotulo: "PIX BB", forma_pagamento: "PIX", conta_conta_azul: "Banco do Brasil - Conta Corrente", opcao_pix: true, rotulo_pix: "Banco do Brasil" },
+        { codigo: "PIX_REEMBOLSO", rotulo: "PIX - Reembolso", forma_pagamento: "PIX", conta_conta_azul: null, opcao_pix: true, rotulo_pix: "Reembolso" });
+    return c;
+}
+
+test("pagamento PIX + conta do PIX: grava a conta (vira o 'cartao' de forma PIX)", () => {
+    const { db, id } = cenario();
+    const cad = cadComPix();
+    revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "PIX" }, { campo: "conta_pix", valor: "BB_PIX" }], "Yan");
+    const campos = orquestrador.lerDespesa(db, id).campos;
+    assert.deepEqual([campos.pagamento.forma, campos.pagamento.cartao], ["PIX", "BB_PIX"]);
+    // Escolher "PIX" de novo nao apaga a conta ja escolhida.
+    revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "PIX" }, { campo: "conta_pix", valor: "BB_PIX" }], "Yan");
+    assert.equal(orquestrador.lerDespesa(db, id).campos.pagamento.cartao, "BB_PIX");
+    assert.equal(require("../src/central/envio").dadosDaDespesa(orquestrador.lerDespesa(db, id).campos).cartao_codigo, "BB_PIX");
+});
+
+test("PIX sem a conta do PIX nao aprova; com a conta, aprova", () => {
+    const { db, id } = cenario();
+    const cad = cadComPix();
+    revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "PIX" }], "Yan");
+    assert.throws(() => revisao.aprovar(db, id, "Yan"), /Conta do PIX/);
+    revisao.corrigir(db, cad, id, [{ campo: "conta_pix", valor: "C6_SN" }], "Yan");
+    assert.equal(revisao.aprovar(db, id, "Yan").estado, "APROVADO");
+});
+
+test("pagamento trocado para cartao: a conta do PIX enviada junto e ignorada", () => {
+    const { db, id } = cenario();
+    const cad = cadComPix();
+    revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "PIX" }, { campo: "conta_pix", valor: "PIX_REEMBOLSO" }], "Yan");
+    revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "INTER" }, { campo: "conta_pix", valor: "PIX_REEMBOLSO" }], "Yan");
+    const pagamento = orquestrador.lerDespesa(db, id).campos.pagamento;
+    assert.deepEqual([pagamento.forma, pagamento.cartao], ["CARTAO_CREDITO", "INTER"]);
+    assert.throws(() => revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "PIX" }, { campo: "conta_pix", valor: "INTER" }], "Yan"), /Conta do PIX desconhecida/);
+});
+
+test("conta do PIX = Reembolso poe '(REEMBOLSO)' no fim da descricao; trocar a conta tira", () => {
+    const { db, id } = cenario();
+    const cad = cadComPix();
+    revisao.corrigir(db, cad, id, [{ campo: "descricao", valor: "25,271L od 204.613 - JKM0I96" }, { campo: "pagamento", valor: "PIX" }, { campo: "conta_pix", valor: "PIX_REEMBOLSO" }], "Yan");
+    assert.equal(orquestrador.lerDespesa(db, id).campos.descricao.valor, "25,271L od 204.613 - JKM0I96 (REEMBOLSO)");
+    // Salvar de novo nao repete a marca.
+    revisao.corrigir(db, cad, id, [{ campo: "pessoas", valor: "3" }], "Yan");
+    assert.equal(orquestrador.lerDespesa(db, id).campos.descricao.valor, "25,271L od 204.613 - JKM0I96 (REEMBOLSO)");
+    revisao.corrigir(db, cad, id, [{ campo: "conta_pix", valor: "C6_SN" }], "Yan");
+    assert.equal(orquestrador.lerDespesa(db, id).campos.descricao.valor, "25,271L od 204.613 - JKM0I96");
+});
+
+test("descricao que ja fala em reembolso (REEMBOLSO ALMIR) nao ganha a marca repetida", () => {
+    const { marcarReembolso } = require("../src/central/regras-vmac");
+    const campos = { descricao: { valor: "ALMOÇO - 2 PESSOAS - REEMBOLSO ALMIR" }, pagamento: { forma: "PIX", cartao: "PIX_REEMBOLSO" } };
+    marcarReembolso(campos);
+    assert.equal(campos.descricao.valor, "ALMOÇO - 2 PESSOAS - REEMBOLSO ALMIR");
+});
+
+test("centros do Conta Azul: so acrescenta os novos (nunca apaga nem renomeia)", () => {
+    const { compararCentros } = require("../src/central/sincronizar-centros");
+    const locais = [{ nome: "CTVM - LP - OBRA A", id: "a", apelidos: ["obra a"] }, { nome: "ADM", id: "b", apelidos: [] }];
+    const remotos = [{ id: "a", nome: "CTVM - LP - OBRA A (novo nome)" }, { id: "c", nome: "CTVM - LP - OBRA NOVA" }, { id: "d", nome: "adm" }];
+    const r = compararCentros(locais, remotos, { hoje: "2026-11-13" });
+    assert.deepEqual(r.novos.map((c) => c.nome), ["CTVM - LP - OBRA NOVA"]);
+    assert.equal(r.lista.length, 3);
+    assert.deepEqual(r.lista[0], locais[0], "o existente fica igual, com os apelidos");
+    assert.deepEqual(r.renomeados, [{ id: "a", antes: "CTVM - LP - OBRA A", agora: "CTVM - LP - OBRA A (novo nome)" }]);
+    assert.deepEqual(r.sumidos, ["ADM"], "sumido la so e informado");
+    assert.equal(r.lista.find((c) => c.id === "c").origem, "sincronizado_conta_azul");
+});
+
+test("sincronizar centros grava os novos com copia .bak e recusa lista vazia", async () => {
+    const fs = require("fs");
+    const os = require("os");
+    const path = require("path");
+    const { sincronizar } = require("../src/central/sincronizar-centros");
+    const arquivo = path.join(os.tmpdir(), `centros-${process.pid}-${Date.now()}.json`);
+    fs.writeFileSync(arquivo, JSON.stringify([{ nome: "ADM", id: "b", apelidos: [] }]));
+    try {
+        const avisos = [];
+        const r = await sincronizar({ arquivo, listar: async () => [{ id: "b", nome: "ADM" }, { id: "z", nome: "OBRA Z" }], avisar: (a) => avisos.push(a) });
+        assert.deepEqual(r.novos, ["OBRA Z"]);
+        assert.equal(JSON.parse(fs.readFileSync(arquivo, "utf8")).length, 2);
+        assert.ok(fs.existsSync(`${arquivo}.bak`));
+        assert.match(avisos[0].titulo, /1 centro/);
+        await assert.rejects(() => sincronizar({ arquivo, listar: async () => [] }), /vazia/);
+        assert.equal(JSON.parse(fs.readFileSync(arquivo, "utf8")).length, 2, "lista vazia nao apaga nada");
+    } finally {
+        for (const f of [arquivo, `${arquivo}.bak`]) fs.rmSync(f, { force: true });
+    }
+});
+
+test("botao Treino IA: nota antiga sai da esteira, aprova la sem ir para 'Prontas' nem para o envio, e pode voltar", () => {
+    const { db, id } = cenario();
+    const envio = require("../src/central/envio");
+    revisao.moverParaTreino(db, id, true, "Yan");
+    assert.equal(revisao.listar(db, { aba: "revisar" }).itens.length, 0);
+    assert.equal(revisao.listar(db, { aba: "simuladas" }).itens[0].id, id);
+    assert.equal(revisao.detalhar(db, id).treino_ia, true);
+    revisao.aprovar(db, id, "Yan");
+    assert.equal(revisao.listar(db, { aba: "aprovadas", empresaOficial: OFICIAL }).itens.length, 0, "aprovada no Treino IA nao vai para Prontas");
+    assert.equal(revisao.listar(db, { aba: "simuladas" }).itens[0].id, id);
+    assert.deepEqual(envio.pendentesDeEnvio(db, OFICIAL), [], "nunca entra no Enviar todas");
+    assert.deepEqual(envio.doHistorico(db, [id]), [id], "envio de uma so para a oficial e recusado");
+    assert.ok(db.prepare("SELECT 1 FROM exemplos_treino WHERE despesa_id = ?").get(id), "virou exemplo para a IA");
+    revisao.moverParaTreino(db, id, false, "Yan");
+    assert.equal(revisao.listar(db, { aba: "aprovadas", empresaOficial: OFICIAL }).itens[0].id, id, "de volta a esteira");
+    assert.ok(revisao.detalhar(db, id).historico.some((h) => /Treino IA/.test(h.motivo)));
+});
+
+test("nota do historico importado nao sai do Treino IA", () => {
+    const { db, id } = cenario({ remetente: "historico:planilha-2025" });
+    assert.equal(revisao.detalhar(db, id).do_historico, true);
+    assert.throws(() => revisao.moverParaTreino(db, id, false, "Yan"), /histórico importado/);
+});
+
+// Esteira depois da aprovacao: a etapa vem do ultimo envio para a conta OFICIAL.
+const OFICIAL = "aaaa-oficial";
+const TESTE = "bbbb-teste";
+function registrarEnvio(db, despesaId, empresa, status, relatorio = {}) {
+    const em = new Date().toISOString();
+    db.prepare("INSERT INTO envios_conta_azul (despesa_id, empresa_id, status, relatorio, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(despesaId, empresa, status, JSON.stringify(relatorio), em, em);
+}
+const etapaDe = (db, id) => ["aprovadas", "problema", "enviadas"].find((aba) => revisao.listar(db, { aba, empresaOficial: OFICIAL }).itens.some((i) => i.id === id));
+
+test("esteira: aprovada so vira 'enviada' quando sobe para a conta OFICIAL (teste nao conta)", () => {
+    const { db, id } = cenario();
+    revisao.aprovar(db, id, "Yan");
+    assert.equal(etapaDe(db, id), "aprovadas");
+    registrarEnvio(db, id, TESTE, "ENVIADO");
+    assert.equal(etapaDe(db, id), "aprovadas");
+    registrarEnvio(db, id, OFICIAL, "ENVIADO", { anexo: { ok: true } });
+    assert.equal(etapaDe(db, id), "enviadas");
+    const contagem = revisao.contarAbas(db, OFICIAL);
+    assert.deepEqual([contagem.aprovadas, contagem.enviadas, contagem.problema], [0, 1, 0]);
+});
+
+test("esteira: envio oficial que falhou, ficou incompleto ou subiu sem a foto vai para 'problema'", () => {
+    for (const [status, relatorio] of [["FALHOU", {}], ["ENVIADO_INCOMPLETO", {}], ["INCERTO", {}], ["ENVIADO", { anexo: { ok: false } }]]) {
+        const { db, id } = cenario();
+        revisao.aprovar(db, id, "Yan");
+        registrarEnvio(db, id, OFICIAL, status, relatorio);
+        assert.equal(etapaDe(db, id), "problema", status);
+    }
+});
+
+test("esteira: sem empresa oficial configurada, toda aprovada fica em 'prontas'", () => {
+    const { db, id } = cenario();
+    revisao.aprovar(db, id, "Yan");
+    registrarEnvio(db, id, OFICIAL, "ENVIADO");
+    assert.equal(revisao.listar(db, { aba: "aprovadas", empresaOficial: null }).itens[0].id, id);
+});
+
+test("busca acha em todas as etapas por fornecedor, valor ou numero, dizendo a etapa", () => {
+    const { db, id } = cenario();
+    revisao.aprovar(db, id, "Yan");
+    registrarEnvio(db, id, OFICIAL, "ENVIADO");
+    for (const termo of ["sabor", "85,50", "R$ 85,50", `#${id}`]) {
+        const achadas = revisao.buscar(db, termo, { empresaOficial: OFICIAL });
+        assert.equal(achadas.length, 1, termo);
+        assert.equal(achadas[0].aba, "enviadas", termo);
+    }
+    assert.equal(revisao.buscar(db, "nada-disso", { empresaOficial: OFICIAL }).length, 0);
+});
+
+test("nota do historico antigo aprovada fica fora da esteira e nunca entra no envio", () => {
+    const { db, id } = cenario({ remetente: "historico:planilha-2025" });
+    revisao.aprovar(db, id, "Yan");
+    assert.equal(etapaDe(db, id), undefined);
+    assert.equal(revisao.listar(db, { aba: "simuladas" }).itens[0].id, id);
+    const envio = require("../src/central/envio");
+    assert.deepEqual(envio.pendentesDeEnvio(db, OFICIAL), []);
+    assert.deepEqual(envio.doHistorico(db, [id]), [id]);
 });
 
 test("banco antigo (so migracao 1) ganha as colunas novas sem perder dados", () => {
@@ -283,9 +496,11 @@ test("campo que so o operador informa e estava vazio: motivo sugerido e 'nao inf
     assert.equal(revisao.erroSugerido("valor", null), "LEITURA");
 });
 
-test("correcao guarda o motivo e a explicacao; 'outro' exige explicacao", () => {
+test("correcao guarda o motivo e a explicacao; 'outro' sem explicacao e aceito (16/11/2026)", () => {
+    const outro = cenario({ legenda: "Jantar 2 pessoas\nBR020" });
+    revisao.corrigir(outro.db, outro.cad, outro.id, [{ campo: "pagamento", valor: "INTER", tipo_erro: "OUTRO" }], "Yan");
+    assert.deepEqual({ ...outro.db.prepare("SELECT tipo_erro, observacao FROM correcoes WHERE despesa_id = ?").get(outro.id) }, { tipo_erro: "OUTRO", observacao: null });
     const { db, cad, id } = cenario({ legenda: "Jantar 2 pessoas\nBR020" });
-    assert.throws(() => revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "INTER", tipo_erro: "OUTRO" }], "Yan"), /escreva qual foi o erro/);
     revisao.corrigir(db, cad, id, [{ campo: "pagamento", valor: "INTER", observacao: "  operador não disse   o cartão " }], "Yan");
     const linha = db.prepare("SELECT tipo_erro, observacao FROM correcoes WHERE despesa_id = ?").get(id);
     assert.equal(linha.tipo_erro, "NAO_INFORMADO");

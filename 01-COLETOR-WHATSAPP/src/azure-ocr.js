@@ -280,6 +280,27 @@ function numeroMonetario(texto) {
     return Number.isFinite(valor) && valor > 0 ? valor : null;
 }
 
+/** Quantas vezes o valor ("350.49") aparece como dinheiro no texto, fora de tributos/troco. */
+function vezesNoTexto(linhas, valorFixo) {
+    let vezes = 0;
+    for (const linha of linhas) {
+        if (/tribut|impost|troco|ibpt|desconto/i.test(linha)) continue;
+        for (const achado of linha.matchAll(/\d{1,3}(?:\.\d{3})*,\d{2}(?!\d)|\d+\.\d{2}(?!\d)/g)) {
+            const valor = numeroMonetario(achado[0].includes(",") ? achado[0] : achado[0].replace(".", ","));
+            if (valor !== null && valor.toFixed(2) === valorFixo) vezes += 1;
+        }
+    }
+    return vezes;
+}
+
+// Nivel do rotulo: 0 = "valor/total a pagar" (o que foi cobrado), 1 = "valor
+// pago", 2 = "valor total"/"total" (pode ser o bruto, antes do desconto).
+function nivelDoRotuloTotal(linha) {
+    if (/a\s*pagar/i.test(linha)) return 0;
+    if (/valor\s*pago/i.test(linha)) return 1;
+    return 2;
+}
+
 function detalhesValorDoTexto(texto) {
     const candidatos = [];
     const linhas = String(texto || "").split(/\r?\n/);
@@ -287,20 +308,44 @@ function detalhesValorDoTexto(texto) {
         const linha = linhas[indice];
         if (!/(valor\s*(total|a\s*pagar|pago)|\btotal\b\s*(geral|a\s*pagar)?|vlr\s*total)/i.test(linha)) continue;
         if (/tribut|impost|troco|desconto|taxa|ibpt/i.test(linha)) continue;
+        const nivel = nivelDoRotuloTotal(linha);
         const valores = linha.match(/(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|R\$\s*\d+(?:[.,]\d{2})?/gi) || [];
         for (const encontrado of valores) {
             const valor = numeroMonetario(encontrado);
-            if (valor !== null) candidatos.push(valor);
+            if (valor !== null) candidatos.push({ valor, nivel });
         }
         if (!valores.length && indice + 1 < linhas.length && !/tribut|impost|troco|desconto|taxa|ibpt/i.test(linhas[indice + 1])) {
             const valorSeguinte = linhas[indice + 1].match(/^(?:R\$\s*)?(\d{1,7}(?:[.,]\d{2}))\s*$/i);
             const valor = valorSeguinte ? numeroMonetario(valorSeguinte[1]) : null;
-            if (valor !== null) candidatos.push(valor);
+            if (valor !== null) candidatos.push({ valor, nivel });
         }
     }
-    const unicos = [...new Set(candidatos.map((valor) => valor.toFixed(2)))];
+    const unicos = [...new Set(candidatos.map((c) => c.valor.toFixed(2)))];
     if (unicos.length === 1) return { valor: Number(unicos[0]), confianca: 0.97, origem: "rotulo_total" };
-    if (unicos.length > 1) return { valor: null, confianca: 0, origem: null };
+    if (unicos.length > 1) {
+        // Totais diferentes (ex.: desconto no combustivel: "Valor total 406,45"
+        // e "Valor a Pagar 350,49"). Vale o que foi cobrado — "a pagar", senao
+        // "valor pago" —, desde que seja um so e nao passe do total bruto (assim
+        // "valor pago 100,00" com troco nunca vira a despesa).
+        const totais = candidatos.filter((c) => c.nivel === 2).map((c) => c.valor);
+        const tetoTotal = totais.length ? Math.min(...totais) : Infinity;
+        for (const nivel of [0, 1]) {
+            const doNivel = [...new Set(candidatos.filter((c) => c.nivel === nivel).map((c) => c.valor.toFixed(2)))];
+            if (doNivel.length !== 1) continue;
+            const valor = Number(doNivel[0]);
+            if (valor > tetoTotal + 0.005) continue;
+            return { valor, confianca: 0.9, origem: nivel === 0 ? "rotulo_a_pagar" : "rotulo_valor_pago" };
+        }
+        // Desempate: o total que mais se repete na nota (o valor cobrado aparece
+        // no total, no "a pagar", no "valor pago" e na via do cartao; um total
+        // mal lido ou uma linha perdida aparece uma vez so).
+        const repeticoes = unicos.map((valor) => ({ valor: Number(valor), vezes: vezesNoTexto(linhas, valor) }))
+            .sort((a, b) => b.vezes - a.vezes);
+        if (repeticoes[0].vezes >= 2 && repeticoes[0].vezes > repeticoes[1].vezes) {
+            return { valor: repeticoes[0].valor, confianca: 0.85, origem: "total_mais_repetido" };
+        }
+        return { valor: null, confianca: 0, origem: null };
+    }
 
     const valoresComCifrao = [];
     for (const linha of linhas) {
@@ -441,6 +486,26 @@ function litragemDoTexto(texto) {
  * 1.000 sao descartados e, havendo dois hodometros diferentes, nao escolhe.
  */
 const RE_LINHA_ENDERECO = /\b(rod(ovia)?\.?|br\s*-?\s*\d{3}|av(enida)?\.?|rua|estrada|anel\s+vi[aá]rio|end(ere[cç]o)?)\b/i;
+// "ORODOVIA MG 050 00 KM 3715" (#478: letra grudada antes de RODOVIA) e rodovia
+// estadual ("MG 050", "MT 010", "SP 191"): tambem e endereco, o km e da estrada.
+const RE_ENDERECO_EXTRA = /rodovia|\b(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)\s*-?\s*\d{3}\s+(?:\d{2}\s+)?km\b/i;
+const ehLinhaDeEndereco = (linha) => RE_LINHA_ENDERECO.test(linha) || RE_ENDERECO_EXTRA.test(linha);
+
+// Rotulo + numero. Entre o rotulo e o numero aceita espacos e pontuacao em
+// sequencia ("Km .: 53832", posto Campo Limpo/MT, #502/#539 — antes so aceitava
+// UM sinal e o km ficava sem ler). "KH" = KM com o M lido como H (#504).
+const RE_ROTULO_ODOMETRO = /\b(?:h?od[oô]metro|odom\.?|k[mh]\s*(?:atual|veic(?:ulo)?|rodados?)?|quilometragem|od|h\.?m\.?)[\s:.\-]*(\d{1,3}(?:[.\s]\d{3})+|\d{4,7})(?:[.,]\d{1,2})?(?!\d)/gi;
+
+/** Hodometros com rotulo numa linha (linha de endereco nao conta). */
+function odometrosDaLinha(linha) {
+    if (ehLinhaDeEndereco(linha)) return [];
+    const achados = [];
+    for (const achado of String(linha || "").matchAll(RE_ROTULO_ODOMETRO)) {
+        const numero = Number(achado[1].replace(/\D/g, ""));
+        if (numero >= 1000 && numero <= 9999999) achados.push(numero);
+    }
+    return achados;
+}
 
 /**
  * Hodometro com a origem. Rotulos aceitos: hodometro, odometro, odom, od, km,
@@ -451,14 +516,7 @@ const RE_LINHA_ENDERECO = /\b(rod(ovia)?\.?|br\s*-?\s*\d{3}|av(enida)?\.?|rua|es
 function odometroDetalhado(texto) {
     const linhas = String(texto || "").split(/\r?\n/);
     const candidatos = new Set();
-    const rotulo = /\b(?:h?od[oô]metro|odom\.?|km\s*(?:atual|veic(?:ulo)?|rodados?)?|quilometragem|od|h\.?m\.?)\s*[:.\-]?\s*(\d{1,3}(?:[.\s]\d{3})+|\d{4,7})(?:[.,]\d{1,2})?(?!\d)/gi;
-    for (const linha of linhas) {
-        if (RE_LINHA_ENDERECO.test(linha)) continue;
-        for (const achado of linha.matchAll(rotulo)) {
-            const numero = Number(achado[1].replace(/\D/g, ""));
-            if (numero >= 1000 && numero <= 9999999) candidatos.add(numero);
-        }
-    }
+    for (const linha of linhas) for (const numero of odometrosDaLinha(linha)) candidatos.add(numero);
     if (candidatos.size === 1) return { valor: [...candidatos][0], origem: "rotulo_hodometro" };
     if (candidatos.size > 1) return { valor: null, origem: "varios_hodometros", candidatos: [...candidatos] };
 
@@ -807,6 +865,6 @@ async function analisarDocumento(arquivo, timeoutSegundos = 180) {
 module.exports = {
     analisarDocumento, configuracaoAzure, valorCampo, cnpjDoTexto, cnpjValido, chaveNfeValida, dadosChaveFiscalDoTexto, fornecedorDoTexto,
     valorDoTexto, detalhesValorDoTexto, normalizarData, dataDoTexto, nomeFantasiaDoTexto,
-    placaDoTexto, placaDetalhada, corrigirPlaca, litragemDoTexto, litragemQtdeVezesUnitario, kmDoTexto, odometroDoTexto, odometroDetalhado, prestadorNfse, formaPagamentoDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
+    placaDoTexto, placaDetalhada, corrigirPlaca, litragemDoTexto, litragemQtdeVezesUnitario, kmDoTexto, odometroDoTexto, odometroDetalhado, odometrosDaLinha,prestadorNfse, formaPagamentoDoTexto, enderecoDoCampo, itensDosCampos, tipoSugeridoAzure,
     confiancaLeitura, normalizarResultadoAzure,
 };

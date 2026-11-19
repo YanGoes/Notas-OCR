@@ -246,8 +246,9 @@ function resolverVeiculo(cad, placa) {
     return achados.length === 1 ? achados[0] : null;
 }
 
-// Caracteres que o OCR confunde entre si (8/B, 0/O/D/Q, 1/I/L, 5/S, 2/Z, 6/G).
-const SOSIAS = { 8: "B", B: "B", 0: "0", O: "0", D: "0", Q: "0", 1: "1", I: "1", L: "1", 5: "5", S: "5", 2: "2", Z: "2", 6: "6", G: "6" };
+// Caracteres que o OCR confunde entre si (8/B, 0/O/D/Q, 1/I/L, 5/S, 2/Z, 6/G, M/N).
+// M/N: "JKN0696" lida no cupom = JKM0I96 da frota (#500, 16/11/2026).
+const SOSIAS = { 8: "B", B: "B", 0: "0", O: "0", D: "0", Q: "0", 1: "1", I: "1", L: "1", 5: "5", S: "5", 2: "2", Z: "2", 6: "6", G: "6", M: "M", N: "M" };
 const placaSosia = (valor) => [...placaCanonica(valor)].map((c) => SOSIAS[c] || c).join("");
 
 /**
@@ -262,6 +263,42 @@ function veiculoPorSosia(cad, placa) {
     const alvo = placaSosia(lida);
     const achados = cad.veiculos.filter((veiculo) => placaSosia(veiculo.placa) === alvo);
     return achados.length === 1 ? { veiculo: achados[0], lida } : null;
+}
+
+/** Placa no padrao Mercosul (ABC1234 -> ABC1C34): a mesma placa nos dois formatos fica igual. */
+function placaMercosul(valor) {
+    const placa = placaComparavel(valor);
+    if (placa.length !== 7 || !/\d/.test(placa[4])) return placa;
+    return placa.slice(0, 4) + "ABCDEFGHIJ"[Number(placa[4])] + placa.slice(5);
+}
+// Forma de comparar: Mercosul + caracteres parecidos (8/B, 0/O...) iguais.
+const formaDeComparar = (valor) => placaSosia(placaMercosul(valor));
+const diferencasDePlaca = (a, b) => [...a].filter((caractere, i) => caractere !== b[i]).length;
+
+/** As duas placas sao a mesma, ou diferem em UM caractere so (contando Mercosul e trocas parecidas)? */
+function placasQuaseIguais(a, b) {
+    const x = formaDeComparar(a);
+    const y = formaDeComparar(b);
+    return x.length === 7 && y.length === 7 && diferencasDePlaca(x, y) <= 1;
+}
+
+/**
+ * Placa lida que NAO esta na frota, mas so difere de UMA placa da frota em um
+ * caractere ("OVH1505" lida, OVN1505 cadastrada — #479, 13/11/2026): a leitura
+ * errou uma letra e a placa certa e a do cadastro. Tambem casa o formato antigo
+ * com o Mercosul (OVN1505 = OVN1F05). Duas placas da frota igualmente perto:
+ * nao decide (devolve null) — fica para a pessoa.
+ * @returns {{veiculo:object, lida:string, diferencas:number}|null}
+ */
+function veiculoPorUmCaractere(cad, placa) {
+    const lida = placaCanonica(placa);
+    if (lida.length !== 7) return null;
+    const alvo = formaDeComparar(lida);
+    const perto = (cad.veiculos || []).filter((veiculo) => {
+        const forma = formaDeComparar(veiculo.placa);
+        return forma.length === 7 && diferencasDePlaca(forma, alvo) <= 1;
+    });
+    return perto.length === 1 ? { veiculo: perto[0], lida, diferencas: diferencasDePlaca(formaDeComparar(perto[0].placa), alvo) } : null;
 }
 
 /**
@@ -377,6 +414,6 @@ function adicionarPessoa({ nome, telefone, papel = "OPERADOR" } = {}, pasta = PA
 module.exports = {
     carregar, identificarPessoa, variantesTelefone, adicionarPessoa,
     resolverProjeto, pareceProjeto, projetosComId, nomeCentro,
-    resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, veiculoAproximado, veiculoPorSosia, placaCanonica, placaComparavel,
+    resolverCartao, resolverVeiculo, resolverVeiculoPorTexto, veiculoAproximado, veiculoPorSosia, veiculoPorUmCaractere, placasQuaseIguais, placaMercosul, placaCanonica, placaComparavel,
     resolverFornecedor, categoriaPorNome, placaSosia, PASTA_PADRAO,
 };

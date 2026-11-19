@@ -4,6 +4,7 @@
     "rotulo": "CRÉDITO INTER",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "Inter - Conta Corrente",
     "apelidos": [
       "credito inter",
       "cartao inter",
@@ -15,6 +16,7 @@
     "rotulo": "CRÉDITO C6",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "C6 - Conta Corrente LP",
     "apelidos": [
       "credito c6",
       "cartao c6",
@@ -26,13 +28,29 @@
     "rotulo": "CRÉDITO BB",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "Banco do Brasil - Conta Corrente",
     "apelidos": [
       "credito bb",
-      "cartao bb",
       "bb credito",
       "bb - credito",
+      "cartao bb credito",
+      "credito banco do brasil"
+    ]
+  },
+  {
+    "codigo": "BB_DEBITO",
+    "rotulo": "DÉBITO BB",
+    "forma_pagamento": "CARTAO_DEBITO",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": "Banco do Brasil - Conta Corrente",
+    "apelidos": [
+      "debito bb",
+      "bb debito",
+      "bb - debito",
+      "cartao bb debito",
+      "debito banco do brasil",
+      "cartao bb",
       "banco do brasil",
-      "cartao banco do brasil",
       "bb"
     ]
   },
@@ -41,6 +59,7 @@
     "rotulo": "C6 - LP",
     "forma_pagamento": "PIX",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "C6 - Conta Corrente LP",
     "apelidos": [
       "c6 lp",
       "c6 - lp",
@@ -53,6 +72,9 @@
     "rotulo": "C6 - SN",
     "forma_pagamento": "PIX",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "C6 - Conta Corrente - SN",
+    "opcao_pix": true,
+    "rotulo_pix": "C6 SN",
     "apelidos": [
       "c6 sn",
       "c6 - sn",
@@ -61,10 +83,38 @@
     ]
   },
   {
+    "codigo": "BB_PIX",
+    "rotulo": "PIX BB",
+    "forma_pagamento": "PIX",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": "Banco do Brasil - Conta Corrente",
+    "opcao_pix": true,
+    "rotulo_pix": "Banco do Brasil",
+    "apelidos": [
+      "pix bb",
+      "pix banco do brasil",
+      "pix do bb"
+    ]
+  },
+  {
+    "codigo": "PIX_REEMBOLSO",
+    "rotulo": "PIX - Reembolso",
+    "forma_pagamento": "PIX",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": null,
+    "opcao_pix": true,
+    "rotulo_pix": "Reembolso",
+    "apelidos": [
+      "pix reembolso",
+      "reembolso via pix"
+    ]
+  },
+  {
     "codigo": "PORTO",
     "rotulo": "CRÉDITO PORTO",
     "forma_pagamento": "CARTAO_CREDITO",
     "conta_conta_azul_id": null,
+    "conta_conta_azul": "Porto Seguro - Conta Corrente",
     "apelidos": [
       "credito porto",
       "cartao porto",
@@ -74,6 +124,21 @@
       "credito porto seguro",
       "porto bank credito",
       "porto"
+    ]
+  },
+  {
+    "codigo": "NUBANK",
+    "rotulo": "CRÉDITO NUBANK",
+    "forma_pagamento": "CARTAO_CREDITO",
+    "conta_conta_azul_id": null,
+    "conta_conta_azul": "Nubank - Conta Corrente",
+    "apelidos": [
+      "credito nubank",
+      "nubank credito",
+      "nubank - credito",
+      "cartao nubank",
+      "cartao nubank credito",
+      "nubank"
     ]
   }
 ]

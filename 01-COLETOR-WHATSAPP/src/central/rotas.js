@@ -1,7 +1,8 @@
 "use strict";
 
-// Rotas da Central de revisao (/api/central/...). Nenhuma delas lanca no
-// Conta Azul nem copia para o Drive: so leem e corrigem as previas.
+// Rotas da Central de revisao (/api/central/...). Leem e corrigem as previas;
+// so /envio/enviar lanca no Conta Azul (pessoa autorizada, conta escolhida na
+// tela) e /arquivo-drive/executar copia as fotos para o Drive.
 
 const express = require("express");
 const fs = require("fs");
@@ -69,30 +70,81 @@ const idDe = (req) => {
 };
 
 /** @param {object} [opcoes] @param {() => object} [opcoes.db] — permite usar outro banco (testes) */
-function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarRemetentes = null, contaConectada = () => null } = {}) {
+function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarRemetentes = null, contaConectada = () => null,
+    envioCentral = require("./envio-central").criarEnvioCentral() } = {}) {
     const rotas = express.Router();
     const responder = (fn) => (req, res, next) => {
         try { res.json(fn(req)); } catch (erro) { next(erro); }
     };
 
     rotas.get("/opcoes", responder(() => revisao.opcoes(cad())));
-    rotas.get("/despesas", responder((req) => revisao.listar(db(), {
-        aba: String(req.query.aba || "revisar"), operador: req.query.operador ? String(req.query.operador) : null, cad: cad(),
-        de: req.query.de ? String(req.query.de) : null, ate: req.query.ate ? String(req.query.ate) : null,
-        pela: req.query.pela === "recebida" ? "recebida" : "nota",
-    })));
+    const empresaOficial = () => envioCentral.empresaOficial?.() || null;
+    // Nota ja lancada na conta OFICIAL: reabrir/descartar aqui nao apaga o
+    // lancamento de la, so deixaria a Central e o Conta Azul desencontrados.
+    const travarSeLancada = (id, acao) => {
+        if (envioCentral.lancadaNaOficial?.(db(), id)) {
+            throw new Error(`A nota #${id} já foi lançada no Conta Azul OFICIAL: ${acao} aqui não muda nada lá. Corrija ou exclua o lançamento direto no Conta Azul.`);
+        }
+    };
+    /** Etiquetas "📤 oficial / teste" de cada item (abas depois da aprovacao e busca). */
+    const comEnvios = (itens) => {
+        const enviadas = envioCentral.enviadasDaLista(db(), itens.map((item) => item.id));
+        return itens.map((item) => ({ ...item, envios: enviadas.get(item.id) || [] }));
+    };
+    rotas.get("/despesas", responder((req) => {
+        const aba = String(req.query.aba || "revisar");
+        const resultado = revisao.listar(db(), {
+            aba, operador: req.query.operador ? String(req.query.operador) : null,
+            tipo: req.query.tipo ? String(req.query.tipo) : null, cad: cad(),
+            de: req.query.de ? String(req.query.de) : null, ate: req.query.ate ? String(req.query.ate) : null,
+            pela: req.query.pela === "recebida" ? "recebida" : "nota", empresaOficial: empresaOficial(),
+        });
+        // Nas etapas depois da aprovacao, cada nota diz para qual conta do Conta Azul ja foi enviada.
+        if (!["aprovadas", "problema", "enviadas", "simuladas"].includes(aba)) return resultado;
+        return { ...resultado, itens: comEnvios(resultado.itens) };
+    }));
+    // Busca rapida em todas as etapas (valor, fornecedor, operador, centro, numero da nota).
+    rotas.get("/busca", responder((req) => {
+        const itens = revisao.buscar(db(), String(req.query.q || ""), { empresaOficial: empresaOficial() });
+        return { itens: comEnvios(itens), contagem: revisao.contarAbas(db(), empresaOficial()) };
+    }));
     rotas.get("/despesas/:id", (req, res, next) => {
         try {
             const detalhe = revisao.detalhar(db(), idDe(req));
             if (!detalhe) return res.status(404).json({ erro: "Despesa não encontrada." });
             const imagem = detalhe.midia && localizarArquivo(detalhe.midia.arquivo);
-            return res.json({ ...detalhe, imagem_url: imagem ? `/api/central/midias/${detalhe.midia.id}/imagem` : null });
+            // imagem_tipo: "pdf" quando a nota veio em PDF (a tela mostra o PDF no lugar da foto).
+            return res.json({ ...detalhe, imagem_url: imagem ? `/api/central/midias/${detalhe.midia.id}/imagem` : null,
+                imagem_tipo: imagem && /\.pdf$/i.test(imagem) ? "pdf" : (imagem ? "imagem" : null),
+                envios: envioCentral.enviosDaDespesa(db(), detalhe.id) });
         } catch (erro) { return next(erro); }
     });
+
+    // --- Envio ao Conta Azul pelos botoes da Central (uma nota ou todas) --------
+    rotas.get("/envio/situacao", responder(() => envioCentral.situacao(db())));
+    rotas.get("/envio/andamento", responder(() => ({ tarefa: envioCentral.andamento() })));
+    rotas.post("/envio/parar", responder(() => envioCentral.parar()));
+    // `aguardar` (uma nota): so responde quando terminar. Sem ele (todas), responde na hora e a tela acompanha o andamento.
+    rotas.post("/envio/enviar", async (req, res, next) => {
+        try {
+            const { tarefa, fim } = envioCentral.iniciar(db(), {
+                conta: String(req.body?.conta || "teste"), ids: req.body?.ids, todas: req.body?.todas === true, autor: req.body?.autor,
+            });
+            res.json({ tarefa: req.body?.aguardar === true ? await fim : tarefa });
+        } catch (erro) { next(erro); }
+    });
     rotas.post("/despesas/:id/corrigir", responder((req) => revisao.corrigir(db(), cad(), idDe(req), req.body?.alteracoes, req.body?.autor)));
-    rotas.post("/despesas/:id/aprovar", responder((req) => revisao.aprovar(db(), idDe(req), req.body?.autor,
+    // Aprovar todas desta lista (ex.: um dia inteiro ja conferido): as que faltam campo voltam em `falhas`.
+    rotas.post("/despesas/aprovar-varias", responder((req) => revisao.aprovarVarias(db(), req.body?.ids, req.body?.autor)));
+    rotas.post("/despesas/:id/aprovar",responder((req) => revisao.aprovar(db(), idDe(req), req.body?.autor,
         { naoUsarNoTreino: Array.isArray(req.body?.nao_usar_no_treino) ? req.body.nao_usar_no_treino.map(String) : [] })));
-    rotas.post("/despesas/:id/descartar", responder((req) => revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor)));
+    // "Editar" numa nota aprovada: corrige e continua aprovada (tudo ou nada).
+    rotas.post("/despesas/:id/corrigir-aprovada", responder((req) => {
+        travarSeLancada(idDe(req), "corrigir");
+        return revisao.corrigirAprovada(db(), cad(), idDe(req), req.body?.alteracoes, req.body?.autor,
+            { naoUsarNoTreino: Array.isArray(req.body?.nao_usar_no_treino) ? req.body.nao_usar_no_treino.map(String) : [] });
+    }));
+    rotas.post("/despesas/:id/descartar", responder((req) => { travarSeLancada(idDe(req), "descartar"); return revisao.descartar(db(), idDe(req), req.body?.motivo, req.body?.autor); }));
     // Prints anexados ao comentario (ex.: a conversa onde o revisor explicou algo pro operador):
     // anexos_novos chega em base64 (preparado e salvo com o mesmo modulo do assistente);
     // anexos_manter sao os nomes de arquivo dos anexos ja salvos que continuam valendo.
@@ -113,7 +165,13 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
         } catch (erro) { next(erro); }
     });
     rotas.get("/comentarios-ia", responder(() => revisao.comentariosParaIa(db())));
-    rotas.post("/despesas/:id/reabrir", responder((req) => revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor)));
+    // Nota antiga para o Treino IA (fora da esteira e do envio), ou de volta para a esteira.
+    rotas.post("/despesas/:id/treino-ia", responder((req) => {
+        const ativo = req.body?.ativo !== false;
+        if (ativo) travarSeLancada(idDe(req), "mandar para o Treino IA");
+        return revisao.moverParaTreino(db(), idDe(req), ativo, req.body?.autor);
+    }));
+    rotas.post("/despesas/:id/reabrir", responder((req) => { travarSeLancada(idDe(req), "reabrir"); return revisao.reabrir(db(), idDe(req), req.body?.motivo, req.body?.autor); }));
     rotas.post("/despesas/:id/regenerar", responder((req) => revisao.regenerar(db(), cad(), idDe(req), { regras: regras() })));
     rotas.get("/metricas", responder(() => ({ ...revisao.metricas(db(), { nomes: revisao.nomesDasPessoas(cad()) }), planilha: resumoPlanilha(), azure: situacaoAzure(), maturidade: resumoMaturidade() })));
     // Marca o numero conectado ao programa (quem mandou foi a propria conta).
@@ -138,6 +196,10 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
 
     // Cadastro de projetos / centros de custo (configuracao/projetos.json)
     rotas.get("/projetos", responder(() => ({ ...projetosAdmin.listar(), historico: projetosAdmin.historico(db(), 30) })));
+    // Busca agora os centros de custo novos do Conta Azul oficial (o programa tambem faz sozinho uma vez por dia).
+    rotas.post("/centros/sincronizar", async (_req, res, next) => {
+        try { res.json(await require("./sincronizar-centros").sincronizar({ avisar: require("../notificacoes").registrar })); } catch (erro) { next(erro); }
+    });
     rotas.post("/projetos", responder((req) => projetosAdmin.criar(db(), req.body?.projeto, req.body?.autor)));
     rotas.post("/projetos/editar", responder((req) => projetosAdmin.editar(db(), String(req.body?.nome_atual || ""), req.body?.alteracoes, req.body?.autor)));
 
@@ -201,7 +263,8 @@ function criarRotas({ db = banco, cad = () => cadastros.carregar(), identificarR
         try {
             const final = await assistente.enviar(db(), {
                 pessoa: req.body?.pessoa, texto: req.body?.texto, anexos: Array.isArray(req.body?.anexos) ? req.body.anexos : [], conversaId: req.body?.conversa_id || null,
-                modelo: String(req.body?.modelo || ""), emitir: escrever, sinal: {},
+                modelo: String(req.body?.modelo || ""), esforco: String(req.body?.esforco || ""), emitir: escrever, sinal: {},
+                ctx: { cad: cad(), regerar: () => revisao.regenerarPendentes(db(), cad(), { regras: regras() }).regeradas },
             });
             escrever({ ...final, resultado: final.tipo, tipo: "final" });
         } catch (erro) {

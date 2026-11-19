@@ -8,9 +8,10 @@ const ferramentas = require("./ferramentas");
 const assinatura = require("./assinatura");
 const anexos = require("./anexos");
 
-// Quem conversa e quem pode confirmar (decisao do Yan em 14/10/2026).
-const USUARIOS = ["Yan", "Jhonathan", "Vanessa", "Cauã"];
-const PODEM_CONFIRMAR = ["Yan", "Jhonathan", "Vanessa"];
+// Quem conversa e quem manda (decisao do Yan em 14/10/2026; Rodrigo incluido em
+// 18/11/2026). Quem manda: o que pede o assistente faz na hora, sem Confirmar.
+const USUARIOS = ["Yan", "Rodrigo", "Vanessa", "Jhonathan", "Cauã"];
+const PODEM_CONFIRMAR = ["Yan", "Rodrigo", "Vanessa", "Jhonathan"];
 
 let emAndamento = null;
 
@@ -45,7 +46,7 @@ function registrarMensagem(db, conversaId, papel, texto, dados = null) {
  * Envia uma mensagem e espera a resposta. `emitir` recebe os eventos ao vivo.
  * @param {object} opcoes.rodar — troca o motor (testes)
  */
-async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = null, emitir = () => {}, rodar = assinatura.rodarTurno, modelo = "", sinal = null, pastaAnexos = undefined }) {
+async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = null, emitir = () => {}, rodar = assinatura.rodarTurno, modelo = "", esforco = "", sinal = null, pastaAnexos = undefined, ctx = {} }) {
     const quem = conferirPessoa(pessoa);
     const temAnexo = Array.isArray(arquivos) && arquivos.length > 0;
     const pergunta = String(texto || "").trim() || (temAnexo ? "Veja o(s) anexo(s)." : "");
@@ -55,8 +56,13 @@ async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = n
     if (id) {
         const conversa = db.prepare("SELECT * FROM assistente_conversas WHERE id = ?").get(id);
         if (!conversa) throw new Error("Conversa não encontrada.");
-        const pendente = db.prepare("SELECT id FROM assistente_propostas WHERE conversa_id = ? AND status = 'PENDENTE'").get(id);
-        if (pendente) throw new Error("Há uma proposta esperando Confirmar ou Cancelar nesta conversa.");
+        if (PODEM_CONFIRMAR.includes(quem)) {
+            db.prepare("UPDATE assistente_propostas SET status = 'CANCELADA', decidida_por = ?, decidida_em = ? WHERE conversa_id = ? AND status = 'PENDENTE'")
+                .run(`${quem} (substituída por pedido novo)`, agora(), id);
+        } else {
+            const pendente = db.prepare("SELECT id FROM assistente_propostas WHERE conversa_id = ? AND status = 'PENDENTE'").get(id);
+            if (pendente) throw new Error("Há uma proposta esperando Confirmar ou Cancelar nesta conversa.");
+        }
     } else {
         id = Number(db.prepare("INSERT INTO assistente_conversas (pessoa, titulo, criada_em, atualizada_em) VALUES (?, ?, ?, ?)")
             .run(quem, pergunta.slice(0, 80), agora(), agora()).lastInsertRowid);
@@ -75,12 +81,25 @@ async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = n
         }
         const { blocos, resumo } = preparados;
         registrarMensagem(db, id, "pessoa", pergunta, { pessoa: quem, ...(resumo.length ? { anexos: resumo } : {}) });
-        const prompt = `[${quem} está falando · ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}]\n\n${pergunta}`;
+        const manda = PODEM_CONFIRMAR.includes(quem)
+            ? `\n[PERMISSÃO TOTAL: ${quem} manda no programa. O que ${quem} pede, você FAZ agora, nesta resposta, chamando as ferramentas — sem botão Confirmar, sem pedir confirmação, sem perguntar "quer que eu…?". As ferramentas que gravam são executadas pelo programa assim que você termina. Esqueça qualquer coisa dita antes nesta conversa sobre "botões Confirmar" ou "não consigo confirmar": isso mudou. Se o pedido se refere a algo combinado antes nesta conversa (ex.: "faz o que eu pedi"), refaça as chamadas agora.]`
+            : "";
+        const prompt = `[${quem} está falando · ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}]${manda}\n\n${pergunta}`;
         // Modo completo (arquivos, comandos, Drive, web) so para quem pode confirmar acoes.
-        const resultado = await rodar({ texto: prompt, blocos, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, sinal, completo: PODEM_CONFIRMAR.includes(quem) });
+        const resultado = await rodar({ texto: prompt, blocos, sessao: conversa.sessao, pessoa: quem, conversaId: id, emitir, modelo, esforco, sinal, completo: PODEM_CONFIRMAR.includes(quem) });
         if (resultado.sessao) db.prepare("UPDATE assistente_conversas SET sessao = ? WHERE id = ?").run(resultado.sessao, id);
         registrarMensagem(db, id, "assistente", resultado.texto || "(sem resposta)", { tipo: resultado.tipo });
-        // So a primeira proposta da resposta vale (o assistente e instruido a parar nela).
+        // Quem manda (Yan, Rodrigo, Vanessa, Jhonathan): o pedido ja e a decisao. Todas as
+        // acoes da resposta rodam agora, na ordem, e o assistente relata o resultado uma vez.
+        if (PODEM_CONFIRMAR.includes(quem) && resultado.propostas?.length) {
+            const feitas = await executarDireto(db, id, quem, resultado.propostas.slice(0, MAX_ACOES_DIRETAS), { ctx, emitir });
+            const sobra = resultado.propostas.length - feitas.length;
+            const relatorio = await relatar(db, { conversa_id: id }, quem,
+                `[Programa] As ações que você registrou foram executadas agora, a pedido de ${quem}${sobra > 0 ? ` (só as ${feitas.length} primeiras; ${sobra} ficaram de fora pelo limite por resposta — diga isso)` : ""}. Resultado de cada uma (dados do programa):\n${JSON.stringify(feitas).slice(0, 20000)}\n\nConte à pessoa, curto, o que foi feito e o que não deu certo (com o motivo). Se teve lançamento no Conta Azul, diga nota a nota o que subiu e o que não subiu. Não diga que algo espera Confirmar.`,
+                rodar, emitir);
+            return { conversa_id: id, tipo: resultado.tipo, texto: relatorio || resultado.texto, proposta: null, executadas: feitas.length };
+        }
+        // Os demais: so a primeira proposta da resposta vale (vira botao Confirmar).
         let proposta = null;
         const [primeira] = resultado.propostas || [];
         if (primeira) {
@@ -96,6 +115,33 @@ async function enviar(db, { pessoa, texto, anexos: arquivos = [], conversaId = n
     }
 }
 
+const MAX_ACOES_DIRETAS = 40;
+
+/** Grava cada acao como proposta ja decidida por `quem` e executa, uma a uma, na ordem. */
+async function executarDireto(db, conversaId, quem, lista, { ctx = {}, emitir = () => {} } = {}) {
+    const feitas = [];
+    for (const [i, item] of lista.entries()) {
+        let resumo = item.ferramenta;
+        let ferramenta = null;
+        try { ferramenta = ferramentas.obter(item.ferramenta, db); resumo = ferramenta.resumir ? ferramenta.resumir(item.parametros || {}) : item.ferramenta; } catch (_) { /* nome invalido: falha abaixo */ }
+        const propostaId = Number(db.prepare(`INSERT INTO assistente_propostas (conversa_id, ferramenta, parametros, resumo, status, pedida_por, decidida_por, em, decidida_em)
+            VALUES (?, ?, ?, ?, 'EXECUTANDO', ?, ?, ?, ?)`).run(conversaId, item.ferramenta, json(item.parametros || {}), resumo, quem, quem, agora(), agora()).lastInsertRowid);
+        try { emitir({ tipo: "acao", texto: `Fazendo ${i + 1} de ${lista.length}: ${resumo}` }); } catch (_) { /* tela fechada */ }
+        try {
+            if (!ferramenta) throw new Error(`Ferramenta "${item.ferramenta}" não existe.`);
+            const saida = await ferramentas.executar(item.ferramenta, item.parametros || {}, { ...ctx, db, pessoa: quem, conversaId });
+            db.prepare("UPDATE assistente_propostas SET status = 'EXECUTADA', resultado = ? WHERE id = ?").run(json(saida), propostaId);
+            registrarMensagem(db, conversaId, "sistema", `Feito (pedido de ${quem}): ${resumo}.`, { resultado: saida });
+            feitas.push({ acao: resumo, ok: true, resultado: saida });
+        } catch (erro) {
+            db.prepare("UPDATE assistente_propostas SET status = 'FALHOU', resultado = ? WHERE id = ?").run(json({ erro: erro.message }), propostaId);
+            registrarMensagem(db, conversaId, "sistema", `Não deu certo: ${resumo}. ${erro.message}`);
+            feitas.push({ acao: resumo, ok: false, erro: erro.message });
+        }
+    }
+    return feitas;
+}
+
 function parar() {
     if (!emAndamento?.sinal?.parar) return false;
     emAndamento.sinal.parado = true;
@@ -103,7 +149,7 @@ function parar() {
     return true;
 }
 
-/** Confirmar ou cancelar uma proposta. So Yan, Jhonathan e Vanessa podem confirmar. */
+/** Confirmar ou cancelar uma proposta (das pessoas sem permissao total). So quem manda confirma. */
 /**
  * Depois de executar (ou falhar), o assistente le o resultado e escreve a
  * resposta na conversa (ex.: relatorio do treino: antes x depois, o que

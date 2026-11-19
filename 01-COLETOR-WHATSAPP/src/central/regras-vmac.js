@@ -99,6 +99,10 @@ const OFICINAS = ["oficina", "mecanica", "mecan", "auto pecas", "autopecas", "au
 // Bebida sozinha (Coca, energetico, suco) nao e lanche: vai como OUTROS em Lanches e Refeicoes (#293).
 const BEBIDAS = ["refrigerante", "refrig", "coca", "coca cola", "guarana", "fanta", "sprite", "pepsi", "energetico", "monster", "red bull", "redbull",
     "suco", "cha gelado", "isotonico", "gatorade", "powerade", "cerveja", "agua de coco", "achocolatado", "toddynho"];
+// Itens de lanche (doce, salgadinho, biscoito...), sem prato principal nenhum: nao da pra
+// almocar so chocolate e energetico, mesmo as 11h30 (orientacao do Yan, nota #441 do Lorran, 08/11/2026).
+const ITENS_SO_DE_LANCHE = ["chocolate", "choc", "bombom", "bolacha", "biscoito", "salgadinho", "chips", "bala", "doce", "barra de cereal", "wafer", "chiclete",
+    "salgado", "pastel", "coxinha", "esfirra", "empada", "pao de queijo", "pao", "sanduiche", "misto", "biscoito", "bolo", "sorvete", "picole"];
 // Corrida de aplicativo/taxi: categoria "Transporte Urbano (taxi, Uber)" (#248).
 const TRANSPORTES = ["uber", "99app", "99 pop", "99pop", "99 taxi", "taxi", "cabify", "indriver", "indrive"];
 const RESTAURANTES = ["restaurante", "lanchonete", "churrascaria", "pizzaria", "padaria", "panificadora", "confeitaria",
@@ -114,6 +118,11 @@ const LOJAS_MATERIAL = ["ferragem", "ferragens", "material de construcao", "mate
     "madeireira", "materiais eletricos", "material eletrico", "hidraulica", "tintas", "parafusos", "loja de ferramentas"];
 const ITENS_MATERIAL = ["parafuso", "parafusos", "porca sextavada", "arruela", "cola contato", "cascola", "super cola", "fita isolante", "fita crepe",
     "abracadeira", "lampada", "pincel", "broca", "alicate", "martelo", "trena", "silicone", "cimento", "prego", "dobradica", "cadeado"];
+// EPI (equipamento de protecao individual): quando a nota e so isso, a descricao vira
+// "MATERIAL DE EPI" em vez do nome do item (#412 — orientacao do Yan, 08/11/2026).
+const ITENS_EPI = ["mascara", "bota", "botina", "oculos de protecao", "oculos de seguranca", "capacete", "luva", "luvas",
+    "protetor auricular", "protetor auditivo", "cinto de seguranca", "roupa de protecao", "uniforme", "colete", "capa de chuva", "protetor solar", "abafador"];
+const ehItemDeEpi = (texto) => ITENS_EPI.some((termo) => contemTermo(texto, termo));
 
 // Base de produtos editavel (configuracao/produtos.json): o que a VMac compra em
 // campo (ferramentas, eletrica, colas e fitas, EPI, limpeza, escritorio...).
@@ -255,6 +264,20 @@ function subtipoRefeicao(ocr, lote, origemBase) {
     return { tipo: "LANCHE", origem: origemBase, pendencia: "Refeição sem horário legível; confirme se é café, almoço, jantar ou lanche." };
 }
 
+/**
+ * Os itens LIDOS da nota (quando ha) sao so bebida/doce/salgadinho, sem nenhum
+ * prato principal (marmita, PF, executivo...): nao da pra "almocar" so isso,
+ * entao e lanche mesmo em horario de almoco/jantar (#441 do Lorran: agua,
+ * energetico, chocolate e pao de queijo as 11h30 — "Lanche - 2 pessoas" na legenda).
+ */
+function itensSaoSoDeLanche(ocr) {
+    const itensLidos = (ocr?.itens || []).filter((item) => item.descricao);
+    if (!itensLidos.length) return false;
+    if (itensLidos.some((item) => PRATOS_PRINCIPAIS.some((termo) => contemTermo(item.descricao, termo)))) return false;
+    const ehLanche = (descricao) => BEBIDAS.some((termo) => contemTermo(descricao, termo)) || ITENS_SO_DE_LANCHE.some((termo) => contemTermo(descricao, termo));
+    return itensLidos.filter((item) => ehLanche(item.descricao)).length >= itensLidos.length / 2;
+}
+
 const ehRefeicao = (tipo) => tipo === "REFEICAO" || Boolean(TIPOS[tipo]?.refeicao);
 
 function decidirTipo({ ocr, legenda, lote }) {
@@ -271,7 +294,9 @@ function decidirTipo({ ocr, legenda, lote }) {
         }
         if (daLegenda === "REFEICAO") return subtipoRefeicao(ocr, lote, "legenda_da_foto");
         // Refeicao: a NOTA manda. Legenda "Jantar" numa nota das 12:40 e almoco (#132).
-        if (["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE"].includes(daLegenda) && ocr?.hora) {
+        // Excecao: legenda diz lanche e os itens da nota sao so bebida/doce/salgadinho
+        // (sem prato principal) — nao da pra "almocar" isso, entao o horario nao vence (#441).
+        if (["ALMOCO", "JANTAR", "CAFE_DA_MANHA", "LANCHE"].includes(daLegenda) && ocr?.hora && !(daLegenda === "LANCHE" && itensSaoSoDeLanche(ocr))) {
             const pelaHora = refeicaoClaraPeloHorario(ocr.hora);
             if (pelaHora && pelaHora !== daLegenda) {
                 return { tipo: pelaHora, origem: "horario_da_nota", aviso: `Mensagem diz ${TIPOS[daLegenda].rotulo.toLowerCase()}, mas a nota é das ${String(ocr.hora).slice(0, 5)}: lançado como ${TIPOS[pelaHora].rotulo.toLowerCase()} (vale a nota).` };
@@ -407,6 +432,32 @@ function corrigirLitros(litros, valor) {
         if (candidato >= 1 && candidato <= 300 && (!preco || (preco >= 3 && preco <= 12))) return { litros: candidato, corrigido: true };
     }
     return { litros, corrigido: false };
+}
+
+/**
+ * Hodometro da nota. Leitura guardada sem hodometro: le de novo o texto da
+ * nota com a regra atual (ex.: "Km .: 53832" passou a ser lido), entao
+ * "Regerar previa" tambem acerta as notas que ja estao na Central.
+ */
+function odometroDaNota(ocr) {
+    if (Number(ocr?.odometro) > 0) return { valor: Number(ocr.odometro), leitura: ocr.odometro_origem || null };
+    if (!ocr?.texto_bruto) return { valor: null, leitura: ocr?.odometro_origem || null };
+    const relido = require("../azure-ocr").odometroDetalhado(ocr.texto_bruto);
+    return { valor: relido.valor || null, leitura: relido.origem || ocr?.odometro_origem || null };
+}
+
+/** Km com rotulo na linha da placa (ou na linha logo abaixo dela). So devolve se for um so. */
+function odometroDaLinhaDaPlaca(texto, placa) {
+    const { odometrosDaLinha } = require("../azure-ocr");
+    const linhas = String(texto || "").split(/\r?\n/);
+    const achados = new Set();
+    linhas.forEach((linha, i) => {
+        const placas = String(linha).toUpperCase().match(/\b[A-Z]{3}[-\s]?[0-9][A-Z0-9][0-9]{2}\b/g) || [];
+        if (!placas.some((p) => cadastros.placasQuaseIguais(p, placa))) return;
+        const naLinha = odometrosDaLinha(linha);
+        for (const numero of (naLinha.length ? naLinha : odometrosDaLinha(linhas[i + 1] || ""))) achados.add(numero);
+    });
+    return achados.size === 1 ? [...achados][0] : null;
 }
 
 function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null, identificacao = {}, cad, regras = {}, hoje = new Date(), modelo, habitos = null, pessoasRecentes = null,
@@ -567,7 +618,8 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             : daMensagem ? { valor: daMensagem, origem: "mensagem_do_operador" } : { valor: null, origem: null });
         const placaInfo = daNotaOuMensagem(ocr?.placa, legenda?.placa);
         const litrosInfo = daNotaOuMensagem(Number(ocr?.litragem) > 0 ? Number(ocr.litragem) : null, Number(legenda?.litros) > 0 ? Number(legenda.litros) : null);
-        const odometroInfo = daNotaOuMensagem(Number(ocr?.odometro) > 0 ? Number(ocr.odometro) : null, Number(legenda?.odometro) > 0 ? Number(legenda.odometro) : null);
+        const odometroLido = odometroDaNota(ocr);
+        const odometroInfo = daNotaOuMensagem(odometroLido.valor, Number(legenda?.odometro) > 0 ? Number(legenda.odometro) : null);
         for (const [nome, info] of [["Placa", placaInfo], ["Litros", litrosInfo], ["Hodômetro", odometroInfo]]) {
             if (info.origem === "mensagem_do_operador") avisos.push(`${nome} não lido na nota; usado o valor digitado pelo operador.`);
         }
@@ -599,11 +651,23 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
                 avisos.push(`Cupom com placas parecidas (${ocr.placa_candidatas.join(", ")}): usada ${cadastros.placaCanonica(naFrota[0])}, que está na frota.`);
             }
         }
+        // Placa da nota fora da frota, mas o operador escreveu na mensagem uma placa
+        // (ou o nome do carro) que ESTA na frota: vale a da mensagem (#500: cupom
+        // "JKN0696", mensagem "JKM0i96*** Etios" -> JKM0I96, 16/11/2026).
+        const daFrota = (p) => Boolean(p && (cadastros.resolverVeiculo(cad, p) || cadastros.veiculoPorSosia(cad, p) || cadastros.veiculoPorUmCaractere(cad, p)));
+        if (placaInfo.origem === "nota" && legenda?.placa && !daFrota(placaInfo.valor) && cadastros.resolverVeiculo(cad, legenda.placa)) {
+            avisos.push(`Placa lida na nota ("${cadastros.placaCanonica(placaInfo.valor)}") não está na frota; usada ${cadastros.placaCanonica(legenda.placa)}, que o operador escreveu na mensagem e está na frota.`);
+            placaInfo.valor = legenda.placa;
+            placaInfo.origem = "mensagem_do_operador";
+        }
         // Placa fora da frota cadastrada (carro alugado) que so difere por caractere
         // parecido de uma placa que o operador ja usou nos ultimos dias ("UCA6152" = UCA6I52, #166).
-        if (placaInfo.valor && !cadastros.resolverVeiculo(cad, placaInfo.valor) && !cadastros.veiculoPorSosia(cad, placaInfo.valor) && frotaRecente) {
+        // Tambem vale a placa que so difere em UM caractere qualquer (OVH x OVN), desde
+        // que nenhuma placa da frota cadastrada esteja igualmente perto (essa tem prioridade).
+        const pertoDaFrota = placaInfo.valor ? (cad.veiculos || []).filter((v) => cadastros.placasQuaseIguais(v.placa, placaInfo.valor)) : [];
+        if (placaInfo.valor && !cadastros.resolverVeiculo(cad, placaInfo.valor) && !cadastros.veiculoPorSosia(cad, placaInfo.valor) && !pertoDaFrota.length && frotaRecente) {
             const recentes = (frotaRecente(ocr?.data || legenda?.data_declarada || lote?.data_declarada || null) || []).map((v) => v.placa);
-            const parecidas = [...new Set(recentes.filter((p) => cadastros.placaSosia(p) === cadastros.placaSosia(placaInfo.valor)))];
+            const parecidas = [...new Set(recentes.filter((p) => cadastros.placaSosia(p) === cadastros.placaSosia(placaInfo.valor) || cadastros.placasQuaseIguais(p, placaInfo.valor)))];
             if (parecidas.length === 1 && cadastros.placaCanonica(parecidas[0]) !== cadastros.placaCanonica(placaInfo.valor)) {
                 avisos.push(`Placa lida como "${cadastros.placaCanonica(placaInfo.valor)}" corresponde a ${cadastros.placaCanonica(parecidas[0])}, que ${pessoa?.nome || "o operador"} abasteceu nos últimos dias.`);
                 placaInfo.valor = parecidas[0];
@@ -617,6 +681,31 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             if (sosia) {
                 veiculo = sosia.veiculo;
                 avisos.push(`Placa lida como "${sosia.lida}" corresponde a ${cadastros.placaCanonica(veiculo.placa)} da frota (troca de caractere parecido na leitura).`);
+            }
+        }
+        // A leitura errou UM caractere qualquer ("OVH1505" lida, OVN1505 na frota, #479):
+        // se so uma placa da frota fica a um caractere, ela e a certa. Duas igualmente
+        // perto: nao chuta, pede para a pessoa escolher.
+        if (!veiculo && placaLida) {
+            const umCaractere = cadastros.veiculoPorUmCaractere(cad, placaLida);
+            if (umCaractere) {
+                veiculo = umCaractere.veiculo;
+                avisos.push(umCaractere.diferencas
+                    ? `Placa lida como "${umCaractere.lida}" corrigida para ${cadastros.placaCanonica(veiculo.placa)} da frota (só 1 caractere diferente: erro de leitura).`
+                    : `Placa "${umCaractere.lida}" é a ${cadastros.placaCanonica(veiculo.placa)} da frota (mesma placa, formato antigo/Mercosul).`);
+            } else if (pertoDaFrota.length > 1) {
+                pendencias.push(`Placa lida como "${cadastros.placaCanonica(placaLida)}" não está na frota e fica a 1 caractere de ${pertoDaFrota.map((v) => cadastros.placaCanonica(v.placa)).join(" e ")}. Confirme qual é.`);
+            }
+        }
+        // Cupom com mais de um km (duas notas na mesma foto, #498; km da estrada no
+        // endereco, #478): vale o km impresso na linha da placa desta nota.
+        if (!odometroInfo.valor && placaLida && ocr?.texto_bruto) {
+            const placaDaNota = veiculo?.placa || placaLida;
+            const pelaPlaca = odometroDaLinhaDaPlaca(ocr.texto_bruto, placaDaNota);
+            if (pelaPlaca) {
+                odometroInfo.valor = pelaPlaca;
+                odometroInfo.origem = "nota";
+                avisos.push(`Cupom com mais de um km: usado ${milharBr(pelaPlaca)}, o que está na linha da placa ${cadastros.placaCanonica(placaDaNota)}.`);
             }
         }
         // Litros com o separador de milhar perdido ("61618" = 61,618 L), conferido pelo preco por litro.
@@ -646,7 +735,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             const conferido = conferirLitros({ litros: litrosInfo.valor, valores: [valorCombustivel, valorNota], precoItem, texto: ocr?.texto_bruto });
             const preco = conferido.preco ? String(conferido.preco).replace(".", ",") : "";
             if (conferido.mudou && !conferido.confirmar) {
-                avisos.push(`Litros ${litrosInfo.valor ? `lidos como ${litrosBr(litrosInfo.valor)} ` : ""}corrigidos para ${litrosBr(conferido.litros)} L: ${litrosBr(conferido.litros)} × R$ ${preco} = valor da nota${conferido.como === "numero_junto_do_L" ? " (número junto do \"L\" na nota)" : ""}.`);
+                avisos.push(`Litros ${litrosInfo.valor ? `lidos como ${litrosBr(litrosInfo.valor)} ` : ""}corrigidos para ${litrosBr(conferido.litros)} L: ${litrosBr(conferido.litros)} × R$ ${preco} = valor da nota${conferido.como === "numero_junto_do_L" ? " (número junto do \"L\" na nota)" : conferido.como === "valor_dividido_pelo_preco_da_linha" ? " (os litros lidos não fechavam a conta: valor ÷ preço do litro)" : ""}.`);
                 litrosInfo.valor = conferido.litros;
                 litrosInfo.origem = "nota";
             } else if (conferido.mudou) {
@@ -661,7 +750,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         const odometro = odometroInfo.valor;
         campos.abastecimento = {
             litros: litrosInfo,
-            odometro: { ...odometroInfo, leitura: ocr?.odometro_origem || null },
+            odometro: { ...odometroInfo, leitura: odometroLido.leitura },
             placa: { valor: veiculo ? cadastros.placaCanonica(veiculo.placa) : (placaLida ? cadastros.placaCanonica(placaLida) : null), origem: placaInfo.origem },
             combustivel: ocr?.produto_principal || null,
             preco_litro: (ocr?.itens || []).find((item) => Number(item.valor_unitario) > 0)?.valor_unitario ?? null,
@@ -669,7 +758,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         if (placaInfo.origem === "nota" && ocr?.placa_corrigida) {
             avisos.push(`Placa impressa lida como "${ocr.placa_bruta}" e corrigida para ${cadastros.placaCanonica(placaLida)} (troca comum do OCR).`);
         }
-        if (odometroInfo.origem === "nota" && ocr?.odometro_origem === "numero_ao_lado_da_placa") {
+        if (odometroInfo.origem === "nota" && odometroLido.leitura === "numero_ao_lado_da_placa" && odometroInfo.valor === odometroLido.valor) {
             pendencias.push(`Hodômetro ${milharBr(odometro)} lido sem rótulo, no número ao lado da placa; confirme.`);
         }
         // Placa ilegivel: compara com a frota e SUGERE (nunca decide sozinho).
@@ -827,11 +916,20 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
             const total = (ocr?.itens || []).reduce((soma, item) => soma + (Number(item.quantidade) > 0 ? Number(item.quantidade) : 1), 0);
             const nome = itensDaNota.some((d) => contemTermo(d, "coca")) ? "COCA COLA" : nomeCurtoDoItem(itensDaNota[0]) || "BEBIDA";
             descricao = { valor: `${nome} - ${Math.round(total)}`, origem: "template_bebida" };
-        } else if (material && itensDaNota.length && !descricao) {
-            // So o que foi comprado, curto: "LAMPADA H4", "CHAVE ALAVANCA E CHAVE MG" (correcoes de 22-24/10/2026).
-            const nomes = [...new Set(itensDaNota.map(nomeCurtoDoItem).filter(Boolean))].slice(0, 2);
-            descricao = { valor: nomes.length ? nomes.join(" E ") : String(itensDaNota[0]).replace(/\s+/g, " ").trim().toUpperCase(), origem: "template_material" };
-            avisos.push("Material de campo: descrição com o nome curto do que foi comprado; ajuste se precisar.");
+        } else if (itensDaNota.length && !descricao) {
+            // Sem modelo proprio para este tipo (ex.: OUTROS, loja variada): usa o que foi
+            // LIDO na nota, pra nunca ficar sem dizer o que foi comprado — nem que a
+            // mensagem do operador nao fale nisso (#412 — "Compra do Murilo" numa nota de
+            // estilingue; orientacao do Yan, 08/11/2026). EPI (mascara, bota, oculos/luva/
+            // capacete de protecao...) vira "MATERIAL DE EPI"; o resto, o nome curto do item.
+            const deEpi = itensDaNota.filter((d) => ehItemDeEpi(d));
+            if (deEpi.length && deEpi.length >= itensDaNota.length / 2) {
+                descricao = { valor: "MATERIAL DE EPI", origem: "itens_da_nota" };
+            } else {
+                const nomes = [...new Set(itensDaNota.map(nomeCurtoDoItem).filter(Boolean))].slice(0, 2);
+                descricao = { valor: nomes.length ? nomes.join(" E ") : String(itensDaNota[0]).replace(/\s+/g, " ").trim().toUpperCase(), origem: "itens_da_nota" };
+            }
+            avisos.push(material ? "Material de campo: descrição com o nome curto do que foi comprado; ajuste se precisar." : "Descrição com o que foi lido na nota; ajuste se precisar.");
         } else if (!descricao) {
             const citado = [...(legenda?.observacoes || []), ...(lote?.quantidades?.itens || []).map((item) => item.descricao)][0];
             descricao = { valor: citado ? String(citado).toUpperCase() : null, origem: citado ? "mensagem_do_operador" : null };
@@ -1022,6 +1120,7 @@ function montarPrevia({ ocr = null, legenda = {}, contexto = {}, politica = null
         if (complemento.pendencia) pendencias.push(complemento.pendencia);
         campos.descricao = { ...(campos.descricao || {}), valor: comComplemento(campos.descricao?.valor, complemento.texto), complemento: complemento.texto };
     }
+    marcarReembolso(campos);
 
     // Anexo
     campos.anexo = {
@@ -1051,6 +1150,22 @@ function complementoDePagamento({ legenda, pagamento, nomeOperador }) {
         return { texto: pagador ? `PAGO PIX ${maiusculo(pagador)}` : "PAGO PIX" };
     }
     return null;
+}
+
+/**
+ * Conta do PIX = Reembolso: a descricao termina com "(REEMBOLSO)" (pedido do
+ * Yan, 13/11/2026: "25,271L od 204.613 - JKM0I96 (REEMBOLSO)"), e nao na
+ * observacao. Trocou para outra conta: a marca sai. Se a descricao ja fala em
+ * reembolso ("... - REEMBOLSO ALMIR"), nao repete.
+ */
+const CONTAS_DE_REEMBOLSO = ["PIX_REEMBOLSO"];
+function marcarReembolso(campos) {
+    const atual = campos?.descricao?.valor;
+    if (!atual) return;
+    const ehReembolso = campos.pagamento?.forma === "PIX" && CONTAS_DE_REEMBOLSO.includes(campos.pagamento?.cartao);
+    const semMarca = String(atual).replace(/\s*\(REEMBOLSO\)\s*$/i, "");
+    const novo = ehReembolso && !/REEMBOLSO/i.test(semMarca) ? `${semMarca} (REEMBOLSO)` : ehReembolso ? atual : semMarca;
+    if (novo !== atual) campos.descricao = { ...campos.descricao, valor: novo };
 }
 
 function comComplemento(valor, complemento) {
@@ -1197,6 +1312,18 @@ function conferirLitros({ litros, valor, valores = null, precoItem = null, texto
         const pelaConta = litrosPelaConta(texto, alvo);
         if (pelaConta?.origem === "conta_litros_x_preco") return { litros: pelaConta.litros, mudou: true, como: "conta_litros_x_preco", preco: pelaConta.preco };
     }
+    // Litros que nao fecham a conta sao erro de leitura (#512: "1,451 L" numa nota
+    // de R$ 227,03 a R$ 6,59/L — eram 34,451 L). Com o preco por litro da propria
+    // linha do combustivel, os litros sao valor ÷ preco, sem pedir confirmacao.
+    // So quando os litros lidos sao impossiveis (dariam um preco por litro fora de
+    // R$ 3 a 12); litros plausiveis com preco mal lido continuam pedindo confirmacao.
+    const precoDaLinha = Number(precoItem) >= 3 && Number(precoItem) <= 12 ? Number(precoItem) : null;
+    const precoImplicito = Number(litros) > 0 ? valor / Number(litros) : null;
+    const litrosImpossiveis = !precoImplicito || precoImplicito < 3 || precoImplicito > 12;
+    if (precoDaLinha && litrosImpossiveis) {
+        const pelaLinha = Math.round((valor / precoDaLinha) * 1000) / 1000;
+        if (pelaLinha >= 1 && pelaLinha <= 300) return { litros: pelaLinha, mudou: true, como: "valor_dividido_pelo_preco_da_linha", preco: precoDaLinha };
+    }
     const dividido = precos.length === 1 ? Math.round((valor / precos[0]) * 1000) / 1000 : null;
     if (dividido >= 1 && dividido <= 300) return { litros: dividido, mudou: true, como: "valor_dividido_pelo_preco", preco: precos[0], confirmar: true };
     return { litros, mudou: false, confirmar: Number(litros) > 0 };
@@ -1245,6 +1372,7 @@ function categoriaLivre(cad, nome, idInformado = null) {
 
 module.exports = {
     montarPrevia, decidirTipo, decidirPessoas, refeicaoPeloHorario, orientacaoVigente,
-    descricaoAbastecimento, descricaoRefeicao, litrosBr, milharBr, TIPOS, comComplemento, complementoDePagamento,
+    descricaoAbastecimento, descricaoRefeicao, litrosBr, milharBr, TIPOS, comComplemento, complementoDePagamento, marcarReembolso,
     TIPO_ANEXO_FISCAL, TIPO_ANEXO_OUTROS, conferirLitros, litrosJuntoDoL, LITROS_MAXIMO_GERADOR,
+    odometroDaNota, odometroDaLinhaDaPlaca,
 };

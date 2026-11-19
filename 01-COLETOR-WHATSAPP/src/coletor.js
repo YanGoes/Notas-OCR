@@ -57,6 +57,8 @@ const extensoes = {
     "image/jpg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
+    // Nota mandada como PDF (documento) no WhatsApp: segue o mesmo caminho da foto.
+    "application/pdf": ".pdf",
 };
 
 function carregarConfig() {
@@ -162,6 +164,25 @@ const nomesPrivados = new Map();
 const ARQUIVO_ANCORAS = path.join(RAIZ, "dados", "privado-ancoras.json");
 const ancorasPrivado = (() => { try { return new Map(Object.entries(JSON.parse(fs.readFileSync(ARQUIVO_ANCORAS, "utf8")))); } catch (_) { return new Map(); } })();
 let historicoPedido = null; // { chats:Set, ate:ms }
+// Nos GRUPOS a ancora e a mensagem mais antiga recebida desde a ULTIMA
+// reconexao (zera ao conectar): o buraco da queda fica logo antes dela. Cada
+// busca traz mensagens mais antigas, que viram a nova ancora (clicar de novo
+// volta mais no tempo).
+const ancorasGrupo = new Map();
+
+function guardarAncoraGrupo(grupoId, chave, timestampMs) {
+    const atual = ancorasGrupo.get(grupoId);
+    if (!chave?.id || !timestampMs || (atual && atual.timestampMs <= timestampMs)) return;
+    ancorasGrupo.set(grupoId, { key: { remoteJid: grupoId, id: chave.id, fromMe: Boolean(chave.fromMe) }, timestampMs });
+}
+
+/** Junta a conversa ao pedido de historico em andamento (vale por 3 minutos). */
+function registrarPedidoHistorico(chatId) {
+    const ativo = historicoPedido && Date.now() <= historicoPedido.ate;
+    const chats = ativo ? historicoPedido.chats : new Set();
+    chats.add(chatId);
+    historicoPedido = { chats, ate: Date.now() + 3 * 60 * 1000 };
+}
 
 function guardarAncora(pessoaId, chave, timestampMs) {
     const atual = ancorasPrivado.get(pessoaId);
@@ -173,6 +194,9 @@ const eventos = new EventEmitter();
 const estado = { status: "parado", qr: null, erro: null, conectado_desde: null, codigo_pareamento: null };
 let socketAtual = null;
 let deslogando = false;
+// true so enquanto o PROCESSO esta sendo encerrado de proposito (reinicio do
+// programa): o fechamento do socket nao deve soar como queda nem reconectar.
+let encerrandoProcesso = false;
 const fotosRecentes = [];
 const comentariosRecentes = [];
 fs.mkdirSync(config.pasta_saida, { recursive: true });
@@ -337,11 +361,9 @@ async function encaminharParaContaAI(caminhoImagem, auditoria) {
             ? `Comprovante: ${auditoria.conta_azul.descricao_sugerida}`
             : "Comprovante de despesa";
 
-        await socketAtual.sendMessage(jid, {
-            image: buffer,
-            mimetype,
-            caption: legendaFoto,
-        });
+        await socketAtual.sendMessage(jid, extensao === ".pdf"
+            ? { document: buffer, mimetype: "application/pdf", fileName: path.basename(caminhoImagem), caption: legendaFoto }
+            : { image: buffer, mimetype, caption: legendaFoto });
         console.log(`Conta AI WhatsApp: Foto enviada com sucesso para ${jid}.`);
 
         const partes = ["Nova Despesa:"];
@@ -460,15 +482,8 @@ function dataNome(timestamp) {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
 }
 
-function extrairImagem(message) {
-    let atual = message;
-    for (let i = 0; i < 5 && atual; i += 1) {
-        if (atual.imageMessage) return atual.imageMessage;
-        const envelope = atual.ephemeralMessage || atual.viewOnceMessage || atual.viewOnceMessageV2 || atual.documentWithCaptionMessage;
-        atual = envelope?.message;
-    }
-    return null;
-}
+// Foto da nota ou PDF mandado como documento: ver src/whatsapp-midia.js.
+const { midiaDaNota: extrairImagem } = require("./whatsapp-midia");
 
 function extrairTexto(message) {
     let atual = message;
@@ -605,10 +620,122 @@ async function buscarHistoricoPrivado(pessoaId, quantidade = 50) {
     if (!contatosPermitidos.has(pessoaId)) throw new Error("Marque e salve essa pessoa na lista antes de buscar.");
     const ancora = ancorasPrivado.get(pessoaId);
     if (!ancora) throw new Error("Ainda não conheço nenhuma mensagem dessa conversa. Mande (ou peça para a pessoa mandar) uma mensagem qualquer no privado e tente de novo.");
-    historicoPedido = { chats: new Set([ancora.key.remoteJid]), ate: Date.now() + 3 * 60 * 1000 };
+    registrarPedidoHistorico(ancora.key.remoteJid);
     await socketAtual.fetchMessageHistory(Math.min(Number(quantidade) || 50, 50), ancora.key, ancora.timestampMs);
     conexao.registrarLog("historico_privado_pedido", { pessoa: pessoaId, quantidade });
     return { pedido: true, mensagem: "Pedido enviado ao celular. As mensagens anteriores aparecem em até 1 minuto (o celular precisa estar com internet)." };
+}
+
+/**
+ * Mesmo pedido para um GRUPO marcado: as ate 50 mensagens anteriores a mais
+ * antiga recebida desde a ultima reconexao (o que caiu durante a queda).
+ * Passam pelos mesmos filtros; fotos ja lidas sao ignoradas.
+ */
+async function buscarHistoricoGrupo(grupoId, quantidade = 50) {
+    if (!socketAtual || estado.status !== "conectado") throw new Error("Conecte o WhatsApp primeiro.");
+    if (!String(grupoId).endsWith("@g.us")) throw new Error("Grupo inválido.");
+    if (!gruposPermitidos.has(grupoId)) throw new Error("Marque e salve esse grupo na lista antes de buscar.");
+    const ancora = ancorasGrupo.get(grupoId);
+    if (!ancora) throw new Error("Ainda não chegou nenhuma mensagem desse grupo desde a última reconexão. Peça para alguém mandar um \"ok\" no grupo e tente de novo.");
+    registrarPedidoHistorico(grupoId);
+    await socketAtual.fetchMessageHistory(Math.min(Number(quantidade) || 50, 50), ancora.key, ancora.timestampMs);
+    conexao.registrarLog("historico_grupo_pedido", { grupo: nomeGrupo(grupoId), quantidade, antes_de: new Date(ancora.timestampMs).toISOString() });
+    const desde = new Date(ancora.timestampMs).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    return { pedido: true, mensagem: `Pedido enviado ao celular: mensagens do grupo anteriores a ${desde}. Aparecem em até 1 minuto (o celular precisa estar com internet). Clique de novo para voltar mais.` };
+}
+
+// ---------------------------------------------------------------------------
+// Releitura de PDFs antigos (notas mandadas como documento antes de 18/11/2026,
+// quando o programa ainda ignorava PDF). Volta no historico de cada conversa
+// marcada, de 50 em 50 mensagens, e baixa SO os PDFs para dados/pdfs-historico
+// (fora da entrada): a conferencia contra as notas ja lancadas vem antes de
+// eles entrarem na Central. Fotos e textos antigos nao sao tocados.
+// ---------------------------------------------------------------------------
+let releituraPdf = null; // { aguardando: Map(chat -> fn) }
+let ultimaReleituraPdf = null;
+const PASTA_PDFS_HISTORICO = path.join(RAIZ, "dados", "pdfs-historico");
+
+function midiaJaRegistrada(mensagemId) {
+    try { return Boolean(central().db.prepare("SELECT 1 FROM midias WHERE mensagem_id = ? LIMIT 1").get(String(mensagemId))); } catch (_) { return false; }
+}
+
+/** Ponto de partida de uma conversa: a mais antiga desde a reconexao, ou a mais recente que a Central conhece. */
+function ancoraParaReleitura(chat) {
+    const doGrupo = ancorasGrupo.get(chat);
+    if (doGrupo) return doGrupo;
+    const doPrivado = [...ancorasPrivado.values()].find((a) => a.key.remoteJid === chat);
+    let doBanco = null;
+    try {
+        doBanco = central().db.prepare(`SELECT mensagem_id AS id, enviada_em AS em FROM mensagens WHERE grupo_id = ? AND mensagem_id IS NOT NULL
+            UNION ALL SELECT mensagem_id, recebida_em FROM midias WHERE grupo_id = ? AND mensagem_id IS NOT NULL ORDER BY em DESC LIMIT 1`).get(chat, chat);
+    } catch (_) { /* sem central */ }
+    const candidatos = [doPrivado, doBanco && { key: { remoteJid: chat, id: doBanco.id, fromMe: false }, timestampMs: Date.parse(doBanco.em) }].filter((a) => a && a.timestampMs);
+    return candidatos.sort((a, b) => b.timestampMs - a.timestampMs)[0] || null;
+}
+
+/** Pede 50 mensagens anteriores a ancora e junta o que chegar (o celular pode mandar em partes). */
+function pedirLoteAntigo(chat, ancora, esperaMs = 45000) {
+    return new Promise((resolve) => {
+        const recebidas = [];
+        let fim = null;
+        let limite = null;
+        const terminar = () => { clearTimeout(limite); clearTimeout(fim); releituraPdf?.aguardando.delete(chat); resolve(recebidas); };
+        limite = setTimeout(terminar, esperaMs);
+        releituraPdf.aguardando.set(chat, (lista) => { recebidas.push(...lista); clearTimeout(fim); fim = setTimeout(terminar, 4000); });
+        socketAtual.fetchMessageHistory(50, ancora.key, ancora.timestampMs).catch(terminar);
+    });
+}
+
+async function relerPdfsDoHistorico({ desde, maxPaginas = 60 } = {}) {
+    if (!socketAtual || estado.status !== "conectado") throw new Error("Conecte o WhatsApp primeiro.");
+    if (releituraPdf) throw new Error("A releitura de PDFs já está em andamento.");
+    const desdeMs = Date.parse(desde);
+    if (!Number.isFinite(desdeMs)) throw new Error("Informe a data inicial (desde).");
+    fs.mkdirSync(PASTA_PDFS_HISTORICO, { recursive: true });
+    const privados = [...ancorasPrivado.entries()].filter(([pessoa]) => contatosPermitidos.has(pessoa)).map(([, a]) => a.key.remoteJid);
+    const chats = [...new Set([...gruposPermitidos, ...privados])];
+    const relatorio = { iniciada_em: new Date().toISOString(), desde: new Date(desdeMs).toISOString(), conversas: [], pdfs: [], andamento: true };
+    ultimaReleituraPdf = relatorio;
+    releituraPdf = { aguardando: new Map() };
+    conexao.registrarLog("releitura_pdf_inicio", { conversas: chats.length, desde: relatorio.desde });
+    try {
+        for (const chat of chats) {
+            const linha = { conversa: nomeGrupo(chat), paginas: 0, mensagens: 0, pdfs: 0, chegou_ate: null, parou: null };
+            relatorio.conversas.push(linha);
+            let ancora = ancoraParaReleitura(chat);
+            if (!ancora) { linha.parou = "nenhuma mensagem conhecida dessa conversa"; continue; }
+            const vistas = new Set();
+            while (linha.paginas < maxPaginas) {
+                const lote = await pedirLoteAntigo(chat, ancora);
+                linha.paginas += 1;
+                const novas = lote.filter((m) => m?.key?.id && !vistas.has(m.key.id));
+                if (!novas.length) { linha.parou = lote.length ? "sem mensagens novas" : "o celular não devolveu mais mensagens"; break; }
+                novas.forEach((m) => vistas.add(m.key.id));
+                linha.mensagens += novas.length;
+                const ordenadas = novas.sort((a, b) => timestampNumero(a.messageTimestamp) - timestampNumero(b.messageTimestamp));
+                for (const [i, m] of ordenadas.entries()) {
+                    const ms = timestampNumero(m.messageTimestamp) * 1000;
+                    if (ms < desdeMs || extrairImagem(m.message)?.mimetype !== "application/pdf") continue;
+                    // Sem legenda no PDF: o texto que a mesma pessoa mandou ate 2 min antes.
+                    const quem = m.key.participant || m.key.remoteJid;
+                    const anterior = ordenadas.slice(0, i).reverse().find((t) => (t.key.participant || t.key.remoteJid) === quem
+                        && ms - timestampNumero(t.messageTimestamp) * 1000 <= Number(config.janela_associacao_comentario_segundos || 120) * 1000 && extrairTexto(t.message)?.texto);
+                    await processar(socketAtual, m, { somentePdf: true, pastaDestino: PASTA_PDFS_HISTORICO, legenda: anterior ? extrairTexto(anterior.message).texto : null,
+                        aoSalvar: (pdf) => { linha.pdfs += 1; relatorio.pdfs.push(pdf); } });
+                }
+                const velha = ordenadas[0];
+                ancora = { key: { remoteJid: chat, id: velha.key.id, fromMe: Boolean(velha.key.fromMe) }, timestampMs: timestampNumero(velha.messageTimestamp) * 1000 };
+                linha.chegou_ate = new Date(ancora.timestampMs).toISOString();
+                if (ancora.timestampMs < desdeMs) { linha.parou = "chegou na data inicial"; break; }
+            }
+        }
+    } finally {
+        releituraPdf = null;
+        relatorio.andamento = false;
+        relatorio.concluida_em = new Date().toISOString();
+        conexao.registrarLog("releitura_pdf_fim", { pdfs: relatorio.pdfs.length });
+    }
+    return relatorio;
 }
 
 function salvarContatos(ids) {
@@ -692,7 +819,28 @@ async function desconectar() {
     deslogando = false;
 }
 
-async function processar(socket, pacote) {
+/**
+ * Fecha a conexao com CALMA antes do processo do programa ser reiniciado
+ * (ex.: pedido de reinicio pelo painel/bandeja). Diferente de desconectar():
+ * NAO desvincula o aparelho nem apaga a sessao salva — so fecha o socket
+ * (Baileys termina de gravar o que estiver pendente) para o processo poder
+ * sair sem o risco de um encerramento a forca (Stop-Process/Terminate no
+ * Windows nao chama handler nenhum) truncar um arquivo de sessao no meio da
+ * escrita e invalidar o vinculo com o WhatsApp (precisaria ler QR Code de novo).
+ */
+async function pausarParaReiniciar() {
+    encerrandoProcesso = true;
+    const socket = socketAtual;
+    socketAtual = null;
+    try { if (socket) await socket.end(undefined); } catch (_) { /* fechando mesmo assim */ }
+    // Da tempo do ultimo creds.update (se algum estava pendente) terminar de gravar.
+    await new Promise((resolver) => setTimeout(resolver, 300));
+}
+
+// opcoes (so na releitura de PDFs antigos): somentePdf = ignora tudo que nao e PDF;
+// pastaDestino = grava fora da entrada (dados/pdfs-historico) para conferir antes;
+// legenda = texto mandado logo antes do PDF pela mesma pessoa.
+async function processar(socket, pacote, opcoes = {}) {
     try {
         const idGrupo = String(pacote.key?.remoteJid || "");
         if (!pacote.message) return;
@@ -701,6 +849,7 @@ async function processar(socket, pacote) {
             // So grupos marcados no painel. Nenhum marcado = nenhum processado (antes,
             // lista vazia processava TODOS os grupos do numero e gastava o Azure).
             if (!gruposPermitidos.has(idGrupo)) return;
+            guardarAncoraGrupo(idGrupo, pacote.key, timestampNumero(pacote.messageTimestamp) * 1000);
         } else if (/@(s\.whatsapp\.net|lid)$/.test(idGrupo)) {
             // Conversa no PRIVADO: so de pessoas liberadas no painel, e nunca o que
             // a propria conta escreveu (suas respostas ao operador nao sao notas).
@@ -723,6 +872,7 @@ async function processar(socket, pacote) {
         const nomeRemetente = String(pacote.pushName || "").trim();
         const idMensagem = String(pacote.key.id || Date.now());
         const imagem = extrairImagem(pacote.message);
+        if (opcoes.somentePdf && imagem?.mimetype !== "application/pdf") return;
         if (!imagem) {
             const texto = extrairTexto(pacote.message);
             if (!texto?.texto) return;
@@ -737,7 +887,11 @@ async function processar(socket, pacote) {
         limparRecentes();
         let legenda = String(imagem.caption || "").trim();
         let legendaOrigem = legenda ? "legenda_da_foto" : null;
-        if (!legenda) {
+        if (!legenda && opcoes.legenda) {
+            legenda = String(opcoes.legenda).trim();
+            legendaOrigem = "mensagem_anterior";
+        }
+        if (!legenda && !opcoes.pastaDestino) {
             const anterior = comentariosRecentes.filter((item) => !item.usado && item.idGrupo === idGrupo && item.remetente === remetente && timestampMs >= item.timestampMs)
                 .sort((a, b) => b.timestampMs - a.timestampMs)[0];
             if (anterior && timestampMs - anterior.timestampMs <= Number(config.janela_associacao_comentario_segundos || 120) * 1000) {
@@ -753,10 +907,12 @@ async function processar(socket, pacote) {
         if (!extensao || (mimetype === "image/webp" && !config.aceitar_webp)) return;
 
         const base = [dataNome(timestamp), limparNome(nomeGrupo(idGrupo)), limparNome(remetente.replace(/@(s\.whatsapp\.net|lid)$/, "")), limparNome(idMensagem).slice(-24)].join("_");
-        const caminhoImagem = path.join(config.pasta_saida, `${base}${extensao}`);
+        const pastaSaida = opcoes.pastaDestino || config.pasta_saida;
+        const caminhoImagem = path.join(pastaSaida, `${base}${extensao}`);
         if (fs.existsSync(caminhoImagem)) return;
+        if (opcoes.pastaDestino && midiaJaRegistrada(idMensagem)) return;
 
-        console.log(`Foto detectada em '${nomeGrupo(idGrupo)}'. Baixando...`);
+        console.log(`${extensao === ".pdf" ? "PDF" : "Foto"} detectado(a) em '${nomeGrupo(idGrupo)}'. Baixando...`);
         const buffer = await downloadMediaMessage(pacote, "buffer", {}, {
             logger,
             reuploadRequest: socket.updateMediaMessage,
@@ -766,7 +922,7 @@ async function processar(socket, pacote) {
         const dataTexto = new Date(timestamp * 1000).toLocaleString("pt-BR");
         const centroCustoPadrao = centroCustoDoGrupo(idGrupo);
         fs.writeFileSync(caminhoImagem, buffer);
-        fs.writeFileSync(path.join(config.pasta_saida, `${base}.txt`), [
+        fs.writeFileSync(path.join(pastaSaida, `${base}.txt`), [
             "=== DADOS DO WHATSAPP ===", "", `Data: ${dataTexto}`,
             `Grupo: ${nomeGrupo(idGrupo)}`, `ID do grupo: ${idGrupo}`,
             `Centro de custo padrao do grupo: ${centroCustoPadrao?.nome || "Nao configurado"}`,
@@ -774,13 +930,18 @@ async function processar(socket, pacote) {
             `ID da mensagem: ${idMensagem}`, "", "=== LEGENDA / COMENTARIO ===", "",
             legenda || "Sem legenda informada.", "",
         ].join("\n"), "utf8");
-        fs.writeFileSync(path.join(config.pasta_saida, `${base}.json`), JSON.stringify({
+        fs.writeFileSync(path.join(pastaSaida, `${base}.json`), JSON.stringify({
             data: dataTexto, timestamp, grupo: nomeGrupo(idGrupo), id_grupo: idGrupo,
             remetente, remetente_nome: nomeRemetente || null, enviada_por_mim: Boolean(pacote.key.fromMe), id_mensagem: idMensagem,
             legenda: legenda || null, legenda_origem: legendaOrigem, recebido_em_ms: timestampMs,
             centro_custo_padrao: centroCustoPadrao,
             arquivo_imagem: path.basename(caminhoImagem), mimetype,
+            ...(opcoes.pastaDestino ? { origem: "releitura_pdf_do_historico" } : {}),
         }, null, 2), "utf8");
+        if (opcoes.pastaDestino) {
+            opcoes.aoSalvar?.({ arquivo: caminhoImagem, grupo: nomeGrupo(idGrupo), remetente: nomeRemetente || remetente, enviada_em: new Date(timestampMs).toISOString(), legenda: legenda || null });
+            return;
+        }
         fotosRecentes.push({ idGrupo, remetente, idMensagem, timestampMs, caminhoJson: path.join(config.pasta_saida, `${base}.json`), caminhoTxt: path.join(config.pasta_saida, `${base}.txt`), temLegenda: Boolean(legenda) });
         console.log(`Foto salva: ${caminhoImagem}`);
     } catch (erro) {
@@ -791,6 +952,48 @@ async function processar(socket, pacote) {
 let reconectando = false;
 let tentativasReconexao = 0;
 let qrSeguidos = 0;
+// Quedas 500/411 seguidas sem nenhuma conexao bem-sucedida no meio. So depois
+// de varias e que a sessao e considerada estragada (ver diagnosticarQueda).
+let falhasSessaoSeguidas = 0;
+
+const PASTA_SESSOES_DESCARTADAS = path.join(RAIZ, "dados", "sessoes-descartadas");
+
+/**
+ * Tira a sessao salva do caminho para o WhatsApp pedir QR novo — mas GUARDA
+ * uma copia (as 3 mais recentes) em vez de apagar: se o descarte foi engano,
+ * da para devolver a pasta e reconectar sem ler QR.
+ */
+function descartarSessao() {
+    if (!fs.existsSync(PASTA_SESSAO)) return;
+    try {
+        fs.mkdirSync(PASTA_SESSOES_DESCARTADAS, { recursive: true });
+        const destino = path.join(PASTA_SESSOES_DESCARTADAS, new Date().toISOString().replace(/[:.]/g, "-"));
+        fs.renameSync(PASTA_SESSAO, destino);
+        conexao.registrarLog("sessao_guardada", { pasta: path.relative(RAIZ, destino) });
+        const antigas = fs.readdirSync(PASTA_SESSOES_DESCARTADAS).sort().slice(0, -3);
+        for (const nome of antigas) fs.rmSync(path.join(PASTA_SESSOES_DESCARTADAS, nome), { recursive: true, force: true });
+    } catch (_) {
+        fs.rmSync(PASTA_SESSAO, { recursive: true, force: true });
+    }
+}
+
+/**
+ * Agenda uma nova tentativa de conexao que NUNCA desiste: se a propria
+ * tentativa falhar (ex.: internet fora naquele instante), agenda outra com
+ * espera crescente (ate 60 s) em vez de ficar parada em "erro" para sempre.
+ */
+function reconectarDepois(ms) {
+    setTimeout(() => {
+        reconectando = false;
+        iniciar().catch((erro) => {
+            console.error("Reconexao falhou:", erro?.message || erro);
+            tentativasReconexao += 1;
+            atualizarEstado({ status: "reconectando", qr: null, erro: `Tentando reconectar: ${erro?.message || erro}` });
+            reconectarDepois(Math.min(60, 3 * 2 ** Math.min(tentativasReconexao - 1, 5)) * 1000);
+        });
+    }, ms);
+}
+
 async function iniciar() {
     if (socketAtual && ["conectando", "conectado", "aguardando_qr", "aguardando_codigo"].includes(estado.status)) return;
     // Conectar clicado pela pessoa (nao e reconexao automatica): conta de QR recomeca.
@@ -826,11 +1029,26 @@ async function iniciar() {
         for (const mensagem of lista) await processar(socket, mensagem);
     });
     // Historico pedido sob demanda (botao "Buscar mensagens anteriores").
-    socket.ev.on("messaging-history.set", async ({ messages }) => {
+    socket.ev.on("messaging-history.set", async ({ messages, syncType, peerDataRequestSessionId }) => {
+        // Diagnostico: todo lote de historico que o celular manda (so quando ha pedido em andamento).
+        if (releituraPdf || (historicoPedido && Date.now() <= historicoPedido.ate)) {
+            const chats = [...new Set((messages || []).map((m) => String(m?.key?.remoteJid || "")))].slice(0, 5);
+            conexao.registrarLog("historico_lote_chegou", { quantidade: (messages || []).length, syncType, sessao: peerDataRequestSessionId || null, chats });
+        }
+        // Releitura de PDFs antigos: o lote vai para quem pediu (relerPdfsDoHistorico).
+        if (releituraPdf) {
+            const porChat = new Map();
+            for (const mensagem of messages || []) {
+                const chat = String(mensagem?.key?.remoteJid || "");
+                if (releituraPdf.aguardando.has(chat)) porChat.set(chat, [...(porChat.get(chat) || []), mensagem]);
+            }
+            for (const [chat, lista] of porChat) releituraPdf.aguardando.get(chat)(lista);
+            if (porChat.size) messages = (messages || []).filter((mensagem) => !porChat.has(String(mensagem?.key?.remoteJid || "")));
+        }
         if (!historicoPedido || Date.now() > historicoPedido.ate) return;
         const daConversa = (messages || []).filter((mensagem) => historicoPedido.chats.has(String(mensagem?.key?.remoteJid || "")));
         if (!daConversa.length) return;
-        conexao.registrarLog("historico_privado_recebido", { quantidade: daConversa.length });
+        conexao.registrarLog(daConversa.some((mensagem) => String(mensagem.key?.remoteJid).endsWith("@g.us")) ? "historico_grupo_recebido" : "historico_privado_recebido", { quantidade: daConversa.length });
         for (const mensagem of daConversa.sort((a, b) => timestampNumero(a.messageTimestamp) - timestampNumero(b.messageTimestamp))) {
             await processar(socket, mensagem);
         }
@@ -848,6 +1066,9 @@ async function iniciar() {
             reconectando = false;
             tentativasReconexao = 0;
             qrSeguidos = 0;
+            falhasSessaoSeguidas = 0;
+            // Nova conexao: a ancora dos grupos passa a ser a 1a mensagem que chegar depois dela.
+            ancorasGrupo.clear();
             conexao.registrarLog("conectado", { usuario: socket.user?.id ? "ok" : null });
             atualizarEstado({ status: "conectado", qr: null, conectado_desde: new Date().toISOString(), erro: null });
             console.log(`\nCOLETOR ATIVO\nPasta de saida: ${config.pasta_saida}\nAguardando novas fotos...\n`);
@@ -855,16 +1076,24 @@ async function iniciar() {
             setTimeout(() => identificarRemetentes().catch((erro) => console.error("Central: identificar remetentes:", erro?.message || erro)), 8000);
         }
         // Evento de um socket antigo (ja substituido) nao deve mexer no estado.
+        if (connection === "close" && encerrandoProcesso) return;
         if (connection === "close" && socket !== socketAtual) return;
         if (connection === "close") {
             socketAtual = null;
             const codigo = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
+            if (codigo === conexao.CODIGOS.BAD_SESSION || codigo === conexao.CODIGOS.MULTIDEVICE_MISMATCH) falhasSessaoSeguidas += 1;
             const diagnostico = conexao.diagnosticarQueda(codigo, {
                 saidaPedida: deslogando, registrado: Boolean(state.creds?.registered || state.creds?.me?.id), statusAnterior: estado.status,
+                falhasSessaoSeguidas,
             });
-            conexao.registrarLog("queda", { codigo: codigo ?? null, motivo: lastDisconnect?.error?.message || null, status_anterior: estado.status, acao: diagnostico.acao });
+            conexao.registrarLog("queda", { codigo: codigo ?? null, motivo: lastDisconnect?.error?.message || null, status_anterior: estado.status, acao: diagnostico.acao,
+                ...(falhasSessaoSeguidas ? { falhas_sessao_seguidas: falhasSessaoSeguidas } : {}) });
             if (diagnostico.mensagem) console.log(`WhatsApp: ${diagnostico.mensagem} (codigo ${codigo ?? "?"})`);
-            if (diagnostico.limparSessao && fs.existsSync(PASTA_SESSAO)) fs.rmSync(PASTA_SESSAO, { recursive: true, force: true });
+            if (diagnostico.limparSessao) {
+                if (deslogando) { if (fs.existsSync(PASTA_SESSAO)) fs.rmSync(PASTA_SESSAO, { recursive: true, force: true }); }
+                else descartarSessao();
+                falhasSessaoSeguidas = 0;
+            }
 
             if (diagnostico.acao === "PARAR") {
                 atualizarEstado({ status: deslogando ? "desconectado" : codigo === 440 || codigo === 403 ? "erro" : "desconectado",
@@ -880,10 +1109,7 @@ async function iniciar() {
                     return;
                 }
                 atualizarEstado({ status: "conectando", qr: null, erro: diagnostico.mensagem });
-                setTimeout(() => iniciar().catch((erro) => {
-                    console.error("Reconexao falhou:", erro?.message || erro);
-                    atualizarEstado({ status: "erro", erro: erro?.message || String(erro) });
-                }), diagnostico.acao === "RECONECTAR_JA" ? 500 : 1500);
+                reconectarDepois(diagnostico.acao === "RECONECTAR_JA" ? 500 : 1500);
                 return;
             }
             if (!reconectando) {
@@ -895,13 +1121,7 @@ async function iniciar() {
                 const espera = Math.min(60, 3 * 2 ** Math.min(tentativasReconexao - 1, 5));
                 atualizarEstado({ status: "reconectando", qr: null });
                 console.log(`Conexao perdida. Reconectando em ${espera} segundos (tentativa ${tentativasReconexao})...`);
-                setTimeout(() => {
-                    reconectando = false;
-                    iniciar().catch((erro) => {
-                        console.error("Reconexao falhou:", erro?.message || erro);
-                        atualizarEstado({ status: "erro", erro: erro?.message || String(erro) });
-                    });
-                }, espera * 1000);
+                reconectarDepois(espera * 1000);
             }
         }
     });
@@ -916,7 +1136,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-    iniciar, desconectar, listarGrupos, salvarGrupos, salvarContatos, buscarHistoricoPrivado, solicitarCodigoPareamento, identificarRemetentes, contaConectada,
+    iniciar, desconectar, pausarParaReiniciar, listarGrupos, salvarGrupos, salvarContatos, buscarHistoricoPrivado, buscarHistoricoGrupo, relerPdfsDoHistorico, situacaoReleituraPdf: () => ultimaReleituraPdf, solicitarCodigoPareamento, identificarRemetentes, contaConectada,
     obterEstado: () => ({ ...estado }), eventos,
     obterConfiguracao: () => ({
         grupos_permitidos: [...gruposPermitidos],

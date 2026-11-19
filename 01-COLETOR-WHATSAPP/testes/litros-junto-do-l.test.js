@@ -30,9 +30,22 @@ test("litros que ja fecham a conta nao mudam", () => {
     assert.equal(r.litros, 45.34);
 });
 
-test("sem numero que feche, divide valor pelo preco e pede confirmacao", () => {
+test("litros impossiveis com o preco da linha: divide valor pelo preco sozinho", () => {
     const r = conferirLitros({ litros: 350, valor: 214.8, precoItem: 6.64, texto: "GASOLINA\nR$ 214,80" });
     assert.equal(r.litros, 32.349);
+    assert.equal(r.como, "valor_dividido_pelo_preco_da_linha");
+    assert.equal(r.confirmar, undefined);
+});
+
+test("#512: 1,451 L numa nota de R$ 227,03 a R$ 6,59/L sao 34,451 L (media 8.45 km/l no rodape nao atrapalha)", () => {
+    const texto = "GASOLINA C COMUM\n1,451\nL\n6,59\n227,03\nVALOR PAGO R$\n227,03\n-Placa: FHH3G21 -km : 54734 -media : 8.45 k/1";
+    const r = conferirLitros({ litros: 1.451, valores: [227.03, 227.03], precoItem: 6.59, texto });
+    assert.deepEqual({ litros: r.litros, mudou: r.mudou, confirmar: r.confirmar }, { litros: 34.451, mudou: true, confirmar: undefined });
+});
+
+test("litros plausiveis com preco que nao fecha: nao troca sozinho, pede confirmacao", () => {
+    // 34,451 L em R$ 227,03 da R$ 6,59/L (plausivel); o preco lido (6,95) e que esta errado.
+    const r = conferirLitros({ litros: 34.451, valor: 227.03, precoItem: 6.95, texto: "GASOLINA\n6,95" });
     assert.equal(r.confirmar, true);
 });
 

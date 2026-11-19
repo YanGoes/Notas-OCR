@@ -2,9 +2,19 @@
 
 const fs = require("fs");
 const path = require("path");
+const { AsyncLocalStorage } = require("async_hooks");
 
 const RAIZ = path.resolve(__dirname, "..");
+// Perfil valido so dentro de uma chamada (comPerfil): o envio para a conta de
+// teste nao muda o perfil que o resto do programa esta usando, e vice-versa.
+const perfilDaChamada = new AsyncLocalStorage();
+// auth.contaazul.com/oauth2/token e o endpoint LEGADO: so reconhece apps
+// criados antes do Portal do Desenvolvedor atual (caso da conta de teste).
+// Apps novos (ex.: a conta oficial, criada em 11/11/2026) dao "invalid_client"
+// nele e precisam do endpoint novo, api-v2.contaazul.com/oauth/token
+// (descoberto testando na propria conta oficial; nao documentado publicamente).
 const TOKEN_URL = "https://auth.contaazul.com/oauth2/token";
+const TOKEN_URL_NOVO = "https://api-v2.contaazul.com/oauth/token";
 const API_URL = "https://api-v2.contaazul.com";
 // CONTA_AZUL_TOKENS_PATH permite que duas copias do programa usem o MESMO
 // arquivo de tokens. Cada renovacao troca o refresh_token e invalida o
@@ -16,10 +26,20 @@ const TOKENS_PATH_PADRAO = path.join(RAIZ, "tokens_conta_azul.json");
 const PERFIL_ARQUIVO = path.join(RAIZ, "dados", "conta-azul-perfil.json");
 const TOKENS_OFICIAL = path.join(RAIZ, "tokens_conta_azul_oficial.json");
 function perfilAtivo() {
+    const daChamada = perfilDaChamada.getStore();
+    if (daChamada) return daChamada;
+    // CONTA_AZUL_PERFIL vale so para o processo que a define (ex.: um teste na
+    // conta de teste) e nao muda o perfil gravado, que o programa aberto usa.
+    if (["teste", "oficial"].includes(process.env.CONTA_AZUL_PERFIL)) return process.env.CONTA_AZUL_PERFIL;
     try {
         const p = JSON.parse(fs.readFileSync(PERFIL_ARQUIVO, "utf8")).perfil;
         return p === "oficial" ? "oficial" : "teste";
     } catch (_) { return "teste"; }
+}
+/** Roda `fn` usando a conta indicada ("teste" ou "oficial"), sem trocar o perfil gravado. */
+function comPerfil(perfil, fn) {
+    if (!["teste", "oficial"].includes(perfil)) throw new Error("Perfil invalido: use teste ou oficial.");
+    return perfilDaChamada.run(perfil, fn);
 }
 function definirPerfil(perfil) {
     if (!["teste", "oficial"].includes(perfil)) throw new Error("Perfil invalido: use teste ou oficial.");
@@ -31,7 +51,7 @@ function definirPerfil(perfil) {
     }
     fs.mkdirSync(path.dirname(PERFIL_ARQUIVO), { recursive: true });
     fs.writeFileSync(PERFIL_ARQUIVO, JSON.stringify({ perfil, alterado_em: new Date().toISOString() }, null, 2), "utf8");
-    renovacaoEmCurso = null;
+    renovacoesEmCurso.clear();
     return perfil;
 }
 function statusPerfis() {
@@ -49,7 +69,7 @@ function caminhoTokens(perfil = perfilAtivo()) {
 }
 const extensoes = new Set([".jpg", ".jpeg", ".png", ".bmp", ".pdf"]);
 let emExecucao = false;
-let renovacaoEmCurso = null;
+const renovacoesEmCurso = new Map();
 
 function carregarEnv() {
     const arquivo = path.join(RAIZ, ".env");
@@ -92,7 +112,8 @@ function salvarTokens(resposta) {
 
 async function trocarToken(parametros) {
     const { clientId, clientSecret } = credenciais();
-    const resposta = await fetch(TOKEN_URL, {
+    const url = perfilAtivo() === "oficial" ? TOKEN_URL_NOVO : TOKEN_URL;
+    const resposta = await fetch(url, {
         method: "POST",
         signal: AbortSignal.timeout(30000),
         headers: {
@@ -116,12 +137,13 @@ async function tokenValido(forcar = false) {
     const tokens = lerTokens();
     if (!forcar && tokens.access_token && Date.now() < Number(tokens.expires_at || 0)) return tokens.access_token;
     if (!tokens.refresh_token) throw new Error("Refresh token ausente. Conecte novamente.");
-    if (!renovacaoEmCurso) {
+    const perfil = perfilAtivo();
+    if (!renovacoesEmCurso.has(perfil)) {
         const promessa = trocarToken({ grant_type: "refresh_token", refresh_token: tokens.refresh_token });
-        renovacaoEmCurso = promessa;
-        promessa.finally(() => { if (renovacaoEmCurso === promessa) renovacaoEmCurso = null; }).catch(() => {});
+        renovacoesEmCurso.set(perfil, promessa);
+        promessa.finally(() => { if (renovacoesEmCurso.get(perfil) === promessa) renovacoesEmCurso.delete(perfil); }).catch(() => {});
     }
-    return (await renovacaoEmCurso).access_token;
+    return (await renovacoesEmCurso.get(perfil)).access_token;
 }
 
 async function requisicao(endpoint, opcoes = {}, repetir = true) {
@@ -353,7 +375,7 @@ function iniciarMonitor(pastaEntrada, opcoes) {
 }
 
 module.exports = {
-    API_URL, TOKEN_URL, credenciais, caminhoTokens, perfilAtivo, definirPerfil, statusPerfis, trocarCodigo, tokenValido, requisicao,
+    API_URL, TOKEN_URL, credenciais, caminhoTokens, perfilAtivo, comPerfil, definirPerfil, statusPerfis, trocarCodigo, tokenValido, requisicao,
     empresaConectada, listarContasFinanceiras, listarCentrosCusto, listarCategoriasDespesa, criarCentroCusto,
     buscarContasPagar, criarContaPagar, criarContaPagarDireta, buscarPessoas, criarFornecedor,obterParcelaFinanceira, obterPessoaPorId,
     buscarParcelasDoEvento, patchParcela,

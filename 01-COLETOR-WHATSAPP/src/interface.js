@@ -30,6 +30,8 @@ const porta = Number(process.env.PORT || 3211);
 app.use("/api/documentos/upload", express.json({ limit: "15mb" }));
 // Anexos do assistente (imagens, videos, PDFs) tambem vao em base64.
 app.use("/api/central/assistente/enviar", express.json({ limit: "150mb" }));
+// Prints anexados ao comentario para a IA (Central) tambem vao em base64.
+app.use("/api/central/despesas/:id/comentario", express.json({ limit: "30mb" }));
 app.use(express.json({ limit: "100kb" }));
 app.use((req, res, next) => {
     if (req.path === "/" || /\.(?:html|js|css)$/i.test(req.path)) {
@@ -172,6 +174,17 @@ app.post("/api/whatsapp/conectar", async (_req, res, next) => {
 app.post("/api/whatsapp/desconectar", async (_req, res, next) => {
     try { await whatsapp.desconectar(); res.json({ ok: true }); } catch (erro) { next(erro); }
 });
+// Reinicio do PROCESSO (ex.: pedido pela bandeja/painel, ou por mim): fecha o
+// socket do WhatsApp com calma antes de sair, sem desvincular nem apagar a
+// sessao. Encerrar a forca (Stop-Process/Terminate no Windows) pode cortar uma
+// escrita da sessao no meio e obrigar a ler QR Code de novo — ver pausarParaReiniciar.
+app.post("/api/sistema/reiniciar", async (_req, res, next) => {
+    try {
+        await whatsapp.pausarParaReiniciar();
+        res.json({ ok: true });
+        setTimeout(() => process.exit(0), 200);
+    } catch (erro) { next(erro); }
+});
 app.get("/api/grupos", async (_req, res, next) => {
     try { res.json(await whatsapp.listarGrupos()); } catch (erro) { next(erro); }
 });
@@ -236,13 +249,27 @@ app.get("/api/documentos/:base/imagem", (req, res, next) => {
     } catch (erro) { return next(erro); }
 });
 
+// Uma nota que nao caiu no WhatsApp (ex.: WhatsApp caiu, foto apagada antes de
+// mandar, operador so tem a foto salva) entra aqui com a MESMA identidade que
+// teria tido: remetente = telefone da pessoa escolhida (achada no cadastro
+// igual a uma mensagem de verdade), para a Central nao tratar como "remetente
+// nao identificado" e perder os padroes (centro de custo, Drive etc.) do operador.
 app.post("/api/documentos/upload", (req, res, next) => {
     try {
-        const { arquivo_base64, nome_arquivo, legenda } = req.body || {};
+        const { arquivo_base64, nome_arquivo, legenda, pessoa_id } = req.body || {};
         if (!arquivo_base64 || !nome_arquivo) throw new Error("Arquivo ou nome ausente.");
         const buffer = Buffer.from(arquivo_base64.replace(/^data:[^;]+;base64,/, ""), "base64");
         const ext = path.extname(nome_arquivo).toLowerCase();
         if (![".jpg", ".jpeg", ".png", ".bmp", ".pdf"].includes(ext)) throw new Error("Extensao nao suportada.");
+
+        let remetente = null;
+        let remetenteNome = "Upload manual";
+        if (pessoa_id) {
+            const pessoa = (require("./central/cadastros").carregar().pessoas || []).find((p) => p.id === String(pessoa_id));
+            if (!pessoa) throw new Error(`Pessoa "${pessoa_id}" não encontrada no cadastro.`);
+            remetenteNome = pessoa.nome;
+            if (pessoa.telefone) remetente = `${pessoa.telefone}@s.whatsapp.net`;
+        }
 
         const entrada = path.join(RAIZ, "dados", "entrada");
         fs.mkdirSync(entrada, { recursive: true });
@@ -253,7 +280,8 @@ app.post("/api/documentos/upload", (req, res, next) => {
         fs.writeFileSync(caminhoImagem, buffer);
         fs.writeFileSync(path.join(entrada, `manual_${agora}_${baseLimpa}.json`), JSON.stringify({
             legenda: legenda || null,
-            remetente: "Upload Manual Web",
+            remetente,
+            remetente_nome: remetenteNome,
             id_mensagem: `manual-${agora}`,
             recebido_em_ms: agora,
         }, null, 2), "utf8");
@@ -359,6 +387,19 @@ app.put("/api/contatos", (req, res, next) => {
 app.post("/api/contatos/:id/historico", async (req, res, next) => {
     try { res.json(await whatsapp.buscarHistoricoPrivado(String(req.params.id || ""))); } catch (erro) { next(erro); }
 });
+app.post("/api/grupos/:id/historico", async (req, res, next) => {
+    try { res.json(await whatsapp.buscarHistoricoGrupo(String(req.params.id || ""))); } catch (erro) { next(erro); }
+});
+// Releitura de PDFs antigos dos grupos/privados marcados (baixa so os PDFs para
+// dados/pdfs-historico, para conferir antes de entrar na Central). Roda em segundo plano.
+app.post("/api/whatsapp/reler-pdfs", (req, res, next) => {
+    try {
+        const tarefa = whatsapp.relerPdfsDoHistorico({ desde: req.body?.desde, maxPaginas: Number(req.body?.max_paginas) || undefined });
+        tarefa.catch((erro) => console.error("Releitura de PDFs:", erro.message));
+        res.json({ iniciada: true });
+    } catch (erro) { erro.status = 400; next(erro); }
+});
+app.get("/api/whatsapp/reler-pdfs", (req, res) => res.json(whatsapp.situacaoReleituraPdf() || { andamento: false }));
 app.post("/api/contatos/pessoa", (req, res, next) => {
     try {
         const pessoa = require("./central/cadastros").adicionarPessoa(req.body || {});
@@ -486,6 +527,9 @@ const servidor = app.listen(porta, "127.0.0.1", () => {
     require("./central/avisos-gerencia").agendar(() => require("./central/banco").banco(), () => require("./central/cadastros").carregar(),
         { perguntar: require("./assistente/assinatura").perguntar, horario: (() => { try { return require("../config.json").central?.avisos_gerencia_horario; } catch (_) { return undefined; } })() || "18:30" });
     require("./central/arquivo-drive").agendar(() => require("./central/banco").banco(), () => require("./central/cadastros").carregar());
+    // Centros de custo novos criados no Conta Azul (conta oficial): uma vez por dia
+    // entram sozinhos em configuracao/centros_custo.json (nunca apaga nem renomeia).
+    require("./central/sincronizar-centros").agendar({ avisar: require("./notificacoes").registrar });
 });
 
 // Trava de instancia unica. Duas copias abertas ao mesmo tempo compartilham a

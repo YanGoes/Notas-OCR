@@ -47,6 +47,34 @@ test("dois hodometros diferentes no mesmo texto: nao escolhe", () => {
     assert.equal(ocr.odometroDetalhado("odometro: 191482\nKM: 157219").valor, null);
 });
 
+test("hodometro 'Km .: 53832' (ponto e dois-pontos juntos, posto Campo Limpo/MT #502/#539) e 'KH' lido no lugar de KM (#504)", () => {
+    const campoLimpo = "RODOVIA MT 010 KM 06, SN, SN - CAMPO LIMPO\nPlaca : FHH3G21\nKm .: 53832\nObs .:";
+    assert.deepEqual(ocr.odometroDetalhado(campoLimpo), { valor: 53832, origem: "rotulo_hodometro" });
+    assert.equal(ocr.odometroDetalhado("OD NPJ: 05.35 KM 06, SN\nKm .: 205086\nKm 10").valor, 205086);
+    assert.equal(ocr.odometroDetalhado("PLACA: SFI-4A94\nKH 44907 - MED: 1496.00").valor, 44907);
+});
+
+test("km da estrada com letra grudada ('ORODOVIA MG 050 00 KM 3715', #478) nao conta como hodometro", () => {
+    const texto = "POSTO FLORESTA\nORODOVIA MG 050 00 KM 3715 POSTO FLORESTA\nPLACA: REP7839 ODOM: 220495";
+    assert.deepEqual(ocr.odometroDetalhado(texto), { valor: 220495, origem: "rotulo_hodometro" });
+});
+
+test("duas notas na mesma foto, cada uma com o seu km (#498): vale o km da linha da placa da nota", () => {
+    const texto = "PLACA: OVN1505 KM: 279299 VENDEDOR: ANDRE\nDIESEL S10 47.451\nLACA: REP7839 KM: 220888 MOTORISTA: ALMIR";
+    assert.equal(ocr.odometroDetalhado(texto).valor, null, "sozinho continua sem escolher");
+    assert.equal(regras.odometroDaLinhaDaPlaca(texto, "REP7B39"), 220888, "REP7839 lida = REP7B39 (8 no lugar de B)");
+    assert.equal(regras.odometroDaLinhaDaPlaca(texto, "OVN1505"), 279299);
+    assert.equal(regras.odometroDaLinhaDaPlaca(texto, "ABC1D23"), null);
+    // Placa numa linha e km na de baixo.
+    assert.equal(regras.odometroDaLinhaDaPlaca("Placa : FHH3G21\nKm .: 53832", "FHH3G21"), 53832);
+});
+
+test("leitura guardada sem hodometro e relida do texto (Regerar previa acerta notas antigas)", () => {
+    assert.deepEqual(regras.odometroDaNota({ odometro: null, texto_bruto: "Placa : FHH3G21\nKm .: 53832" }), { valor: 53832, leitura: "rotulo_hodometro" });
+    assert.deepEqual(regras.odometroDaNota({ odometro: 1234, odometro_origem: "rotulo_hodometro", texto_bruto: "Km .: 53832" }), { valor: 1234, leitura: "rotulo_hodometro" });
+    assert.deepEqual(regras.odometroDaNota(null), { valor: null, leitura: null });
+});
+
 // --- Fornecedor: prestador da NFS-e e nunca a propria VMac --------------------
 
 const NFSE_HOTEL = [
@@ -104,6 +132,27 @@ test("foto com UMA nota nao e dividida", () => {
     const umaSo = fotoComDuasNotas();
     umaSo.analyzeResult.pages[0].lines = umaSo.analyzeResult.pages[0].lines.map((l) => ({ ...l, polygon: [20, l.polygon[1], 700, l.polygon[1], 700, l.polygon[5], 20, l.polygon[5]] }));
     assert.equal(dividirDocumentos(umaSo).length, 1);
+});
+
+test("nota UNICA fotografada de lado (texto na vertical) nao e cortada em duas", () => {
+    // Foto deitada: cada linha do texto e uma faixa vertical estreita; o Azure
+    // informa angle ~ -90. Sem girar, as linhas pareciam duas colunas.
+    const textos = ["RESTAURANTE BOA MESA LTDA", "CNPJ 11.222.333/0001-81", "DOCUMENTO AUXILIAR DA NOTA FISCAL CONSUMIDOR ELETRONICA",
+        "001 SELF SERVICE KG 30,84", "002 COCA COLA 2L 17,90", "QTD total de itens", "Valor total", "165,61",
+        "CONSUMIDOR NAO IDENTIFICADO", "Emissao 20/10/2026 12:50:39", "Consulte pela CHAVE DE ACESSO", "EMITIDA EM CONTINGENCIA",
+        "Pendente de Autorizacao", "Conta: 350", "Trib aprox R$: 22,51 Fed", "Fonte: IBPT", "Operador: 3", "Obrigado - Volte sempre!",
+        "NFC-e numero 17370", "linha 20", "linha 21", "linha 22"];
+    // Texto subindo (angle -90): a linha i fica em x = 140 + i*55 e ocupa y de 700 a 100.
+    const linhas = textos.map((texto, i) => {
+        const x0 = 140 + i * 55, x1 = x0 + 30;
+        return { content: texto, polygon: [x0, 700, x0, 100, x1, 100, x1, 700] };
+    });
+    const bruto = { analyzeResult: { content: textos.join("\n"), documents: [{ docType: "receipt.retailMeal", fields: {} }],
+        pages: [{ width: 1600, height: 900, angle: -89.5, lines: linhas }] } };
+    const documentos = dividirDocumentos(bruto);
+    assert.equal(documentos.length, 1);
+    assert.equal(documentos[0].ocr.separada_da_foto, undefined);
+    assert.equal(documentos[0].ocr.valor, 165.61);
 });
 
 // --- Regras: fornecedor generico, placa parecida, pessoas ---------------------
@@ -182,7 +231,8 @@ test("centro de custo e pagamento marcados 'nao usar' saem das metricas e do exe
             TransactionTime: { type: "time", valueTime: "21:00:00" } } }] } },
         meta: { id_mensagem: "m", id_grupo: "g", remetente: "5511900000001@s.whatsapp.net", legenda: "Jantar 2 pessoas\nTESTE CC", recebido_em_ms: Date.parse("2026-10-01T08:00:00Z") },
     });
-    revisao.corrigir(db, c, id, [{ campo: "pagamento", valor: "PIX" }], "Yan");
+    // (Dinheiro: PIX agora pede a "Conta do PIX" para aprovar — ver central-revisao.test.js.)
+    revisao.corrigir(db, c, id, [{ campo: "pagamento", valor: "DINHEIRO" }], "Yan");
     revisao.aprovar(db, id, "Yan", { naoUsarNoTreino: ["centro_custo", "pagamento", "valor"] });
     const rotulos = JSON.parse(db.prepare("SELECT rotulos FROM exemplos_treino").get().rotulos);
     assert.deepEqual(rotulos._nao_usar_no_treino.sort(), ["centro_custo", "pagamento"], "so centro e pagamento podem ser excluidos");
@@ -263,6 +313,68 @@ test("placa com 8 no lugar de B e reconhecida pela frota (SGR4854 = SGR4B54)", (
     assert.equal(p.campos.abastecimento.placa.valor, "SGR4B54");
     assert.equal(p.campos.categoria.nome, "FIAT SCUDO - SGR4B54");
     assert.equal(cadastros.veiculoPorSosia(c, "XYZ4854"), null, "sem veiculo parecido na frota, nao inventa");
+});
+
+// Caso real #479 (13/11/2026): Azure leu "OVH-1505"; na frota e OVN1505 (Etios).
+const abastecimentoComPlaca = (c, placa) => regras.montarPrevia({ ocr: { confianca: 0.99, data: "2026-11-11", valor: 200, fornecedor: "POSTO", itens: [{ descricao: "GASOLINA" }],
+    litragem: 34.651, odometro: 120000, placa }, legenda: {}, identificacao: {}, cad: c, hoje: new Date("2026-11-13T12:00:00Z"), modelo: null });
+
+test("placa lida com UM caractere errado (OVH1505) vira a da frota (OVN1505), com aviso", () => {
+    const c = cad();
+    c.veiculos.push({ nome: "ETIOS - OVN1505", placa: "OVN1505", categoria_nome_conta_azul: "ETIOS - OVN1505" },
+        { nome: "HILUX - OVN5J98", placa: "OVN5J98", categoria_nome_conta_azul: "HILUX - OVN5J98" });
+    const p = abastecimentoComPlaca(c, "OVH-1505");
+    assert.equal(p.campos.abastecimento.placa.valor, "OVN1505");
+    assert.equal(p.campos.categoria.nome, "ETIOS - OVN1505");
+    assert.ok(p.avisos.some((a) => /OVH1505.*corrigida para OVN1505/.test(a)), p.avisos.join(" | "));
+    assert.ok(!p.pendencias.some((x) => /não está na frota/.test(x)), p.pendencias.join(" | "));
+});
+
+test("placa no formato antigo casa com a mesma placa Mercosul da frota (OVN1505 = OVN1F05)", () => {
+    const c = cad();
+    c.veiculos.push({ nome: "ETIOS - OVN1F05", placa: "OVN1F05", categoria_nome_conta_azul: "ETIOS - OVN1F05" });
+    assert.equal(cadastros.veiculoPorUmCaractere(c, "OVN1505")?.veiculo.placa, "OVN1F05");
+    assert.equal(cadastros.veiculoPorUmCaractere(c, "OVN1505")?.diferencas, 0);
+});
+
+test("placa a 1 caractere de DUAS placas da frota: nao chuta, pede para escolher", () => {
+    const c = cad();
+    c.veiculos.push({ nome: "CARRO A", placa: "ABC1234", categoria_nome_conta_azul: "CARRO A" },
+        { nome: "CARRO B", placa: "ABC1235", categoria_nome_conta_azul: "CARRO B" });
+    assert.equal(cadastros.veiculoPorUmCaractere(c, "ABC1239"), null);
+    const p = abastecimentoComPlaca(c, "ABC1239");
+    assert.notEqual(p.campos.abastecimento.placa.valor, "ABC1234");
+    assert.notEqual(p.campos.abastecimento.placa.valor, "ABC1235");
+    assert.ok(p.pendencias.some((x) => /ABC1234 e ABC1235/.test(x)), p.pendencias.join(" | "));
+});
+
+test("placa 'JKN0696' do cupom (M lido como N + 6 no lugar do I) vira a JKM0I96 da frota (#500, 16/11/2026)", () => {
+    const c = cad(); // a frota de teste ja tem a JKM0I96
+    assert.equal(cadastros.veiculoPorUmCaractere(c, "JKN0696")?.veiculo.placa, "JKM0I96");
+    const p = abastecimentoComPlaca(c, "JKN-0696");
+    assert.equal(p.campos.abastecimento.placa.valor, "JKM0I96");
+    assert.equal(p.campos.categoria.nome, "ETIOS - JKM0I96");
+    assert.ok(!p.pendencias.some((x) => /não está na frota/.test(x)), p.pendencias.join(" | "));
+});
+
+test("placa da nota fora da frota e placa da frota escrita na mensagem: vale a da mensagem", () => {
+    const c = cad(); // a frota de teste ja tem a JKM0I96
+    const p = regras.montarPrevia({ ocr: { confianca: 0.99, data: "2026-11-11", valor: 200, fornecedor: "POSTO", itens: [{ descricao: "GASOLINA" }],
+        litragem: 34.651, odometro: 120000, placa: "XYZ-9W88" }, legenda: { placa: "JKM0I96" }, identificacao: {}, cad: c, hoje: new Date("2026-11-13T12:00:00Z"), modelo: null });
+    assert.equal(p.campos.abastecimento.placa.valor, "JKM0I96");
+    assert.ok(p.avisos.some((a) => /XYZ9W88.*não está na frota.*JKM0I96.*mensagem/.test(a)), p.avisos.join(" | "));
+    // Placa da nota que ESTA na frota continua valendo, mesmo com outra na mensagem.
+    c.veiculos.push({ nome: "ETIOS - OVN1505", placa: "OVN1505", categoria_nome_conta_azul: "ETIOS - OVN1505" });
+    const q = regras.montarPrevia({ ocr: { confianca: 0.99, data: "2026-11-11", valor: 200, fornecedor: "POSTO", itens: [{ descricao: "GASOLINA" }],
+        litragem: 34.651, odometro: 120000, placa: "OVN-1505" }, legenda: { placa: "JKM0I96" }, identificacao: {}, cad: c, hoje: new Date("2026-11-13T12:00:00Z"), modelo: null });
+    assert.equal(q.campos.abastecimento.placa.valor, "OVN1505");
+});
+
+test("placa com 2+ caracteres diferentes de tudo na frota continua 'fora da frota' (nao inventa)", () => {
+    const c = cad();
+    c.veiculos.push({ nome: "ETIOS - OVN1505", placa: "OVN1505", categoria_nome_conta_azul: "ETIOS - OVN1505" });
+    assert.equal(cadastros.veiculoPorUmCaractere(c, "OXH1585"), null);
+    assert.equal(abastecimentoComPlaca(c, "OXH-1585").campos.abastecimento.placa.valor, "OXH1585");
 });
 
 test("habito do operador: pessoas estimadas pelo costume vencem a contagem de itens; cartao vira sugestao", () => {

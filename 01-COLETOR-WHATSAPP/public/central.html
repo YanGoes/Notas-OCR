@@ -23,17 +23,27 @@
     <div id="aviso" class="aviso oculto" role="status"></div>
     <section id="avisosGerencia" class="avisos-gerencia oculto" aria-label="Mudanças avisadas pela gerência"></section>
     <section id="remetentes" class="remetentes oculto"></section>
-    <nav class="abas" role="tablist">
-      <button role="tab" data-aba="revisar" aria-selected="true">Para revisar <span class="n" data-n="revisar">0</span></button>
-      <button role="tab" data-aba="classificadas" aria-selected="false">Classificadas <span class="n" data-n="classificadas">0</span></button>
-      <button role="tab" data-aba="aprovadas" aria-selected="false">Aprovadas <span class="n" data-n="aprovadas">0</span></button>
-      <button role="tab" data-aba="simuladas" aria-selected="false" title="Notas antigas do Drive passadas pela IA no padrão e conferidas com o Conta Azul">Simuladas (histórico) <span class="n" data-n="simuladas">0</span></button>
-      <button role="tab" data-aba="fora" aria-selected="false">Duplicadas / descartadas <span class="n" data-n="fora">0</span></button>
-      <button role="tab" data-aba="treino" aria-selected="false">Treino</button>
-      <button role="tab" data-aba="centros" aria-selected="false">Centros de custo</button>
+    <!-- Esteira: cada nota fica numa etapa so e anda para a direita ate ser lancada no Conta Azul oficial. -->
+    <nav class="abas esteira" role="tablist">
+      <button role="tab" data-aba="revisar" aria-selected="true" title="Notas lidas pela IA esperando a sua revisão">1 · Para revisar <span class="n" data-n="revisar">0</span></button>
+      <span class="seta" aria-hidden="true">→</span>
+      <button role="tab" data-aba="aprovadas" aria-selected="false" title="Aprovadas que ainda não foram lançadas no Conta Azul OFICIAL">2 · Prontas para enviar <span class="n" data-n="aprovadas">0</span></button>
+      <span class="seta" aria-hidden="true">→</span>
+      <button role="tab" data-aba="enviadas" aria-selected="false" title="Já lançadas no Conta Azul OFICIAL (a enviada por último primeiro)">3 · Enviadas <span class="n" data-n="enviadas">0</span></button>
+      <button role="tab" data-aba="problema" aria-selected="false" class="aba-problema" title="O envio para o Conta Azul oficial falhou, ficou incompleto ou subiu sem a foto: precisa de atenção">⚠ Envio com problema <span class="n" data-n="problema">0</span></button>
+      <span class="divisor-abas" aria-hidden="true"></span>
+      <button role="tab" data-aba="fora" aria-selected="false" class="aba-secundaria">Duplicadas / descartadas <span class="n" data-n="fora">0</span></button>
+      <button role="tab" data-aba="simuladas" aria-selected="false" class="aba-secundaria" title="Notas ANTIGAS só para treinar a IA: o histórico importado do Drive e as mandadas pelo botão 🧠 Mandar para Treino IA. Ficam fora da esteira e nunca são enviadas ao Conta Azul.">🧠 Treino IA <span class="n" data-n="simuladas">0</span></button>
+      <button role="tab" data-aba="treino" aria-selected="false" class="aba-secundaria">Treino</button>
+      <button role="tab" data-aba="centros" aria-selected="false" class="aba-secundaria">Centros de custo</button>
     </nav>
+    <div class="busca-notas">
+      <input id="buscaNotas" type="search" autocomplete="off" placeholder="🔎 Buscar nota em todas as etapas: valor (ex.: 150,00), fornecedor, operador, centro ou nº (#123)" aria-label="Buscar nota em todas as etapas">
+      <span id="buscaResumo" class="resumo-periodo oculto"></span>
+    </div>
     <nav id="filtroOperador" class="operadores" aria-label="Filtrar por operador"></nav>
     <nav id="filtroPeriodo" class="periodo" aria-label="Filtrar por período"></nav>
+    <nav id="acoesAba" class="periodo acoes-aba" aria-label="Ações desta aba"></nav>
     <section id="areaRevisao" class="revisao">
       <aside id="lista" class="lista" aria-label="Despesas"></aside>
       <article id="detalhe" class="detalhe"><div class="vazio">Escolha uma despesa na lista.</div></article>

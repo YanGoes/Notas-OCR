@@ -57,6 +57,8 @@ test("ultimo envio por operador e busca de despesas nunca mostram telefone", asy
     assert.ok(!/5511900000031/.test(tudo), "telefone nunca sai pelas ferramentas");
 });
 
+const LANCAMENTO_DESLIGADO = { central: { lancamento_habilitado: false } };
+
 test("MCP lista ferramentas e transforma o que grava em proposta (nao executa)", async () => {
     const fs = require("fs"); const os = require("os"); const path = require("path");
     const fila = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mcp-")), "fila.jsonl");
@@ -67,6 +69,11 @@ test("MCP lista ferramentas e transforma o que grava em proposta (nao executa)",
     const chamada = await mcp.tratar({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "preparar_lancamento", arguments: { ids: [10] } } }, ctx);
     assert.match(chamada.result.content[0].text, /Confirmar/);
     assert.deepEqual(JSON.parse(fs.readFileSync(fila, "utf8").trim()), { ferramenta: "preparar_lancamento", parametros: { ids: [10] } });
+    // Segunda proposta na mesma resposta: recusada (antes sumia e o assistente dizia que esperava Confirmar).
+    const segunda = await mcp.tratar({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "definir_pasta_drive", arguments: { id: 10, operador: "Kelvyn" } } }, ctx);
+    assert.equal(segunda.result.isError, true);
+    assert.match(segunda.result.content[0].text, /NÃO registrada/);
+    assert.equal(fs.readFileSync(fila, "utf8").trim().split(/\r?\n/).length, 1);
     assert.equal(await mcp.tratar({ jsonrpc: "2.0", method: "notifications/initialized" }, ctx), null);
 });
 
@@ -79,20 +86,53 @@ test("conversa guarda mensagens, sessao e proposta; so Yan/Jhonathan/Vanessa con
     };
     const eventos = [];
     const resposta = await servico.enviar(db, { pessoa: "cauã", texto: "lança a 10", emitir: (e) => eventos.push(e), rodar });
-    assert.equal(resposta.proposta.resumo, "Lançar no Conta Azul 1 despesa(s) aprovada(s): #10");
+    assert.equal(resposta.proposta.resumo, "Lançar na conta de TESTE do Conta Azul 1 despesa(s) aprovada(s), com a foto anexada: #10");
     assert.equal(eventos[0].texto, "Preparei");
     assert.equal(db.prepare("SELECT sessao FROM assistente_conversas WHERE id = ?").get(resposta.conversa_id).sessao, "sessao-1");
-    await assert.rejects(() => servico.enviar(db, { pessoa: "Yan", texto: "e agora?", conversaId: resposta.conversa_id, rodar }), /esperando Confirmar/);
-    await assert.rejects(() => servico.decidir(db, resposta.proposta.id, { pessoa: "Cauã", aceito: true }), /Só Yan, Jhonathan, Vanessa/);
-    const decisao = await servico.decidir(db, resposta.proposta.id, { pessoa: "Vanessa", aceito: true });
+    await assert.rejects(() => servico.enviar(db, { pessoa: "Cauã", texto: "e agora?", conversaId: resposta.conversa_id, rodar }), /esperando Confirmar/);
+    await assert.rejects(() => servico.decidir(db, resposta.proposta.id, { pessoa: "Cauã", aceito: true }), /Só Yan, Rodrigo, Vanessa, Jhonathan/);
+    // O config vai no contexto: o teste nunca le o config real nem fala com o Conta Azul.
+    const decisao = await servico.decidir(db, resposta.proposta.id, { pessoa: "Vanessa", aceito: true, ctx: { config: LANCAMENTO_DESLIGADO } });
     assert.equal(decisao.status, "EXECUTADA");
-    assert.equal(decisao.resultado.enviado, false, "lancamento desligado na fase de testes: nada enviado");
+    assert.equal(decisao.resultado.enviado, false, "lancamento desligado no config: nada enviado");
     await assert.rejects(() => servico.decidir(db, resposta.proposta.id, { pessoa: "Yan", aceito: true }), /já foi decidida/);
+});
+
+test("lancamento confirmado vai para a conta pedida (teste por padrao) e as travas viram motivo, nao erro", async () => {
+    const db = bancoComDespesas();
+    const chamadas = [];
+    const ctx = { db, cad: CAD, pessoa: "Yan", config: { central: { lancamento_habilitado: true } },
+        lancar: async (ids, conta, c) => { chamadas.push([ids, conta, c.pessoa]); if (conta === "oficial") throw new Error("O envio para a conta OFICIAL ainda não foi liberado."); return { enviado: true, conta }; } };
+    assert.deepEqual(await ferramentas.executar("preparar_lancamento", { ids: [10, 10] }, ctx), { enviado: true, conta: "teste" });
+    assert.deepEqual(await ferramentas.executar("preparar_lancamento", { ids: [10], conta: "oficial" }, ctx),
+        { enviado: false, conta: "oficial", motivo: "O envio para a conta OFICIAL ainda não foi liberado." });
+    assert.deepEqual(chamadas, [[[10], "teste", "Yan"], [[10], "oficial", "Yan"]]);
+    assert.match(ferramentas.obter("preparar_lancamento", db).resumir({ ids: [10], conta: "oficial" }), /conta OFICIAL \(empresa real\)/);
+    assert.equal((await ferramentas.executar("preparar_lancamento", { ids: [10] }, { db, cad: CAD, config: LANCAMENTO_DESLIGADO, lancar: () => { throw new Error("não deveria lançar"); } })).enviado, false);
 });
 
 test("lancamento recusa despesa que nao foi aprovada", async () => {
     const db = bancoComDespesas();
     await assert.rejects(() => ferramentas.executar("preparar_lancamento", { ids: [11] }, { db, cad: CAD }), /Só despesas aprovadas/);
+});
+
+test("definir_pasta_drive muda so a pasta da foto no Drive, nunca o operador da despesa", async () => {
+    const db = bancoComDespesas();
+    const ctx = { db, cad: CAD, pessoa: "Yan" };
+    assert.deepEqual(await ferramentas.executar("definir_pasta_drive", { id: 10, operador: "Almir" }, ctx), { id: 10, pasta_drive_operador: "Almir" });
+    const linha = db.prepare("SELECT pasta_drive_operador, pasta_drive_definida_por FROM despesas WHERE id = ?").get(10);
+    assert.equal(linha.pasta_drive_operador, "Almir");
+    assert.equal(linha.pasta_drive_definida_por, "Yan");
+    assert.match(ferramentas.obter("definir_pasta_drive", db).resumir({ id: 10, operador: "Almir" }), /pasta do Drive de "Almir"/);
+    // vazio volta ao operador real
+    assert.deepEqual(await ferramentas.executar("definir_pasta_drive", { id: 10, operador: "" }, ctx), { id: 10, pasta_drive_operador: null });
+    await assert.rejects(() => ferramentas.executar("definir_pasta_drive", { id: 999999, operador: "Almir" }, ctx), /não encontrada/);
+    // Varias de uma vez: um Confirmar so; nota inexistente na lista = nada muda.
+    await assert.rejects(() => ferramentas.executar("definir_pasta_drive", { ids: [10, 999999], operador: "Kelvyn" }, ctx), /#999999/);
+    assert.equal(db.prepare("SELECT pasta_drive_operador FROM despesas WHERE id = 10").get().pasta_drive_operador, null);
+    const varias = await ferramentas.executar("definir_pasta_drive", { ids: [10, 10], operador: "Kelvyn" }, ctx);
+    assert.equal(varias.pasta_drive_operador, "Kelvyn");
+    assert.match(ferramentas.obter("definir_pasta_drive", db).resumir({ ids: [10, 11], operador: "Kelvyn" }), /2 despesas \(#10, #11\)/);
 });
 
 test("motor da assinatura: comando sem ferramentas embutidas e eventos do stream-json", async () => {
@@ -140,11 +180,37 @@ test("depois de confirmar, o assistente escreve a resposta com o resultado (rela
     const rodar = async ({ texto }) => (/treino|confirmou/.test(texto) && /Resultado/.test(texto)
         ? { tipo: "resposta", texto: "Relatório: maturidade subiu.", sessao: "s2", propostas: [] }
         : { tipo: "resposta", texto: "Preparei.", sessao: "s1", propostas: [{ ferramenta: "preparar_lancamento", parametros: { ids: [10] } }] });
-    const r = await servico.enviar(db, { pessoa: "Yan", texto: "lança a 10", rodar });
-    const decisao = await servico.decidir(db, r.proposta.id, { pessoa: "Yan", aceito: true, rodar });
+    const r = await servico.enviar(db, { pessoa: "Cauã", texto: "lança a 10", rodar });
+    const decisao = await servico.decidir(db, r.proposta.id, { pessoa: "Yan", aceito: true, rodar, ctx: { config: LANCAMENTO_DESLIGADO } });
     assert.equal(decisao.relatorio, "Relatório: maturidade subiu.");
     const conversa = servico.lerConversa(db, r.conversa_id);
     assert.equal(conversa.mensagens.at(-1).texto, "Relatório: maturidade subiu.");
+});
+
+test("Yan/Jhonathan/Vanessa: o que pediram e feito na hora, todas as acoes, sem botao Confirmar", async () => {
+    const db = bancoComDespesas();
+    const textos = [];
+    const rodar = async ({ texto }) => {
+        textos.push(texto);
+        return /\[Programa\]/.test(texto)
+            ? { tipo: "resposta", texto: "Feito: pasta mudada e envio tentado.", sessao: "s2", propostas: [] }
+            : { tipo: "resposta", texto: "Vou fazer agora.", sessao: "s1", propostas: [
+                { ferramenta: "definir_pasta_drive", parametros: { ids: [10, 11], operador: "Kelvyn" } },
+                { ferramenta: "preparar_lancamento", parametros: { ids: [10] } },
+                { ferramenta: "nao_existe", parametros: {} }] };
+    };
+    const eventos = [];
+    const r = await servico.enviar(db, { pessoa: "Yan", texto: "muda a pasta e lança", rodar, emitir: (e) => eventos.push(e), ctx: { config: LANCAMENTO_DESLIGADO } });
+    assert.equal(r.proposta, null, "nao fica nada esperando Confirmar");
+    assert.equal(r.executadas, 3);
+    assert.equal(r.texto, "Feito: pasta mudada e envio tentado.");
+    assert.equal(db.prepare("SELECT pasta_drive_operador FROM despesas WHERE id = 11").get().pasta_drive_operador, "Kelvyn");
+    const status = db.prepare("SELECT ferramenta, status, decidida_por FROM assistente_propostas WHERE conversa_id = ? ORDER BY id").all(r.conversa_id).map((p) => `${p.ferramenta}:${p.status}:${p.decidida_por}`);
+    assert.deepEqual(status, ["definir_pasta_drive:EXECUTADA:Yan", "preparar_lancamento:EXECUTADA:Yan", "nao_existe:FALHOU:Yan"]);
+    assert.ok(eventos.some((e) => e.tipo === "acao" && /Fazendo 1 de 3/.test(e.texto)));
+    assert.match(textos[1], /nao_existe|não existe/, "o relato recebe a falha para contar a pessoa");
+    // Conversa livre para a proxima mensagem (nada pendente).
+    await servico.enviar(db, { pessoa: "Yan", texto: "e agora?", conversaId: r.conversa_id, rodar: async () => ({ tipo: "resposta", texto: "ok", sessao: "s3", propostas: [] }) });
 });
 
 test("relatorio do treino compara antes e depois por campo", () => {
